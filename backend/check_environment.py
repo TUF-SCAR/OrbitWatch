@@ -26,3 +26,4 @@ else:
     result = responce.json()
     print(type(result))
     print(len(result))
+    print(result[0])

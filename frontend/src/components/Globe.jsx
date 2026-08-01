@@ -14,7 +14,6 @@ async function loadItem() {
   }
 
   const item = await response.json();
-  console.log(item);
 
   return item;
 }
@@ -27,6 +26,33 @@ function Globe() {
     const globeViewer = new Viewer(areaRef.current);
     async function innerFunction() {
       const satellite = await loadItem();
+
+      if (!satellite) {
+        console.warn("No satellite data recieved");
+        return;
+      }
+
+      const { latitude, longitude, altitude_km, name, norad_id } = satellite;
+      const height = altitude_km * 1000;
+
+      const satellitePosition = Cartesian3.fromDegrees(
+        longitude,
+        latitude,
+        height,
+      );
+
+      const satelliteMarker = globeViewer.entities.add({
+        position: satellitePosition,
+        point: {
+          pixelSize: 14,
+          color: Color.YELLOW,
+        },
+        label: {
+          text: `${name} - (${norad_id})`,
+        },
+      });
+
+      globeViewer.zoomTo(satelliteMarker);
     }
     innerFunction();
 

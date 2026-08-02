@@ -24,7 +24,9 @@ function Globe() {
   useEffect(() => {
     Ion.defaultAccessToken = token;
     const globeViewer = new Viewer(areaRef.current);
-    async function innerFunction() {
+    let satelliteMarker = null;
+
+    async function getSatellitePosition() {
       const satellite = await loadItem();
 
       if (!satellite) {
@@ -41,22 +43,38 @@ function Globe() {
         height,
       );
 
-      const satelliteMarker = globeViewer.entities.add({
-        position: satellitePosition,
-        point: {
-          pixelSize: 14,
-          color: Color.YELLOW,
-        },
-        label: {
-          text: `${name} - (${norad_id})`,
-        },
-      });
-
-      globeViewer.zoomTo(satelliteMarker);
+      return {
+        satellitePosition,
+        name,
+        norad_id,
+      };
     }
-    innerFunction();
+
+    async function updateSatellitePosition() {
+      const { satellitePosition, name, norad_id } =
+        await getSatellitePosition();
+
+      if (!satelliteMarker) {
+        satelliteMarker = globeViewer.entities.add({
+          position: satellitePosition,
+          point: {
+            pixelSize: 14,
+            color: Color.YELLOW,
+          },
+          label: {
+            text: `${name} - (${norad_id})`,
+          },
+        });
+        globeViewer.zoomTo(satelliteMarker);
+      } else {
+        satelliteMarker.position.setValue(satellitePosition);
+      }
+    }
+    updateSatellitePosition();
+    const updateSatelliteInterval = setInterval(updateSatellitePosition, 5000);
 
     return () => {
+      clearInterval(updateSatelliteInterval);
       globeViewer.destroy();
     };
   }, []);

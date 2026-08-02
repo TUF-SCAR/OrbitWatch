@@ -1,8 +1,25 @@
+import time
 import httpx
 from skyfield.api import EarthSatellite, load, wgs84
 
+timescale = load.timescale()
 
-def get_satellite_position(norad_id):
+satellite_cache = dict()
+satellite_cache_lifetime = 7200
+
+
+def get_satellite_propagator(norad_id) -> EarthSatellite:
+
+    for key in satellite_cache:
+        if key == norad_id:
+            value = satellite_cache.get(key)
+            age = time.monotonic() - value["fetched_at"]
+            if age < satellite_cache_lifetime:
+                print(f"Found {norad_id} space object from cache")
+                return value["propagator"]
+            else:
+                satellite_cache.pop(key)
+
     celes = f"https://celestrak.org/NORAD/elements/gp.php?CATNR={norad_id}&FORMAT=TLE"
 
     response = httpx.get(url=celes, timeout=20)
@@ -15,13 +32,24 @@ def get_satellite_position(norad_id):
         tle_line_1 = response_text[1]
         tle_line_2 = response_text[2]
     else:
-        raise ValueError(f"No valid TLE data found for NORAD ID {norad_id}")
-
-    timescale = load.timescale()
+        raise ValueError(f"No valid TLE data found for {norad_id} space object")
 
     satellite = EarthSatellite(
         name=name, line1=tle_line_1, line2=tle_line_2, ts=timescale
     )
+
+    satellite_cache[norad_id] = {
+        "propagator": satellite,
+        "fetched_at": time.monotonic(),
+    }
+
+    print(f"Downloaded fresh TLE for {norad_id} space object")
+
+    return satellite
+
+
+def get_satellite_position(norad_id) -> dict:
+    satellite = get_satellite_propagator(norad_id)
 
     t = timescale.now()
     current_position = satellite.at(t)
@@ -31,7 +59,7 @@ def get_satellite_position(norad_id):
     altitude = float(location.elevation.km)
 
     return {
-        "name": name.strip(),
+        "name": satellite.name.strip(),
         "norad_id": norad_id,
         "timestamp": t.utc_iso(),
         "tle_epoch": satellite.epoch.utc_iso(),
@@ -42,7 +70,7 @@ def get_satellite_position(norad_id):
 
 
 if __name__ == "__main__":
-    satellite_position = get_satellite_position(25544)
-    print(satellite_position)
-    satellite_position = get_satellite_position(20580)
-    print(satellite_position)
+    satellite = get_satellite_position(25544)
+    print(satellite)
+    satellite = get_satellite_position(25544)
+    print(satellite)

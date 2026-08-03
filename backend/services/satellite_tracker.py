@@ -1,5 +1,6 @@
 import time
 import httpx
+from datetime import datetime, timedelta, timezone
 from skyfield.api import EarthSatellite, load, wgs84
 
 timescale = load.timescale()
@@ -8,17 +9,17 @@ satellite_cache = dict()
 satellite_cache_lifetime = 7200
 
 
-def get_satellite_propagator(norad_id) -> EarthSatellite:
+def get_satellite_propagator(norad_id: int) -> EarthSatellite:
 
-    for key in satellite_cache:
-        if key == norad_id:
-            value = satellite_cache.get(key)
-            age = time.monotonic() - value["fetched_at"]
-            if age < satellite_cache_lifetime:
-                print(f"Found {norad_id} space object from cache")
-                return value["propagator"]
-            else:
-                satellite_cache.pop(key)
+    cache_data = satellite_cache.get(norad_id)
+
+    if cache_data:
+        age = time.monotonic() - cache_data["fetched_at"]
+        if age < satellite_cache_lifetime:
+            print(f"Found {norad_id} space object from cache")
+            return cache_data["propagator"]
+        else:
+            satellite_cache.pop(norad_id)
 
     celes = f"https://celestrak.org/NORAD/elements/gp.php?CATNR={norad_id}&FORMAT=TLE"
 
@@ -48,7 +49,7 @@ def get_satellite_propagator(norad_id) -> EarthSatellite:
     return satellite
 
 
-def get_satellite_position(norad_id) -> dict:
+def get_satellite_position(norad_id: int) -> dict:
     satellite = get_satellite_propagator(norad_id)
 
     t = timescale.now()
@@ -69,8 +70,41 @@ def get_satellite_position(norad_id) -> dict:
     }
 
 
+def get_satellite_trajectory(
+    norad_id: int, step_skip: int = 5, prediction_duration: int = 120
+) -> dict:
+    satellite = get_satellite_propagator(norad_id)
+    initial_time = datetime.now(timezone.utc)
+    positions = []
+
+    for i in range(0, prediction_duration + step_skip, step_skip):
+        future_time = initial_time + timedelta(seconds=i)
+        satellite_time = timescale.from_datetime(future_time)
+        satellite_position = satellite.at(satellite_time)
+        location = wgs84.geographic_position_of(satellite_position)
+        latitude = float(location.latitude.degrees)
+        longitude = float(location.longitude.degrees)
+        altitude = float(location.elevation.km)
+        positions.append(
+            {
+                "timestamp": future_time.isoformat(),
+                "latitude": round(latitude, 4),
+                "longitude": round(longitude, 4),
+                "altitude_km": round(altitude, 2),
+            }
+        )
+
+    return {
+        "name": satellite.name.strip(),
+        "norad_id": norad_id,
+        "tle_epoch": satellite.epoch.utc_iso(),
+        "step_seconds": step_skip,
+        "positions": positions,
+    }
+
+
 if __name__ == "__main__":
-    satellite = get_satellite_position(25544)
+    satellite = get_satellite_position(20580)
     print(satellite)
-    satellite = get_satellite_position(25544)
+    satellite = get_satellite_trajectory(20580)
     print(satellite)

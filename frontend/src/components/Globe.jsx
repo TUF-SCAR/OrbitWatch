@@ -13,9 +13,9 @@ import "./Globe.css";
 import "cesium/Build/Cesium/Widgets/widgets.css";
 const token = import.meta.env.VITE_CESIUM_ION_TOKEN;
 
-async function loadTrajectoryItem() {
+async function loadTrajectoryItem(norad_id) {
   const response = await fetch(
-    "http://127.0.0.1:8000/api/satellites/20580/trajectory?step_seconds=5&duration_seconds=120",
+    `http://127.0.0.1:8000/api/satellites/${norad_id}/trajectory?step_seconds=5&duration_seconds=120`,
   );
 
   if (!response.ok) {
@@ -27,7 +27,7 @@ async function loadTrajectoryItem() {
   return item;
 }
 
-function Globe() {
+function Globe({ norad_id }) {
   const areaRef = useRef(null);
 
   useEffect(() => {
@@ -37,7 +37,7 @@ function Globe() {
     const satellitePositions = new SampledPositionProperty();
 
     async function updateSatelliteTrajectory() {
-      const satelliteTrajectory = await loadTrajectoryItem();
+      const satelliteTrajectory = await loadTrajectoryItem(norad_id);
 
       for (const position of satelliteTrajectory.positions) {
         const timestamp = JulianDate.fromIso8601(position.timestamp);
@@ -79,6 +79,12 @@ function Globe() {
           label: {
             text: `${satelliteTrajectory.name} - (${satelliteTrajectory.norad_id})`,
           },
+          path: {
+            trailTime: 30,
+            leadTime: 120,
+            width: 2,
+            material: Color.GHOSTWHITE,
+          },
         });
         globeViewer.clock.currentTime = JulianDate.fromIso8601(
           satelliteTrajectory.positions[0].timestamp,
@@ -97,7 +103,7 @@ function Globe() {
       clearInterval(satelliteTrajectoryInterval);
       globeViewer.destroy();
     };
-  }, []);
+  }, [norad_id]);
 
   return <div className="globe-container" ref={areaRef}></div>;
 }

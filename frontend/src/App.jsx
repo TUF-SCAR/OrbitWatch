@@ -16,22 +16,11 @@ const satellites = [
 ];
 
 function App() {
-  const [selectedId, setSelectedId] = useState(25544);
+  const [selectedIds, setSelectedIds] = useState([25544, 20580]);
 
   return (
     <header>
-      <select
-        value={selectedId}
-        onChange={(event) => setSelectedId(Number(event.target.value))}
-      >
-        {satellites.map((satellite) => (
-          <option key={satellite.noradId} value={satellite.noradId}>
-            {satellite.name}
-          </option>
-        ))}
-      </select>
-
-      <Globe norad_id={selectedId} />
+      <Globe norad_ids={selectedIds} />
     </header>
   );
 }

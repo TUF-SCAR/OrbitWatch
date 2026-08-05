@@ -27,17 +27,29 @@ async function loadTrajectoryItem(norad_id) {
   return item;
 }
 
-function Globe({ norad_id }) {
+function Globe({ norad_ids }) {
   const areaRef = useRef(null);
 
   useEffect(() => {
     Ion.defaultAccessToken = token;
     const globeViewer = new Viewer(areaRef.current);
-    let satelliteMarker = null;
-    const satellitePositions = new SampledPositionProperty();
+    globeViewer.clock.shouldAnimate = true;
+    const satelliteObjects = new Map();
 
-    async function updateSatelliteTrajectory() {
+    async function updateSatelliteTrajectory(norad_id) {
       const satelliteTrajectory = await loadTrajectoryItem(norad_id);
+
+      let satelliteData = satelliteObjects.get(norad_id);
+
+      if (!satelliteData) {
+        satelliteData = {
+          marker: null,
+          positions: new SampledPositionProperty(),
+        };
+        satelliteObjects.set(norad_id, satelliteData);
+      }
+
+      const positions = satelliteData.positions;
 
       for (const position of satelliteTrajectory.positions) {
         const timestamp = JulianDate.fromIso8601(position.timestamp);
@@ -53,7 +65,7 @@ function Globe({ norad_id }) {
           height,
         );
 
-        satellitePositions.addSample(timestamp, satellitePosition);
+        positions.addSample(timestamp, satellitePosition);
       }
 
       const positionsCutoff = JulianDate.addSeconds(
@@ -67,11 +79,11 @@ function Globe({ norad_id }) {
         stop: positionsCutoff,
       });
 
-      satellitePositions.removeSamples(oldPositions);
+      positions.removeSamples(oldPositions);
 
-      if (!satelliteMarker) {
-        satelliteMarker = globeViewer.entities.add({
-          position: satellitePositions,
+      if (!satelliteData.marker) {
+        satelliteData.marker = globeViewer.entities.add({
+          position: positions,
           point: {
             pixelSize: 14,
             color: Color.GRAY,
@@ -79,23 +91,18 @@ function Globe({ norad_id }) {
           label: {
             text: `${satelliteTrajectory.name} - (${satelliteTrajectory.norad_id})`,
           },
-          path: {
-            trailTime: 30,
-            leadTime: 120,
-            width: 2,
-            material: Color.GHOSTWHITE,
-          },
         });
-        globeViewer.clock.currentTime = JulianDate.fromIso8601(
-          satelliteTrajectory.positions[0].timestamp,
-        );
-        globeViewer.clock.shouldAnimate = true;
-        globeViewer.zoomTo(satelliteMarker);
       }
     }
-    updateSatelliteTrajectory();
+
+    function refreshAllSatellites() {
+      for (const id of norad_ids) {
+        updateSatelliteTrajectory(id);
+      }
+    }
+    refreshAllSatellites();
     const satelliteTrajectoryInterval = setInterval(
-      updateSatelliteTrajectory,
+      refreshAllSatellites,
       60000,
     );
 
@@ -103,7 +110,7 @@ function Globe({ norad_id }) {
       clearInterval(satelliteTrajectoryInterval);
       globeViewer.destroy();
     };
-  }, [norad_id]);
+  }, [norad_ids]);
 
   return <div className="globe-container" ref={areaRef}></div>;
 }

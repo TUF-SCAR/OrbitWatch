@@ -1,12 +1,31 @@
-html,
-body,
-#root {
+.globe-container {
+  position: absolute;
+  inset: 0;
   width: 100%;
   height: 100%;
-  margin: 0;
+  background: #010409;
 }
 
-.map-container {
+.globe-container,
+.globe-container .cesium-viewer,
+.globe-container .cesium-viewer-cesiumWidgetContainer,
+.globe-container .cesium-widget,
+.globe-container canvas {
   width: 100%;
   height: 100%;
+}
+
+.globe-container .cesium-viewer-bottom {
+  right: 12px;
+  bottom: 8px;
+  left: auto;
+}
+
+.globe-container .cesium-widget-credits {
+  color: rgba(200, 225, 235, 0.4);
+  font-size: 8px;
+}
+
+.globe-container .cesium-widget-credits a {
+  color: rgba(182, 226, 241, 0.56);
 }

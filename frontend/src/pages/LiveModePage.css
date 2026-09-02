@@ -1,0 +1,1042 @@
+.live-mode-page {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: #010409;
+}
+
+.live-mode-vignette {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  pointer-events: none;
+  background:
+    radial-gradient(
+      circle at 50% 47%,
+      transparent 34%,
+      rgba(0, 3, 7, 0.14) 69%,
+      rgba(0, 2, 5, 0.48) 100%
+    );
+}
+
+.live-mode-interface {
+  position: absolute;
+  inset: 0;
+  z-index: 10;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.live-mode-interface > * {
+  pointer-events: auto;
+}
+
+.overlay-backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  border: 0;
+  padding: 0;
+  background: rgba(0, 4, 9, 0.26);
+  cursor: default;
+}
+
+.overlay-surface {
+  z-index: 30;
+}
+
+.top-left-controls {
+  position: absolute;
+  top: 18px;
+  left: 18px;
+  z-index: 12;
+}
+
+.top-right-controls {
+  position: absolute;
+  top: 18px;
+  right: 18px;
+  z-index: 12;
+  display: flex;
+  align-items: flex-start;
+  gap: 11px;
+}
+
+.orbitwatch-brand {
+  width: 236px;
+  height: 64px;
+  border-radius: 27px 34px 29px 32px;
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr) 20px;
+  align-items: center;
+  gap: 11px;
+  padding: 10px 15px 10px 11px;
+  cursor: pointer;
+}
+
+.orbitwatch-logo {
+  position: relative;
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  filter: drop-shadow(0 0 14px rgba(91, 229, 255, 0.38));
+}
+
+.orbitwatch-logo__ring,
+.orbitwatch-logo__core {
+  position: absolute;
+  border-radius: 50%;
+}
+
+.orbitwatch-logo__ring--1 {
+  inset: 3px;
+  border: 1px solid rgba(154, 240, 255, 0.82);
+  border-right-color: rgba(168, 136, 255, 0.48);
+}
+
+.orbitwatch-logo__ring--2 {
+  inset: 10px;
+  border: 1px dashed rgba(132, 232, 255, 0.62);
+}
+
+.orbitwatch-logo__core {
+  width: 9px;
+  height: 9px;
+  background: #d5f9ff;
+  box-shadow: 0 0 20px rgba(91, 229, 255, 0.96);
+}
+
+.orbitwatch-brand__text,
+.account-control > span,
+.data-status-control > span,
+.explorer-control > span,
+.source-control > span {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  text-align: left;
+}
+
+.orbitwatch-brand__text strong,
+.account-control strong,
+.data-status-control strong,
+.explorer-control strong,
+.source-control strong {
+  color: #f5fcff;
+  font-size: 13px;
+  font-weight: 740;
+  line-height: 1.12;
+}
+
+.orbitwatch-brand__text small,
+.account-control small,
+.data-status-control small,
+.explorer-control small,
+.source-control small {
+  color: rgba(201, 228, 238, 0.74);
+  font-size: 10px;
+  line-height: 1.15;
+}
+
+.data-status-control {
+  width: 132px;
+  height: 56px;
+  border-radius: 24px 29px 25px 28px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 13px;
+}
+
+.round-control {
+  width: 56px;
+  height: 56px;
+  border-radius: 46% 54% 49% 51% / 53% 46% 54% 47%;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  cursor: pointer;
+}
+
+.account-control {
+  width: 132px;
+  height: 56px;
+  border-radius: 29px 24px 31px 26px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 14px;
+  cursor: pointer;
+}
+
+.explorer-control {
+  position: absolute;
+  top: 50%;
+  left: 18px;
+  z-index: 12;
+  width: 216px;
+  height: 60px;
+  margin-top: -30px;
+  border-radius: 26px 34px 29px 31px;
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 10px 16px;
+  cursor: pointer;
+}
+
+.source-control {
+  position: absolute;
+  bottom: 20px;
+  left: 18px;
+  z-index: 12;
+  width: 154px;
+  height: 50px;
+  border-radius: 22px 28px 24px 26px;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 9px 12px;
+}
+
+.overlay-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.overlay-heading > span,
+.overlay-heading > div {
+  min-width: 0;
+}
+
+.overlay-heading small,
+.overlay-heading strong,
+.overlay-heading p {
+  display: block;
+  margin: 0;
+}
+
+.overlay-heading small {
+  color: rgba(191, 221, 232, 0.7);
+  font-size: 10px;
+  font-weight: 760;
+  letter-spacing: 0.12em;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.overlay-heading strong {
+  margin-top: 6px;
+  color: #f5fcff;
+  font-size: 18px;
+  line-height: 1.15;
+}
+
+.overlay-heading p {
+  margin-top: 5px;
+  color: rgba(198, 225, 235, 0.7);
+  font-size: 11px;
+  line-height: 1.3;
+}
+
+.overlay-heading > button {
+  flex: 0 0 auto;
+  width: 40px;
+  height: 40px;
+  border: 0;
+  border-radius: 46% 54% 49% 51% / 53% 46% 54% 47%;
+  display: grid;
+  place-items: center;
+  color: rgba(230, 248, 253, 0.9);
+  background: rgba(255, 255, 255, 0.055);
+  cursor: pointer;
+}
+
+.mode-menu {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 390px;
+  border-radius: 34px 29px 40px 31px;
+  display: grid;
+  gap: 18px;
+  padding: 20px;
+}
+
+.mode-menu__list {
+  display: grid;
+  gap: 9px;
+}
+
+.mode-option {
+  width: 100%;
+  min-height: 72px;
+  border: 0;
+  border-radius: 21px 28px 23px 26px;
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  padding: 11px 12px;
+  color: rgba(220, 241, 248, 0.72);
+  text-align: left;
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.mode-option__icon {
+  width: 42px;
+  height: 42px;
+  border-radius: 16px 21px 17px 19px;
+  display: grid;
+  place-items: center;
+  background: rgba(101, 224, 250, 0.09);
+}
+
+.mode-option__copy {
+  min-width: 0;
+}
+
+.mode-option__copy strong,
+.mode-option__copy small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.mode-option__copy strong {
+  color: #f0fbff;
+  font-size: 14px;
+  line-height: 1.15;
+  white-space: nowrap;
+}
+
+.mode-option__copy small {
+  margin-top: 5px;
+  color: rgba(193, 219, 229, 0.68);
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.mode-option i {
+  color: rgba(184, 214, 225, 0.62);
+  font-size: 9px;
+  font-style: normal;
+  text-transform: uppercase;
+}
+
+.mode-option.active {
+  background:
+    linear-gradient(
+      110deg,
+      rgba(92, 229, 255, 0.16),
+      rgba(185, 140, 255, 0.07)
+    );
+}
+
+.account-menu {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 370px;
+  border-radius: 34px 29px 40px 31px;
+  display: grid;
+  gap: 18px;
+  padding: 20px;
+}
+
+.account-menu__identity {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 46px minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
+}
+
+.account-avatar {
+  width: 46px;
+  height: 46px;
+  border-radius: 44% 56% 51% 49% / 55% 45% 55% 45%;
+  display: grid;
+  place-items: center;
+  color: #c9f4ff;
+  background: rgba(104, 226, 250, 0.1);
+}
+
+.account-menu__identity strong {
+  font-size: 15px;
+}
+
+.account-menu__content {
+  display: grid;
+  gap: 13px;
+}
+
+.account-menu__description {
+  margin: 0;
+  color: rgba(207, 231, 239, 0.76);
+  font-size: 12px;
+  line-height: 1.65;
+}
+
+.account-menu__actions {
+  display: grid;
+  gap: 8px;
+}
+
+.account-menu__actions button {
+  min-height: 58px;
+  border: 0;
+  border-radius: 19px 25px 21px 23px;
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr);
+  align-items: center;
+  gap: 11px;
+  padding: 10px 13px;
+  color: rgba(230, 247, 252, 0.9);
+  text-align: left;
+  background: rgba(255, 255, 255, 0.035);
+  cursor: pointer;
+}
+
+.account-menu__actions button span {
+  min-width: 0;
+}
+
+.account-menu__actions strong,
+.account-menu__actions small {
+  display: block;
+}
+
+.account-menu__actions strong {
+  font-size: 13px;
+}
+
+.account-menu__actions small {
+  margin-top: 4px;
+  color: rgba(193, 219, 229, 0.66);
+  font-size: 10px;
+}
+
+.account-menu__disabled {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 7px;
+  opacity: 0.48;
+}
+
+.account-menu__disabled span {
+  min-height: 46px;
+  border-radius: 17px 21px 18px 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  color: rgba(211, 235, 243, 0.74);
+  background: rgba(255, 255, 255, 0.027);
+  font-size: 10px;
+}
+
+.object-explorer {
+  position: absolute;
+  top: 18px;
+  bottom: 18px;
+  left: 18px;
+  width: 390px;
+  min-height: 0;
+  border-radius: 38px 31px 43px 30px;
+  display: grid;
+  grid-template-rows: auto 50px auto minmax(0, 1fr);
+  gap: 14px;
+  padding: 20px;
+}
+
+.object-search {
+  width: 100%;
+  height: 50px;
+  border-radius: 20px 27px 22px 24px;
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  padding: 0 14px;
+  color: rgba(196, 225, 235, 0.72);
+  background: rgba(0, 6, 12, 0.2);
+  box-shadow: inset 0 0 0 1px rgba(194, 240, 255, 0.1);
+}
+
+.object-search input {
+  min-width: 0;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  outline: 0;
+  color: #f3fcff;
+  background: transparent;
+  font-size: 13px;
+}
+
+.object-search input::placeholder {
+  color: rgba(185, 214, 225, 0.58);
+}
+
+.object-search > span {
+  color: rgba(180, 210, 221, 0.54);
+  font-size: 9px;
+}
+
+.category-list {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  overflow-x: auto;
+  overscroll-behavior-inline: contain;
+}
+
+.category-button {
+  flex: 0 0 auto;
+  min-height: 32px;
+  border: 0;
+  border-radius: 999px;
+  padding: 7px 12px;
+  color: rgba(198, 224, 233, 0.66);
+  background: rgba(255, 255, 255, 0.03);
+  font-size: 10px;
+  cursor: pointer;
+}
+
+.category-button.active {
+  color: #f1fcff;
+  background: rgba(94, 223, 249, 0.14);
+  box-shadow: inset 0 0 0 1px rgba(151, 239, 255, 0.13);
+}
+
+.object-list {
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.object-row {
+  width: 100%;
+  min-height: 68px;
+  border: 0;
+  border-radius: 20px 27px 22px 25px;
+  display: grid;
+  grid-template-columns: 40px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 11px;
+  padding: 10px;
+  color: rgba(226, 243, 249, 0.82);
+  text-align: left;
+  background: transparent;
+  cursor: pointer;
+}
+
+.object-row + .object-row {
+  margin-top: 4px;
+}
+
+.object-row:hover {
+  background: rgba(114, 226, 250, 0.06);
+}
+
+.object-row.active {
+  color: #f5fdff;
+  background:
+    linear-gradient(
+      100deg,
+      rgba(102, 230, 255, 0.15),
+      rgba(183, 139, 255, 0.055)
+    );
+  box-shadow: inset 0 0 0 1px rgba(157, 239, 255, 0.11);
+}
+
+.object-row__icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 44% 56% 51% 49% / 55% 45% 55% 45%;
+  display: grid;
+  place-items: center;
+  background: rgba(103, 221, 246, 0.085);
+}
+
+.object-row__identity {
+  min-width: 0;
+}
+
+.object-row__identity strong,
+.object-row__identity small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.object-row__identity strong {
+  color: #f0fbff;
+  font-size: 12px;
+}
+
+.object-row__identity small {
+  margin-top: 5px;
+  color: rgba(189, 218, 228, 0.65);
+  font-size: 10px;
+}
+
+.object-row__status {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  min-width: 66px;
+  color: rgba(192, 220, 230, 0.62);
+  font-family: var(--font-mono);
+  font-size: 9px;
+}
+
+.object-row__status i {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #9a7650;
+}
+
+.object-row__status i.online {
+  background: #4ee9b2;
+  box-shadow: 0 0 10px rgba(78, 233, 178, 0.82);
+}
+
+.empty-object-list {
+  padding: 28px 9px;
+  color: rgba(199, 224, 233, 0.64);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.focused-object-card {
+  position: absolute;
+  right: 18px;
+  bottom: 20px;
+  z-index: 12;
+  width: min(520px, calc(100vw - 36px));
+  min-height: 142px;
+  border-radius: 36px 29px 40px 31px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 112px;
+  grid-template-rows: auto 40px;
+  align-items: center;
+  gap: 15px 20px;
+  padding: 19px;
+}
+
+.focused-object-card__identity {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 48px minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
+}
+
+.focused-object-card__icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 44% 56% 51% 49% / 55% 45% 55% 45%;
+  display: grid;
+  place-items: center;
+  color: #c8f3ff;
+  background: rgba(99, 226, 252, 0.1);
+}
+
+.focused-object-card__identity small,
+.focused-object-card__identity strong,
+.focused-object-card__identity p,
+.focused-object-card__altitude small,
+.focused-object-card__altitude strong {
+  display: block;
+  margin: 0;
+}
+
+.focused-object-card__identity small,
+.focused-object-card__altitude small {
+  color: rgba(194, 222, 232, 0.68);
+  font-size: 10px;
+  font-weight: 760;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.focused-object-card__identity strong {
+  margin-top: 5px;
+  overflow: hidden;
+  color: #f4fcff;
+  font-size: 16px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.focused-object-card__identity p {
+  margin-top: 6px;
+  overflow: hidden;
+  color: rgba(196, 223, 233, 0.68);
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.focused-object-card__altitude {
+  min-width: 0;
+  align-self: stretch;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding-left: 18px;
+  border-left: 1px solid rgba(192, 239, 255, 0.1);
+}
+
+.focused-object-card__altitude strong {
+  margin-top: 9px;
+  font-family: var(--font-mono);
+  font-size: 18px;
+}
+
+.focused-object-card__altitude strong span {
+  color: rgba(190, 220, 230, 0.68);
+  font-size: 10px;
+}
+
+.focused-object-card > button {
+  grid-column: 1 / -1;
+  width: 100%;
+  height: 40px;
+  border: 0;
+  border-radius: 17px 23px 19px 21px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  color: rgba(235, 250, 254, 0.93);
+  background: rgba(93, 226, 252, 0.1);
+  cursor: pointer;
+  font-size: 11px;
+}
+
+.object-details-panel {
+  position: absolute;
+  top: 18px;
+  right: 18px;
+  bottom: 18px;
+  width: min(455px, calc(100vw - 36px));
+  min-height: 0;
+  border-radius: 38px 31px 43px 30px;
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
+  gap: 15px;
+  padding: 20px;
+}
+
+.detail-tab-list {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+  padding: 4px;
+  border-radius: 19px 24px 21px 22px;
+  background: rgba(0, 6, 12, 0.19);
+}
+
+.detail-tab-list button {
+  position: relative;
+  height: 38px;
+  border: 0;
+  border-radius: 15px 19px 16px 18px;
+  color: rgba(192, 220, 230, 0.66);
+  background: transparent;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.detail-tab-list button > span:last-child {
+  position: relative;
+  z-index: 2;
+}
+
+.detail-tab-list button.active {
+  color: #f3fcff;
+}
+
+.detail-tab-indicator {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  border-radius: inherit;
+  background:
+    linear-gradient(
+      110deg,
+      rgba(100, 229, 255, 0.16),
+      rgba(165, 126, 247, 0.08)
+    );
+  box-shadow: inset 0 0 0 1px rgba(170, 239, 255, 0.1);
+}
+
+.object-details-panel__body {
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.detail-tab-content {
+  min-height: 100%;
+}
+
+.object-description {
+  margin: 0;
+  color: rgba(219, 239, 246, 0.82);
+  font-size: 12px;
+  line-height: 1.75;
+}
+
+.object-facts {
+  margin: 16px 0 0;
+  border-radius: 20px 26px 22px 24px;
+  overflow: hidden;
+  background: rgba(0, 6, 12, 0.18);
+}
+
+.object-facts div {
+  min-height: 44px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(120px, auto);
+  align-items: center;
+  gap: 18px;
+  padding: 11px 13px;
+}
+
+.object-facts div + div {
+  border-top: 1px solid rgba(197, 241, 255, 0.07);
+}
+
+.object-facts dt,
+.object-facts dd {
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.object-facts dt {
+  color: rgba(190, 218, 228, 0.68);
+}
+
+.object-facts dd {
+  color: rgba(231, 246, 251, 0.86);
+  text-align: right;
+}
+
+.external-links {
+  display: grid;
+  gap: 8px;
+  margin-top: 15px;
+}
+
+.external-links a {
+  min-height: 44px;
+  border-radius: 17px 23px 19px 21px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 11px 13px;
+  color: rgba(234, 249, 253, 0.88);
+  background: rgba(98, 225, 250, 0.075);
+  font-size: 11px;
+  text-decoration: none;
+}
+
+.expanded-metric-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 9px;
+}
+
+.detail-metric {
+  min-height: 80px;
+  border-radius: 20px 26px 22px 24px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 12px;
+  background: rgba(0, 6, 12, 0.18);
+}
+
+.detail-metric span {
+  color: rgba(190, 218, 228, 0.68);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.detail-metric strong {
+  margin-top: 10px;
+  font-family: var(--font-mono);
+  font-size: 17px;
+  font-weight: 520;
+}
+
+.detail-metric small {
+  color: rgba(190, 220, 230, 0.68);
+  font-size: 10px;
+}
+
+.model-tab {
+  text-align: center;
+}
+
+.model-preview-icon {
+  width: 90px;
+  height: 90px;
+  margin: 16px auto 11px;
+  border-radius: 44% 56% 51% 49% / 55% 45% 55% 45%;
+  display: grid;
+  place-items: center;
+  color: #c7f1ff;
+  background: rgba(105, 226, 250, 0.09);
+}
+
+.model-tab > strong {
+  font-size: 16px;
+  text-transform: capitalize;
+}
+
+.model-tab > p {
+  color: rgba(210, 233, 241, 0.76);
+  font-size: 12px;
+  line-height: 1.7;
+}
+
+.object-details-panel__footer {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.object-details-panel__footer button {
+  min-height: 44px;
+  border: 0;
+  border-radius: 18px 24px 20px 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 9px 11px;
+  color: rgba(232, 248, 252, 0.86);
+  background: rgba(94, 225, 250, 0.08);
+  font-size: 10px;
+  cursor: pointer;
+}
+
+.object-details-panel__footer button:disabled {
+  opacity: 0.44;
+  cursor: not-allowed;
+}
+
+.object-details-panel__footer small {
+  font-size: 7px;
+  text-transform: uppercase;
+}
+
+@media (max-width: 900px) {
+  .data-status-control {
+    display: none;
+  }
+
+  .object-explorer,
+  .object-details-panel {
+    width: min(390px, calc(100vw - 36px));
+  }
+
+  .focused-object-card {
+    width: calc(100vw - 36px);
+  }
+}
+
+@media (max-width: 620px) {
+  .top-left-controls,
+  .top-right-controls {
+    top: 10px;
+  }
+
+  .top-left-controls {
+    left: 10px;
+  }
+
+  .top-right-controls {
+    right: 10px;
+  }
+
+  .orbitwatch-brand {
+    width: 62px;
+    height: 62px;
+    grid-template-columns: 1fr;
+    padding: 9px;
+  }
+
+  .orbitwatch-brand__text,
+  .orbitwatch-brand > .lucide-menu,
+  .account-control > span,
+  .source-control {
+    display: none;
+  }
+
+  .account-control {
+    width: 56px;
+    justify-content: center;
+    padding: 0;
+  }
+
+  .explorer-control {
+    top: 88px;
+    left: 10px;
+    width: 56px;
+    height: 56px;
+    margin-top: 0;
+    justify-content: center;
+    padding: 0;
+  }
+
+  .explorer-control > span {
+    display: none;
+  }
+
+  .mode-menu,
+  .account-menu,
+  .object-explorer,
+  .object-details-panel {
+    position: fixed;
+    top: 78px;
+    right: 10px;
+    bottom: 10px;
+    left: 10px;
+    width: auto;
+  }
+
+  .focused-object-card {
+    right: 10px;
+    bottom: 10px;
+    left: 10px;
+    width: auto;
+  }
+
+  .focused-object-card {
+    grid-template-columns: 1fr;
+  }
+
+  .focused-object-card__altitude {
+    display: none;
+  }
+}

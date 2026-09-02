@@ -1,0 +1,48 @@
+.ambient-flow {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.ambient-flow__orb {
+  position: absolute;
+  width: clamp(240px, 30vw, 520px);
+  height: clamp(240px, 30vw, 520px);
+  border-radius: 50%;
+  filter: blur(82px);
+  mix-blend-mode: screen;
+  opacity: 0.08;
+  will-change: transform, opacity;
+}
+
+.ambient-flow__orb--1 {
+  top: -14%;
+  left: 8%;
+  background: #37d9ff;
+}
+
+.ambient-flow__orb--2 {
+  top: 18%;
+  right: -8%;
+  background: #9171ff;
+}
+
+.ambient-flow__orb--3 {
+  bottom: -16%;
+  left: 28%;
+  background: #50f0c4;
+}
+
+.ambient-flow__orb--4 {
+  top: 36%;
+  left: -13%;
+  background: #4a82ff;
+}
+
+.ambient-flow__orb--5 {
+  right: 24%;
+  bottom: -20%;
+  background: #d46cff;
+}

@@ -1,0 +1,67 @@
+.experience-intro {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 18px;
+  color: #f3fcff;
+  background:
+    radial-gradient(circle at 50% 50%, rgba(19, 72, 93, 0.24), transparent 34%),
+    rgba(1, 4, 8, 0.92);
+  backdrop-filter: blur(18px);
+}
+
+.experience-intro__mark {
+  position: relative;
+  width: 74px;
+  height: 74px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(143, 235, 255, 0.34);
+  box-shadow:
+    0 0 50px rgba(71, 215, 246, 0.2),
+    inset 0 0 30px rgba(113, 228, 252, 0.1);
+}
+
+.experience-intro__scan {
+  position: absolute;
+  inset: 8px;
+  border-radius: 50%;
+  border: 1px solid rgba(130, 231, 255, 0.74);
+}
+
+.experience-intro__core {
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  background: #d9faff;
+  box-shadow: 0 0 24px rgba(109, 229, 255, 0.95);
+}
+
+.experience-intro__copy {
+  display: grid;
+  justify-items: center;
+  gap: 6px;
+}
+
+.experience-intro__copy strong {
+  font-size: 19px;
+  letter-spacing: 0.04em;
+}
+
+.experience-intro__copy span {
+  color: rgba(199, 228, 237, 0.72);
+  font-size: 12px;
+}
+
+.experience-intro__progress {
+  width: 180px;
+  height: 2px;
+  border-radius: 999px;
+  transform-origin: left;
+  background: linear-gradient(90deg, #65e4ff, #a87dff);
+  box-shadow: 0 0 18px rgba(101, 228, 255, 0.45);
+}

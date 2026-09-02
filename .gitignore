@@ -1,6 +1,8 @@
 .env
 __pycache__/
 *.pyc
+*.pyo
+nothing.py
 
 # Logs
 logs

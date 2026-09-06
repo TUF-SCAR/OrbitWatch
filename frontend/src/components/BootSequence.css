@@ -1,0 +1,116 @@
+.boot-sequence {
+  position: fixed;
+  inset: 0;
+  z-index: 500;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 16px;
+  color: #edf8ff;
+  background:
+    radial-gradient(circle at 50% 48%, rgba(72, 191, 223, 0.10), transparent 22rem),
+    #01040a;
+}
+
+.boot-sequence__system {
+  position: relative;
+  width: 94px;
+  height: 94px;
+  display: grid;
+  place-items: center;
+}
+
+.boot-sequence__ring {
+  position: absolute;
+  border: 1px solid rgba(134, 232, 255, 0.28);
+  border-radius: 50%;
+}
+
+.boot-sequence__ring::after {
+  content: "";
+  position: absolute;
+  top: -3px;
+  left: 50%;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #86e8ff;
+  box-shadow: 0 0 12px rgba(134, 232, 255, 0.75);
+}
+
+.boot-sequence__ring--outer {
+  inset: 0;
+}
+
+.boot-sequence__ring--inner {
+  inset: 16px;
+  border-color: rgba(184, 167, 255, 0.24);
+}
+
+.boot-sequence__core {
+  width: 42px;
+  height: 42px;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(134, 232, 255, 0.36);
+  color: #bff4ff;
+  background: rgba(5, 13, 21, 0.92);
+}
+
+.boot-sequence__copy {
+  display: grid;
+  justify-items: center;
+  gap: 5px;
+}
+
+.boot-sequence__copy strong {
+  font-family: "Space Grotesk", system-ui, sans-serif;
+  font-size: 18px;
+  letter-spacing: 0.24em;
+}
+
+.boot-sequence__copy span {
+  color: #6f879a;
+  font-size: 9px;
+  letter-spacing: 0.15em;
+}
+
+.boot-sequence__checks {
+  min-width: 245px;
+  display: grid;
+  gap: 7px;
+  margin-top: 4px;
+}
+
+.boot-sequence__checks span {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #6b8395;
+  font-size: 8px;
+  letter-spacing: 0.11em;
+}
+
+.boot-sequence__checks i {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #76ddb0;
+  box-shadow: 0 0 7px rgba(118, 221, 176, 0.52);
+}
+
+.boot-sequence__progress {
+  width: 245px;
+  height: 2px;
+  overflow: hidden;
+  background: rgba(204, 235, 255, 0.08);
+}
+
+.boot-sequence__progress span {
+  display: block;
+  width: 100%;
+  height: 100%;
+  transform-origin: left;
+  background: linear-gradient(90deg, #86e8ff, #b8a7ff);
+  box-shadow: 0 0 11px rgba(134, 232, 255, 0.35);
+}

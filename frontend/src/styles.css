@@ -1062,3 +1062,445 @@ a.secondary-action { text-decoration: none; }
   .inspector-panel h1 { font-size: 26px; }
   .inspector-panel .telemetry-grid > div { min-height: 62px; }
 }
+
+
+
+/* Object Explorer selection manager */
+.selection-toolbar {
+  min-height: 40px;
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 10px 8px 14px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  background: rgba(3, 9, 16, 0.78);
+}
+.selection-toolbar > div {
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 5px;
+}
+.selection-toolbar strong {
+  font-family: "Space Grotesk", sans-serif;
+  font-size: 13px;
+  color: var(--accent);
+}
+.selection-toolbar span {
+  font-size: 7px;
+  letter-spacing: 0.05em;
+  color: #566f82;
+}
+.selection-toolbar button {
+  height: 27px;
+  padding: 0 7px;
+  border: 1px solid var(--line);
+  background: #050d16;
+  color: #6f879a;
+  font-size: 6px;
+  letter-spacing: 0.07em;
+  cursor: pointer;
+}
+.selection-toolbar button:hover {
+  color: #e4f8ff;
+  border-color: rgba(134, 232, 255, 0.3);
+}
+.object-row.is-draft-tracked {
+  background: linear-gradient(90deg, rgba(134, 232, 255, 0.055), transparent);
+}
+.track-checkbox {
+  align-self: center;
+  justify-self: center;
+  width: 27px;
+  height: 27px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 1px solid var(--line);
+  background: #050c14;
+  color: #5d768a;
+  cursor: pointer;
+}
+.track-checkbox > span {
+  width: 9px;
+  height: 9px;
+  border: 1px solid rgba(204, 235, 255, 0.2);
+}
+.track-checkbox:hover {
+  border-color: rgba(134, 232, 255, 0.38);
+  color: #dffaff;
+}
+.track-checkbox.is-active {
+  color: var(--accent);
+  border-color: var(--accent-line);
+  background: var(--accent-soft);
+  box-shadow: inset 0 0 16px rgba(134, 232, 255, 0.035);
+}
+.selection-actions {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 6px;
+  padding: 8px 10px;
+  border-top: 1px solid var(--line);
+  background: #030910;
+}
+.selection-actions button {
+  min-height: 34px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border: 1px solid var(--line);
+  padding: 0 10px;
+  font-size: 7px;
+  letter-spacing: 0.08em;
+  cursor: pointer;
+}
+.selection-actions button:disabled {
+  opacity: 0.32;
+  cursor: default;
+}
+.selection-actions__reset {
+  color: #6e8799;
+  background: #050c14;
+}
+.selection-actions__apply {
+  color: var(--accent);
+  border-color: var(--accent-line) !important;
+  background: var(--accent-soft);
+}
+
+/* Live dock universal orbit switch */
+.dock-command--orbit {
+  min-width: 112px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 0 9px;
+  border: 1px solid var(--line);
+  background: #07111b;
+  color: #71899c;
+  cursor: pointer;
+}
+.dock-command--orbit span {
+  font-size: 7px;
+  letter-spacing: 0.08em;
+}
+.dock-command--orbit b {
+  min-width: 18px;
+  height: 18px;
+  display: grid;
+  place-items: center;
+  border-left: 1px solid var(--line);
+  padding-left: 6px;
+  font-size: 7px;
+  font-weight: 600;
+  color: #5f788b;
+}
+.dock-command--orbit:hover:not(:disabled) {
+  color: #e5f9ff;
+  border-color: rgba(134, 232, 255, 0.34);
+}
+.dock-command--orbit.is-active {
+  color: var(--accent);
+  border-color: var(--accent-line);
+  background: var(--accent-soft);
+}
+.dock-command--orbit:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+/* Auth session readout */
+.session-readout{min-height:31px;display:inline-flex;align-items:center;gap:7px;padding:0 5px 0 9px;border:1px solid rgba(166,228,245,.09);border-radius:11px;color:rgba(214,239,247,.82);background:rgba(6,17,24,.38);backdrop-filter:blur(14px)}.session-readout strong{max-width:120px;overflow:hidden;font-size:9px;font-weight:760;letter-spacing:.06em;text-overflow:ellipsis;white-space:nowrap}.session-readout button{width:25px;height:25px;border:0;display:grid;place-items:center;border-radius:8px;color:rgba(203,232,240,.65);background:transparent;cursor:pointer}.session-readout button:hover{color:#eefcff;background:rgba(126,220,242,.08)}
+
+
+/* OrbitWatch profile panel */
+.brand-lockup--profile {
+  appearance: none;
+  border: 0;
+  text-align: left;
+  color: inherit;
+  background: transparent;
+  pointer-events: auto;
+  cursor: pointer;
+}
+
+.brand-lockup--profile .brand-lockup__title,
+.brand-lockup--profile .brand-lockup__sub {
+  transition:
+    color 150ms ease,
+    transform 150ms ease,
+    text-shadow 150ms ease;
+}
+
+.brand-lockup--profile:hover .brand-lockup__title {
+  color: #f5fcff;
+  text-shadow: 0 0 15px rgba(var(--accent-rgb), 0.18);
+}
+
+.brand-lockup--profile:hover .brand-lockup__sub {
+  color: #8ea9bc;
+}
+
+.profile-panel {
+  position: absolute;
+  z-index: 40;
+  top: 82px;
+  left: 96px;
+  width: min(360px, calc(100vw - 120px));
+  border: 1px solid var(--line-strong);
+  color: var(--text);
+  background: rgba(3, 8, 15, 0.965);
+  box-shadow:
+    0 28px 70px rgba(0, 0, 0, 0.48),
+    inset 0 1px 0 rgba(255, 255, 255, 0.025);
+  transform-origin: left top;
+}
+
+.profile-panel::before {
+  content: "";
+  position: absolute;
+  left: -1px;
+  top: 46px;
+  bottom: 46px;
+  width: 2px;
+  pointer-events: none;
+  background: linear-gradient(
+    180deg,
+    transparent,
+    var(--mode-accent) 18%,
+    rgba(var(--accent-rgb), 0.18) 82%,
+    transparent
+  );
+  box-shadow: 0 0 11px rgba(var(--accent-rgb), 0.18);
+}
+
+.profile-panel__header {
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 12px 0 14px;
+  border-bottom: 1px solid var(--line);
+  background: #030910;
+}
+
+.profile-panel__header small,
+.profile-panel__header strong {
+  display: block;
+}
+
+.profile-panel__header small {
+  color: #5c7487;
+  font-size: 9px;
+  letter-spacing: 0.13em;
+}
+
+.profile-panel__header strong {
+  margin-top: 3px;
+  font-family: "Space Grotesk", system-ui, sans-serif;
+  font-size: 15px;
+  letter-spacing: 0.12em;
+}
+
+.profile-panel__header button {
+  width: 30px;
+  height: 30px;
+  border: 1px solid var(--line);
+  display: grid;
+  place-items: center;
+  color: #72899b;
+  background: #050c14;
+  cursor: pointer;
+}
+
+.profile-panel__identity {
+  min-height: 92px;
+  display: grid;
+  grid-template-columns: 54px minmax(0, 1fr);
+  align-items: center;
+  gap: 13px;
+  padding: 14px;
+  border-bottom: 1px solid var(--line);
+}
+
+.profile-panel__avatar {
+  width: 52px;
+  height: 52px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--accent-line);
+  color: var(--mode-accent);
+  background: var(--accent-soft);
+}
+
+.profile-panel__identity small,
+.profile-panel__identity strong,
+.profile-panel__identity em {
+  display: block;
+}
+
+.profile-panel__identity small {
+  color: #60788b;
+  font-size: 9px;
+  letter-spacing: 0.12em;
+}
+
+.profile-panel__identity strong {
+  margin-top: 4px;
+  overflow: hidden;
+  color: #edf8ff;
+  font-family: "Space Grotesk", system-ui, sans-serif;
+  font-size: 21px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.profile-panel__identity em {
+  margin-top: 4px;
+  color: #71899b;
+  font-size: 10px;
+  font-style: normal;
+  letter-spacing: 0.08em;
+}
+
+.profile-panel__section {
+  padding: 13px 14px;
+  border-bottom: 1px solid var(--line);
+}
+
+.profile-panel__section-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: #6b8395;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+}
+
+.profile-panel__details {
+  margin: 11px 0 0;
+}
+
+.profile-panel__details > div {
+  min-height: 36px;
+  display: grid;
+  grid-template-columns: 104px minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  border-top: 1px solid rgba(204, 235, 255, 0.07);
+}
+
+.profile-panel__details dt {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: #5d7487;
+  font-size: 9px;
+  letter-spacing: 0.08em;
+}
+
+.profile-panel__details dd {
+  margin: 0;
+  overflow: hidden;
+  color: #b8cbd6;
+  font-size: 11px;
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.profile-panel__online {
+  color: #76ddb0 !important;
+}
+
+.profile-panel__planned {
+  padding: 3px 5px;
+  border: 1px solid var(--line);
+  color: #5b7284;
+  font-size: 7px;
+}
+
+.profile-panel__future-grid {
+  margin-top: 11px;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  border: 1px solid var(--line);
+}
+
+.profile-panel__future-grid > span {
+  min-height: 52px;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 5px;
+}
+
+.profile-panel__future-grid > span + span {
+  border-left: 1px solid var(--line);
+}
+
+.profile-panel__future-grid small {
+  color: #5c7386;
+  font-size: 7px;
+  letter-spacing: 0.08em;
+}
+
+.profile-panel__future-grid strong {
+  color: #91a9ba;
+  font-size: 15px;
+}
+
+.profile-panel__future-copy {
+  margin: 9px 0 0;
+  color: #526b7e;
+  font-size: 9px;
+  line-height: 1.45;
+}
+
+.profile-panel__footer {
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 10px 0 14px;
+  color: #536c7f;
+  background: #030910;
+  font-size: 8px;
+  letter-spacing: 0.09em;
+}
+
+.profile-panel__footer button {
+  min-height: 29px;
+  border: 1px solid rgba(255, 140, 115, 0.2);
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 0 9px;
+  color: #ff9a83;
+  background: rgba(255, 140, 115, 0.055);
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  cursor: pointer;
+}
+
+@media (max-width: 700px) {
+  .profile-panel {
+    left: 78px;
+    width: min(360px, calc(100vw - 90px));
+  }
+}
+
+
+
+/* Profile trigger lives in the authenticated top-right identity control. */
+.session-readout--button{appearance:none;pointer-events:auto;cursor:pointer;text-align:left}.session-readout--button:hover{border-color:var(--accent-line);color:#eefcff;background:rgba(var(--accent-rgb),.07)}
+.brand-lockup--profile{pointer-events:none!important;cursor:default!important}
+.profile-panel{left:auto!important;right:18px!important;top:72px!important;transform-origin:right top!important}
+@media(max-width:700px){.profile-panel{left:auto!important;right:10px!important;width:min(360px,calc(100vw - 20px))!important}}

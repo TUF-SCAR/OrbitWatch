@@ -1,4 +1,4 @@
-import { useEffect, useImperativeHandle, useRef } from "react";
+import { useEffect, useImperativeHandle, useRef, useState } from "react";
 import {
   ArcType,
   CallbackProperty,
@@ -6,6 +6,7 @@ import {
   Cartesian3,
   Color,
   DistanceDisplayCondition,
+  ExtrapolationType,
   HeightReference,
   HeadingPitchRange,
   ImageryLayer,
@@ -36,7 +37,7 @@ import {
   createGooglePhotorealistic3DTileset,
   createWorldImageryAsync,
 } from "cesium";
-import { fetchSatelliteTrajectory } from "../services/orbitwatchApi.js";
+import { fetchSatelliteOrbit, fetchSatelliteTrajectories } from "../services/orbitwatchApi.js";
 import { fetchOpenDisasterEvents } from "../services/eonetApi.js";
 import { getSpaceObject } from "../data/spaceObjects.js";
 import { PLACE_LABELS } from "../data/placeLabels.js";
@@ -93,16 +94,6 @@ const RASTER_MAPS = {
   },
 };
 
-function makeAvailability(positions) {
-  if (!positions?.length) return undefined;
-  return new TimeIntervalCollection([
-    new TimeInterval({
-      start: JulianDate.fromIso8601(positions[0].timestamp),
-      stop: JulianDate.fromIso8601(positions[positions.length - 1].timestamp),
-    }),
-  ]);
-}
-
 function saveWorldCameraPose(viewer) {
   const camera = viewer.camera;
   return {
@@ -144,6 +135,40 @@ function sunDirectionFixed(time) {
   const icrfToFixed = Transforms.computeIcrfToFixedMatrix(time, new Matrix3());
   const fixed = icrfToFixed ? Matrix3.multiplyByVector(icrfToFixed, sunInertial, new Cartesian3()) : sunInertial;
   return Cartesian3.normalize(fixed, fixed);
+}
+
+function setStartupRegionView(viewer, startupCountry) {
+  if (!viewer || viewer.isDestroyed() || !startupCountry) return false;
+
+  const west = Number(startupCountry.west);
+  const south = Number(startupCountry.south);
+  const east = Number(startupCountry.east);
+  const north = Number(startupCountry.north);
+
+  if (
+    !Number.isFinite(west) ||
+    !Number.isFinite(south) ||
+    !Number.isFinite(east) ||
+    !Number.isFinite(north)
+  ) {
+    return false;
+  }
+
+  viewer.trackedEntity = undefined;
+  viewer.camera.cancelFlight();
+  viewer.camera.lookAtTransform(Matrix4.IDENTITY);
+
+  viewer.camera.setView({
+    destination: Rectangle.fromDegrees(
+      west,
+      south,
+      east,
+      north,
+    ),
+  });
+
+  viewer.scene.requestRender();
+  return true;
 }
 
 function setCameraPreset(viewer, preset, followState, selectedEntity) {
@@ -210,28 +235,6 @@ function estimateOrbitalPeriodSeconds(positions) {
   const semiMajor = (EARTH_RADIUS_KM + Math.max(100, altitude)) * 1000;
   const period = 2 * Math.PI * Math.sqrt((semiMajor ** 3) / EARTH_MU);
   return Math.min(90_000, Math.max(4_500, period));
-}
-
-async function fetchFullOrbit(noradId, signal) {
-  const seed = await fetchSatelliteTrajectory(noradId, { stepSeconds: 10, durationSeconds: 180, signal });
-  if (!seed?.positions?.length) return seed;
-  const period = estimateOrbitalPeriodSeconds(seed.positions);
-  const stepSeconds = Math.max(15, Math.min(300, Math.round(period / 280)));
-  const durationSeconds = Math.ceil(period * 1.04);
-  const full = await fetchSatelliteTrajectory(noradId, { stepSeconds, durationSeconds, signal });
-  return { ...full, orbitalPeriodSeconds: period };
-}
-
-async function runWithConcurrency(items, worker, concurrency = 4) {
-  let cursor = 0;
-  async function runWorker() {
-    while (cursor < items.length) {
-      const item = items[cursor];
-      cursor += 1;
-      await worker(item);
-    }
-  }
-  await Promise.all(Array.from({ length: Math.min(concurrency, Math.max(items.length, 1)) }, runWorker));
 }
 
 function satelliteIconDataUri(colorCss, category) {
@@ -335,9 +338,14 @@ export default function OrbitGlobe({
   onObjectSelect,
   onViewTelemetry,
   globeRef,
+  startupCountry,
 }) {
   const mountRef = useRef(null);
   const viewerRef = useRef(null);
+  const startupCameraCommittedRef = useRef(false);
+  const initialModeCameraResetRef = useRef(true);
+  const startupCountryAppliedRef = useRef(null);
+  const [entityRevision, setEntityRevision] = useState(0);
   const googleTilesRef = useRef(null);
   const googleReadyRef = useRef(false);
   const entityMapRef = useRef(new Map());
@@ -357,7 +365,6 @@ export default function OrbitGlobe({
   const modeRef = useRef(mode);
   const sceneModeRef = useRef(sceneMode);
   const shownOrbitIdsRef = useRef(shownOrbitIds);
-  const icrfReadyRef = useRef(Promise.resolve());
 
   selectedIdRef.current = selectedId;
   labelsEnabledRef.current = labelsEnabled;
@@ -449,17 +456,18 @@ export default function OrbitGlobe({
     viewer.scene.screenSpaceCameraController.zoomFactor = 3.0;
     viewer.clock.shouldAnimate = true;
 
-    const frameWindowCenter = JulianDate.now();
-    const frameWindowStart = JulianDate.addDays(frameWindowCenter, -2, new JulianDate());
-    const frameWindowStop = JulianDate.addDays(frameWindowCenter, 3, new JulianDate());
-    icrfReadyRef.current = Transforms.preloadIcrfFixed(new TimeInterval({ start: frameWindowStart, stop: frameWindowStop }))
-      .catch((error) => {
-        console.warn("OrbitWatch: inertial reference-frame data could not be preloaded; orbit guides will use the fixed-frame fallback.", error);
-      });
-
     viewer.scene.skyBox = SkyBox.createEarthSkyBox();
 
-    setCameraPreset(viewer, "earth", followStateRef, null);
+    if (setStartupRegionView(viewer, startupCountry)) {
+      startupCameraCommittedRef.current = true;
+    } else {
+      setCameraPreset(
+        viewer,
+        "earth",
+        followStateRef,
+        null,
+      );
+    }
 
     let destroyed = false;
     async function loadGoogleEarth(attempt = 0) {
@@ -614,7 +622,7 @@ export default function OrbitGlobe({
       disasterEntityIdsRef.current = [];
       followStateRef.current = null;
     };
-  }, []);
+  }, [startupCountry]);
 
   useEffect(() => {
     const viewer = viewerRef.current;
@@ -640,7 +648,25 @@ export default function OrbitGlobe({
     const timer = window.setTimeout(() => {
       if (!viewer.isDestroyed()) {
         applyBaseMap(viewer, googleTilesRef.current, googleReadyRef.current, desiredMap(mode, sceneMode, mapStyleRef.current), mapRequestRef);
-        setCameraPreset(viewer, "earth", followStateRef, null);
+        if (
+          initialModeCameraResetRef.current &&
+          startupCameraCommittedRef.current &&
+          startupCountry
+        ) {
+          initialModeCameraResetRef.current = false;
+          setStartupRegionView(
+            viewer,
+            startupCountry,
+          );
+        } else {
+          initialModeCameraResetRef.current = false;
+          setCameraPreset(
+            viewer,
+            "earth",
+            followStateRef,
+            null,
+          );
+        }
       }
     }, 470);
     return () => window.clearTimeout(timer);
@@ -664,123 +690,132 @@ export default function OrbitGlobe({
     for (const [noradId, data] of entityMap.entries()) {
       if (!trackedIds.includes(noradId)) {
         viewer.entities.remove(data.entity);
-        viewer.entities.remove(data.orbitEntity);
+        if (data.orbitEntity) viewer.entities.remove(data.orbitEntity);
         entityMap.delete(noradId);
-        if (followStateRef.current?.noradId === noradId) releaseViewerCamera(viewer, followStateRef);
+        if (followStateRef.current?.noradId === noradId) {
+          releaseViewerCamera(viewer, followStateRef);
+        }
       }
     }
 
-    const idsToLoad = trackedIds.filter((noradId) => refreshAll || !entityMap.has(noradId));
+    const idsToLoad = trackedIds.filter(
+      (noradId) => refreshAll || !entityMap.has(noradId),
+    );
 
-    async function loadOne(noradId) {
-      const object = getSpaceObject(noradId);
+    if (!idsToLoad.length) return () => controller.abort();
+
+    async function loadTrackedSatellites() {
       try {
-        const trajectory = await fetchFullOrbit(noradId, controller.signal);
-        if (!trajectory?.positions?.length || controller.signal.aborted || viewer.isDestroyed()) return;
+        const batch = await fetchSatelliteTrajectories(idsToLoad, {
+          stepSeconds: 5,
+          durationSeconds: 300,
+          signal: controller.signal,
+        });
 
-        const sampled = new SampledPositionProperty();
-        const orbitPositions = [];
-        const firstSampleTime = JulianDate.fromIso8601(trajectory.positions[0].timestamp);
+        if (controller.signal.aborted || viewer.isDestroyed()) return;
 
-        // The backend returns geographic positions in Earth's rotating frame.
-        // A raw polyline through those samples looks like a drifting ground
-        // track, not the orbital plane the user expects. Express every guide
-        // point in the Earth orientation at the first sample. The moving entity
-        // still uses its true timestamped fixed-frame positions, while the dim
-        // guide becomes one continuous inertial revolution around Earth.
-        await icrfReadyRef.current;
-        const icrfToReferenceFixed = Transforms.computeIcrfToFixedMatrix(firstSampleTime, new Matrix3());
+        for (const item of batch?.errors || []) {
+          console.warn(
+            `OrbitWatch: trajectory load failed for ${item.norad_id}`,
+            item.message,
+          );
+        }
 
-        for (const position of trajectory.positions) {
-          const sampleTime = JulianDate.fromIso8601(position.timestamp);
-          const fixedPoint = Cartesian3.fromDegrees(position.longitude, position.latitude, position.altitude_km * 1000);
-          sampled.addSample(sampleTime, fixedPoint);
+        for (const trajectory of batch?.objects || []) {
+          const noradId = Number(trajectory.norad_id);
+          if (!Number.isFinite(noradId) || !trajectory?.positions?.length) continue;
 
-          const fixedToIcrf = Transforms.computeFixedToIcrfMatrix(sampleTime, new Matrix3());
-          if (fixedToIcrf && icrfToReferenceFixed) {
-            const inertialPoint = Matrix3.multiplyByVector(fixedToIcrf, fixedPoint, new Cartesian3());
-            orbitPositions.push(Matrix3.multiplyByVector(icrfToReferenceFixed, inertialPoint, new Cartesian3()));
-          } else {
-            orbitPositions.push(Cartesian3.clone(fixedPoint));
+          const object = getSpaceObject(noradId);
+          const sampled = new SampledPositionProperty();
+          sampled.backwardExtrapolationType = ExtrapolationType.HOLD;
+          sampled.backwardExtrapolationDuration = 30;
+          sampled.forwardExtrapolationType = ExtrapolationType.HOLD;
+          sampled.forwardExtrapolationDuration = 120;
+
+          for (const position of trajectory.positions) {
+            sampled.addSample(
+              JulianDate.fromIso8601(position.timestamp),
+              Cartesian3.fromDegrees(
+                position.longitude,
+                position.latitude,
+                position.altitude_km * 1000,
+              ),
+            );
           }
+
+          const existing = entityMap.get(noradId);
+          const selected = noradId === selectedIdRef.current;
+          const color = CATEGORY_COLORS[object?.category] || Color.WHITE;
+          const colorCss = color.toCssColorString();
+          const backendPeriod = Number(trajectory.orbital_period_minutes) * 60;
+          const period = Number.isFinite(backendPeriod) && backendPeriod > 0
+            ? backendPeriod
+            : estimateOrbitalPeriodSeconds(trajectory.positions);
+
+          if (existing?.entity) {
+            // Atomic refresh: the existing entity stays rendered while the
+            // backend request is in flight, then only its position property is
+            // swapped. No remove/re-add flash and no availability gap.
+            existing.entity.position = sampled;
+            existing.entity.name = object?.name || trajectory.name;
+            existing.trajectory = trajectory;
+            existing.period = period;
+            continue;
+          }
+
+          const entity = viewer.entities.add({
+            name: object?.name || trajectory.name,
+            position: sampled,
+            properties: { noradId },
+            point: {
+              pixelSize: selected ? 8 : 4.5,
+              color,
+              outlineColor: Color.BLACK.withAlpha(0.9),
+              outlineWidth: selected ? 2 : 1,
+              heightReference: HeightReference.NONE,
+              scaleByDistance: new NearFarScalar(2.0e6, 1.25, 1.2e8, 0.72),
+              distanceDisplayCondition: new DistanceDisplayCondition(7_000_000, Number.MAX_VALUE),
+            },
+            billboard: {
+              image: satelliteIconDataUri(colorCss, object?.category),
+              width: selected ? 35 : 27,
+              height: selected ? 35 : 27,
+              distanceDisplayCondition: new DistanceDisplayCondition(0, 9_000_000),
+              scaleByDistance: new NearFarScalar(25_000, 1.35, 8_500_000, 0.55),
+            },
+            label: {
+              show: selected,
+              text: object?.name || trajectory.name,
+              font: "600 16px Inter, system-ui, sans-serif",
+              fillColor: Color.WHITE,
+              outlineColor: Color.BLACK,
+              outlineWidth: 4,
+              style: LabelStyle.FILL_AND_OUTLINE,
+              pixelOffset: new Cartesian2(0, -25),
+              scaleByDistance: new NearFarScalar(100_000, 1.0, 18_000_000, 0.6),
+              distanceDisplayCondition: new DistanceDisplayCondition(0, 35_000_000),
+            },
+          });
+
+          entityMap.set(noradId, {
+            entity,
+            orbitEntity: null,
+            trajectory,
+            period,
+          });
         }
 
-        const existing = entityMap.get(noradId);
-        const wasFollowing = followStateRef.current?.noradId === noradId;
-        if (existing) {
-          viewer.entities.remove(existing.entity);
-          viewer.entities.remove(existing.orbitEntity);
-        }
-
-        const selected = noradId === selectedIdRef.current;
-        const color = CATEGORY_COLORS[object?.category] || Color.WHITE;
-        const colorCss = color.toCssColorString();
-        const period = trajectory.orbitalPeriodSeconds || estimateOrbitalPeriodSeconds(trajectory.positions);
-
-        const orbitEntity = viewer.entities.add({
-          name: `${object?.name || trajectory.name} propagated orbit`,
-          properties: { noradId },
-          show: shownOrbitIdsRef.current.has(noradId),
-          polyline: {
-            positions: orbitPositions,
-            width: selected ? 2.0 : 1.05,
-            material: color.withAlpha(selected ? 0.6 : 0.26),
-            arcType: ArcType.NONE,
-          },
-        });
-
-        const entity = viewer.entities.add({
-          name: object?.name || trajectory.name,
-          availability: makeAvailability(trajectory.positions),
-          position: sampled,
-          properties: { noradId },
-          point: {
-            pixelSize: selected ? 8 : 4.5,
-            color,
-            outlineColor: Color.BLACK.withAlpha(0.9),
-            outlineWidth: selected ? 2 : 1,
-            heightReference: HeightReference.NONE,
-            scaleByDistance: new NearFarScalar(2.0e6, 1.25, 1.2e8, 0.72),
-            distanceDisplayCondition: new DistanceDisplayCondition(7_000_000, Number.MAX_VALUE),
-          },
-          billboard: {
-            image: satelliteIconDataUri(colorCss, object?.category),
-            width: selected ? 35 : 27,
-            height: selected ? 35 : 27,
-            distanceDisplayCondition: new DistanceDisplayCondition(0, 9_000_000),
-            scaleByDistance: new NearFarScalar(25_000, 1.35, 8_500_000, 0.55),
-          },
-          path: {
-            leadTime: period * 0.18,
-            trailTime: period * 0.07,
-            width: selected ? 2.7 : 1.25,
-            material: color.withAlpha(selected ? 0.95 : 0.5),
-            resolution: Math.max(5, Math.round(period / 280)),
-          },
-          label: {
-            show: selected,
-            text: object?.name || trajectory.name,
-            font: "600 16px Inter, system-ui, sans-serif",
-            fillColor: Color.WHITE,
-            outlineColor: Color.BLACK,
-            outlineWidth: 4,
-            style: LabelStyle.FILL_AND_OUTLINE,
-            pixelOffset: new Cartesian2(0, -25),
-            scaleByDistance: new NearFarScalar(100_000, 1.0, 18_000_000, 0.6),
-            distanceDisplayCondition: new DistanceDisplayCondition(0, 35_000_000),
-          },
-        });
-
-        entityMap.set(noradId, { entity, orbitEntity, trajectory, period });
-        if (wasFollowing) {
-          followStateRef.current = { noradId };
+        if ((batch?.objects || []).length) {
+          setEntityRevision((value) => value + 1);
         }
       } catch (error) {
-        if (error?.name !== "AbortError") console.warn(`OrbitWatch: orbit load failed for ${noradId}`, error);
+        if (error?.name !== "AbortError") {
+          console.warn("OrbitWatch: batch satellite load failed", error);
+        }
       }
     }
 
-    runWithConcurrency(idsToLoad, loadOne, 4);
+    loadTrackedSatellites();
     return () => controller.abort();
   }, [trackedIds, refreshNonce]);
 
@@ -796,11 +831,6 @@ export default function OrbitGlobe({
         data.entity.billboard.height = selected ? 35 : 27;
       }
       if (data.entity.label) data.entity.label.show = selected || hoveredIdRef.current === noradId;
-      if (data.entity.path) {
-        data.entity.path.width = selected ? 2.7 : 1.25;
-        const color = CATEGORY_COLORS[getSpaceObject(noradId)?.category] || Color.WHITE;
-        data.entity.path.material = color.withAlpha(selected ? 0.95 : 0.5);
-      }
       if (data.orbitEntity?.polyline) {
         const color = CATEGORY_COLORS[getSpaceObject(noradId)?.category] || Color.WHITE;
         data.orbitEntity.polyline.width = selected ? 2.0 : 1.05;
@@ -810,10 +840,92 @@ export default function OrbitGlobe({
   }, [selectedId]);
 
   useEffect(() => {
+    const viewer = viewerRef.current;
+    if (!viewer) return undefined;
+
+    const controller = new AbortController();
+
     for (const [noradId, data] of entityMapRef.current.entries()) {
-      data.orbitEntity.show = shownOrbitIds.has(noradId);
+      const shouldShow = shownOrbitIds.has(noradId);
+
+      if (!shouldShow) {
+        if (data.orbitEntity) {
+          viewer.entities.remove(data.orbitEntity);
+          data.orbitEntity = null;
+        }
+        continue;
+      }
+
+      async function loadOrbit() {
+        try {
+          const orbit = await fetchSatelliteOrbit(noradId, {
+            samples: 480,
+            signal: controller.signal,
+          });
+
+          if (
+            controller.signal.aborted ||
+            viewer.isDestroyed() ||
+            !orbit?.positions?.length ||
+            !shownOrbitIdsRef.current.has(noradId)
+          ) return;
+
+          // The backend already propagated one entire orbital period. Render
+          // those geographic points directly. This is the exact future path
+          // relative to the rotating Earth, so the moving satellite follows
+          // the same line instead of a separately reconstructed frontend orbit.
+          const orbitPositions = orbit.positions.map((position) =>
+            Cartesian3.fromDegrees(
+              position.longitude,
+              position.latitude,
+              position.altitude_km * 1000,
+            ),
+          );
+
+          const currentData = entityMapRef.current.get(noradId);
+          if (
+            !currentData ||
+            controller.signal.aborted ||
+            viewer.isDestroyed() ||
+            !shownOrbitIdsRef.current.has(noradId)
+          ) return;
+
+          const object = getSpaceObject(noradId);
+          const selected = noradId === selectedIdRef.current;
+          const color = CATEGORY_COLORS[object?.category] || Color.WHITE;
+
+          if (currentData.orbitEntity?.polyline) {
+            currentData.orbitEntity.polyline.positions = orbitPositions;
+            currentData.orbitEntity.polyline.width = selected ? 2.2 : 1.25;
+            currentData.orbitEntity.polyline.material = color.withAlpha(
+              selected ? 0.66 : 0.32,
+            );
+            currentData.orbitEntity.show = true;
+            return;
+          }
+
+          currentData.orbitEntity = viewer.entities.add({
+            name: `${object?.name || orbit.name} full orbit`,
+            properties: { noradId },
+            polyline: {
+              positions: orbitPositions,
+              width: selected ? 2.2 : 1.25,
+              material: color.withAlpha(selected ? 0.66 : 0.32),
+              arcType: ArcType.NONE,
+            },
+          });
+        } catch (error) {
+          if (error?.name !== "AbortError") {
+            console.warn(`OrbitWatch: full orbit load failed for ${noradId}`, error);
+          }
+        }
+      }
+
+      loadOrbit();
     }
-  }, [shownOrbitIds]);
+
+    return () => controller.abort();
+  }, [shownOrbitIds, entityRevision]);
 
   useEffect(() => {
     const viewer = viewerRef.current;

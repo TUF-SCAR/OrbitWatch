@@ -1,0 +1,78 @@
+.cinematic-stage {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.cinematic-stage__content {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.cinematic-stage__content > * {
+  pointer-events: auto;
+}
+
+.cinematic-stage__loader {
+  position: absolute;
+  z-index: 300;
+  width: 54px;
+  height: 54px;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 5px;
+  border: 1px solid rgba(134, 232, 255, 0.22);
+  color: #8ce7fb;
+  background: rgba(3, 8, 14, 0.90);
+  box-shadow:
+    inset 0 0 20px rgba(78, 210, 239, 0.045),
+    0 0 24px rgba(24, 143, 170, 0.09);
+  backdrop-filter: blur(12px);
+  pointer-events: none;
+}
+
+.cinematic-stage__loader i {
+  width: 19px;
+  height: 19px;
+  border: 1px solid rgba(134, 232, 255, 0.40);
+  border-right-color: transparent;
+  border-radius: 50%;
+}
+
+.cinematic-stage__loader span {
+  font-size: 7px;
+  font-weight: 700;
+  letter-spacing: 0.13em;
+}
+
+.cinematic-stage--top .cinematic-stage__loader {
+  top: 18px;
+  left: calc(50% - 27px);
+}
+
+.cinematic-stage--left-rail .cinematic-stage__loader {
+  top: calc(50% - 27px);
+  left: 22px;
+}
+
+.cinematic-stage--left-upper .cinematic-stage__loader {
+  top: 102px;
+  left: 98px;
+}
+
+.cinematic-stage--right-upper .cinematic-stage__loader {
+  top: 104px;
+  right: 34px;
+}
+
+.cinematic-stage--bottom .cinematic-stage__loader {
+  bottom: 24px;
+  left: calc(50% - 27px);
+}
+
+.cinematic-stage--right .cinematic-stage__loader {
+  top: calc(50% - 27px);
+  right: 34px;
+}

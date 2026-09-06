@@ -1,0 +1,19 @@
+.auth-root-shell {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  background: #01040a;
+}
+
+.auth-root-layer {
+  position: absolute;
+  inset: 0;
+}
+
+.auth-root-layer--live {
+  z-index: 1;
+}
+
+.auth-root-layer--auth {
+  z-index: 10;
+}

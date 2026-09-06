@@ -1,0 +1,12 @@
+.live-earth-warmup {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  opacity: 0.012;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.live-earth-warmup * {
+  pointer-events: none !important;
+}

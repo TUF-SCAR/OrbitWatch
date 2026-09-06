@@ -12,6 +12,7 @@
   "dependencies": {
     "cesium": "1.144.0",
     "lucide-react": "^0.468.0",
+    "motion": "^13.2.0",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
     "vite-plugin-cesium": "^1.2.23"

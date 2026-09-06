@@ -1,3 +1,14 @@
+from fastapi import Depends, HTTPException
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+from core.database import get_database_session
+from models.user import User
+from services.auth import decode_access_token
+
+bearer_scheme = HTTPBearer(auto_error=False)
+
+
 def check_username_char(username: str) -> bool:
     char_check = True
     for char in username:
@@ -73,3 +84,25 @@ def check_email(email: str) -> bool:
                                         if len(TLD) >= 2 and TLD.isalpha():
                                             return True
     return False
+
+
+def get_current_user(
+    credentials: HTTPAuthorizationCredentials = Depends(bearer_scheme),
+    database: Session = Depends(get_database_session),
+) -> User:
+    if credentials is None:
+        raise HTTPException(status_code=401, detail="Authentication required")
+
+    try:
+        user_id = decode_access_token(credentials.credentials)
+    except RuntimeError:
+        raise HTTPException(status_code=401, detail="Invalid or expired token")
+
+    query = select(User).where(User.id == user_id)
+
+    database_user = database.scalar(query)
+
+    if database_user is None:
+        raise HTTPException(status_code=401, detail="User no longer exists")
+
+    return database_user

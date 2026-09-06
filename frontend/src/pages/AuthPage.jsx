@@ -1,73 +1,74 @@
-import { AnimatePresence, motion, stagger } from "motion/react";
+import { AnimatePresence, motion } from "motion/react";
 import {
-  ArrowLeft,
   Eye,
   EyeOff,
   LockKeyhole,
   Mail,
+  Orbit,
   UserRound,
 } from "lucide-react";
 import { useState } from "react";
-import AmbientFlow from "../components/AmbientFlow.jsx";
-import Globe from "../components/Globe.jsx";
-import LiquidGlass from "../components/LiquidGlass.jsx";
-import OrbitWatchBrand from "../components/OrbitWatchBrand.jsx";
+import SolarSystemScene from "../components/SolarSystemScene.jsx";
+import SpatialSurface from "../components/SpatialSurface.jsx";
 import {
   loginAccount,
   registerAccount,
 } from "../services/orbitwatchApi.js";
 import "./AuthPage.css";
 
-const formVariants = {
-  hidden: { opacity: 0 },
-  visible: {
-    opacity: 1,
-    transition: {
-      delayChildren: stagger(0.055),
-    },
-  },
-};
-
-const fieldVariants = {
-  hidden: {
-    opacity: 0,
-    y: 10,
-    filter: "blur(6px)",
-  },
-  visible: {
-    opacity: 1,
-    y: 0,
-    filter: "blur(0px)",
-  },
-};
-
-function AuthField({ icon: FieldIcon, label, ...inputProperties }) {
+function AuthField({ icon: FieldIcon, label, trailing, ...inputProperties }) {
   return (
-    <motion.label className="auth-field" variants={fieldVariants}>
+    <label className="auth-field">
       <span>{label}</span>
       <div>
-        <FieldIcon size={18} />
+        <FieldIcon size={16} />
         <input {...inputProperties} />
+        {trailing || null}
       </div>
-    </motion.label>
+    </label>
   );
 }
 
-function AuthPage({ authType, navigateToPage }) {
+export default function AuthPage({
+  authType,
+  launching,
+  onAuthenticated,
+  onSwitch,
+  showInterface = true,
+}) {
   const registrationOpen = authType === "register";
   const [username, setUsername] = useState("");
+  const [usernameOrEmail, setUsernameOrEmail] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [passwordVisible, setPasswordVisible] = useState(false);
   const [formMessage, setFormMessage] = useState("");
   const [requestRunning, setRequestRunning] = useState(false);
+  const [previewOpen, setPreviewOpen] = useState(false);
 
   async function submitAuthentication(event) {
     event.preventDefault();
     setFormMessage("");
 
-    if (registrationOpen && password !== confirmPassword) {
+    const normalizedUsername = username.trim();
+    const normalizedUsernameOrEmail =
+      usernameOrEmail.trim();
+    const normalizedEmail = email.trim();
+    const normalizedPassword = password.trim();
+    const normalizedConfirmPassword =
+      confirmPassword.trim();
+
+    setUsername(normalizedUsername);
+    setUsernameOrEmail(normalizedUsernameOrEmail);
+    setEmail(normalizedEmail);
+    setPassword(normalizedPassword);
+    setConfirmPassword(normalizedConfirmPassword);
+
+    if (
+      registrationOpen &&
+      normalizedPassword !== normalizedConfirmPassword
+    ) {
       setFormMessage("The two passwords do not match.");
       return;
     }
@@ -75,206 +76,233 @@ function AuthPage({ authType, navigateToPage }) {
     setRequestRunning(true);
 
     try {
-      if (registrationOpen) {
-        await registerAccount({
-          username,
-          email,
-          password,
-        });
-      } else {
-        await loginAccount({
-          email,
-          password,
-        });
-      }
+      const authResponse = registrationOpen
+        ? await registerAccount({
+            username: normalizedUsername,
+            email: normalizedEmail,
+            password: normalizedPassword,
+          })
+        : await loginAccount({
+            usernameOrEmail: normalizedUsernameOrEmail,
+            password: normalizedPassword,
+          });
 
-      navigateToPage("live");
-    } catch {
+      await onAuthenticated(authResponse);
+    } catch (error) {
       setFormMessage(
-        "The authentication backend is not connected yet. We will build it next.",
+        error?.detail ||
+          error?.message ||
+          "OrbitWatch could not authenticate this account.",
       );
-    } finally {
       setRequestRunning(false);
     }
   }
 
+  const busy = requestRunning || launching;
+  const interfaceVisible = !launching && !previewOpen;
+
   return (
-    <main className="auth-page">
-      <Globe
-        focusedNoradId={null}
-        onConnectionStateChange={() => {}}
-        onSpaceObjectData={() => {}}
-        onSpaceObjectSelect={() => {}}
-        showFocusedOrbit={false}
-        spaceObjects={[]}
-      />
+    <main
+      data-auth-interface={showInterface ? "visible" : "hidden"} className="auth-page">
+      <SolarSystemScene launching={launching} />
 
-      <AmbientFlow />
-      <div className="auth-page__backdrop" />
-
-      <div className="auth-page__header">
-        <OrbitWatchBrand onClick={() => navigateToPage("live")} />
-      </div>
-
-      <motion.div
-        animate={{ opacity: 1, y: 0, scale: 1 }}
-        className="auth-page__content"
-        initial={{ opacity: 0, y: 22, scale: 0.98 }}
-        transition={{ type: "spring", stiffness: 240, damping: 27 }}
-      >
-        <LiquidGlass
-          className={`auth-panel ${registrationOpen ? "auth-panel--register" : ""}`}
-          layoutId="auth-panel"
-          strength="strong"
-          transition={{ type: "spring", stiffness: 250, damping: 28 }}
-        >
-          <button
-            className="auth-back-button"
-            onClick={() => navigateToPage("live")}
-            type="button"
-          >
-            <ArrowLeft size={17} /> Back to Live Mode
-          </button>
-
+      <AnimatePresence>
+        {interfaceVisible ? (
           <motion.div
-            animate={{ opacity: 1, y: 0 }}
-            className="auth-heading"
-            initial={{ opacity: 0, y: 10 }}
+            key="auth-interface"
+            className="auth-interface"
+            initial={{ opacity: 0, filter: "blur(10px)" }}
+            animate={{ opacity: 1, filter: "blur(0px)" }}
+            exit={{
+              opacity: 0,
+              filter: "blur(8px)",
+              scale: 0.992,
+            }}
+            transition={{ duration: 0.16, ease: [0.22, 1, 0.36, 1] }}
           >
-            <span className="auth-heading__icon">
-              <UserRound size={26} />
-            </span>
-            <span>
-              <small>OrbitWatch account</small>
-              <h1>{registrationOpen ? "Create your account" : "Welcome back"}</h1>
-              <p>
-                {registrationOpen
-                  ? "Save objects, locations, alerts, and observation plans."
-                  : "Open your synchronized watchlist and alerts."}
-              </p>
-            </span>
-          </motion.div>
+            <div className="auth-page__backdrop" />
+            <div className="auth-coordinate-grid" />
 
-          <motion.form
-            animate="visible"
-            className="auth-form"
-            initial="hidden"
-            onSubmit={submitAuthentication}
-            variants={formVariants}
-          >
-            <AnimatePresence initial={false}>
-              {registrationOpen ? (
-                <AuthField
-                  autoComplete="username"
-                  icon={UserRound}
-                  key="username"
-                  label="Username"
-                  onChange={(event) => setUsername(event.target.value)}
-                  placeholder="Choose a username"
-                  required
-                  type="text"
-                  value={username}
-                />
-              ) : null}
-            </AnimatePresence>
+            <div className="auth-page__header">
+              <SpatialSurface side="left" strength={2.4} className="auth-brand">
+                <span className="auth-brand__mark" data-depth="4">
+                  <Orbit size={20} />
+                </span>
+                <span data-depth="6">
+                  <strong>ORBITWATCH</strong>
+                  <small>SPATIAL ORBITAL INTELLIGENCE</small>
+                </span>
+              </SpatialSurface>
+            </div>
 
-            <AuthField
-              autoComplete="email"
-              icon={Mail}
-              label="Email"
-              onChange={(event) => setEmail(event.target.value)}
-              placeholder="you@example.com"
-              required
-              type="email"
-              value={email}
-            />
+            <SpatialSurface
+              side="right"
+              strength={2.4}
+              className="auth-system-readout"
+            >
+              <LockKeyhole size={14} data-depth="4" />
+              <span data-depth="5">SECURE ACCESS</span>
+            </SpatialSurface>
 
-            <motion.label className="auth-field" variants={fieldVariants}>
-              <span>Password</span>
-              <div>
-                <LockKeyhole size={18} />
-                <input
-                  autoComplete={registrationOpen ? "new-password" : "current-password"}
-                  minLength={8}
-                  onChange={(event) => setPassword(event.target.value)}
-                  placeholder="Minimum 8 characters"
-                  required
-                  type={passwordVisible ? "text" : "password"}
-                  value={password}
-                />
-                <button
-                  aria-label={passwordVisible ? "Hide password" : "Show password"}
-                  onClick={() => setPasswordVisible((current) => !current)}
-                  type="button"
-                >
-                  {passwordVisible ? <EyeOff size={17} /> : <Eye size={17} />}
-                </button>
-              </div>
-            </motion.label>
-
-            <AnimatePresence initial={false}>
-              {registrationOpen ? (
-                <AuthField
-                  autoComplete="new-password"
-                  icon={LockKeyhole}
-                  key="confirm-password"
-                  label="Confirm password"
-                  minLength={8}
-                  onChange={(event) => setConfirmPassword(event.target.value)}
-                  placeholder="Repeat your password"
-                  required
-                  type={passwordVisible ? "text" : "password"}
-                  value={confirmPassword}
-                />
-              ) : null}
-            </AnimatePresence>
-
-            {formMessage ? (
-              <motion.p
-                animate={{ opacity: 1, y: 0 }}
-                className="auth-form-message"
-                initial={{ opacity: 0, y: 6 }}
+            <div className="auth-page__content">
+              <SpatialSurface
+                as="section"
+                key={authType}
+                side="center"
+                strength={3.2}
+                className={`auth-panel ${registrationOpen ? "auth-panel--register" : ""}`}
               >
-                {formMessage}
-              </motion.p>
-            ) : null}
+                <div className="auth-panel__topline" data-depth="3">
+                  <span>IDENTITY GATEWAY</span>
+                  <span>{registrationOpen ? "NEW ACCOUNT" : "AUTHENTICATION"}</span>
+                </div>
 
-            <motion.button
-              className="auth-submit-button"
-              disabled={requestRunning}
-              type="submit"
-              variants={fieldVariants}
-              whileHover={{ scale: 1.012, y: -1 }}
-              whileTap={{ scale: 0.985 }}
-            >
-              {requestRunning
-                ? "Connecting..."
-                : registrationOpen
-                  ? "Create account"
-                  : "Login"}
-            </motion.button>
-          </motion.form>
+                <div className="auth-heading" data-depth="5">
+                  <span className="auth-heading__icon">
+                    <UserRound size={23} />
+                  </span>
+                  <span>
+                    <small>OrbitWatch account</small>
+                    <h1>{registrationOpen ? "Create your account" : "Welcome back"}</h1>
+                    <p>
+                      {registrationOpen
+                        ? "Create your identity for synchronized watchlists, alerts, and observation tools."
+                        : "Authenticate to initialize your OrbitWatch workspace."}
+                    </p>
+                  </span>
+                </div>
 
-          <motion.p
-            animate={{ opacity: 1 }}
-            className="auth-switch"
-            initial={{ opacity: 0 }}
-            transition={{ delay: 0.32 }}
+                <form className="auth-form" data-depth="6" onSubmit={submitAuthentication}>
+                  {registrationOpen ? (
+                    <AuthField
+                      autoComplete="username"
+                      icon={UserRound}
+                      label="USERNAME"
+                      onChange={(event) => setUsername(event.target.value)}
+                      onBlur={(event) => setUsername(event.target.value.trim())}
+                      placeholder="Choose a username"
+                      required
+                      type="text"
+                      value={username}
+                    />
+                  ) : (
+                    <AuthField
+                      autoComplete="username"
+                      icon={UserRound}
+                      label="USERNAME OR EMAIL"
+                      onChange={(event) => setUsernameOrEmail(event.target.value)}
+                      onBlur={(event) => setUsernameOrEmail(event.target.value.trim())}
+                      placeholder="Username or email"
+                      required
+                      type="text"
+                      value={usernameOrEmail}
+                    />
+                  )}
+
+                  {registrationOpen ? (
+                    <AuthField
+                      autoComplete="email"
+                      icon={Mail}
+                      label="EMAIL"
+                      onChange={(event) => setEmail(event.target.value)}
+                      onBlur={(event) => setEmail(event.target.value.trim())}
+                      placeholder="you@example.com"
+                      required
+                      type="email"
+                      value={email}
+                    />
+                  ) : null}
+
+                  <AuthField
+                    autoComplete={registrationOpen ? "new-password" : "current-password"}
+                    icon={LockKeyhole}
+                    label="PASSWORD"
+                    minLength={8}
+                    onChange={(event) => setPassword(event.target.value)}
+                    onBlur={(event) => setPassword(event.target.value.trim())}
+                    placeholder="Minimum 8 characters"
+                    required
+                    trailing={
+                      <button
+                        aria-label={passwordVisible ? "Hide password" : "Show password"}
+                        onClick={() => setPasswordVisible((current) => !current)}
+                        type="button"
+                      >
+                        {passwordVisible ? <EyeOff size={15} /> : <Eye size={15} />}
+                      </button>
+                    }
+                    type={passwordVisible ? "text" : "password"}
+                    value={password}
+                  />
+
+                  {registrationOpen ? (
+                    <AuthField
+                      autoComplete="new-password"
+                      icon={LockKeyhole}
+                      label="CONFIRM PASSWORD"
+                      minLength={8}
+                      onChange={(event) => setConfirmPassword(event.target.value)}
+                      onBlur={(event) => setConfirmPassword(event.target.value.trim())}
+                      placeholder="Repeat your password"
+                      required
+                      type={passwordVisible ? "text" : "password"}
+                      value={confirmPassword}
+                    />
+                  ) : null}
+
+                  {formMessage ? <p className="auth-form-message">{formMessage}</p> : null}
+
+                  <button className="auth-submit-button" disabled={busy} type="submit">
+                    <span className="auth-submit-button__signal" />
+                    {requestRunning
+                      ? "AUTHENTICATING"
+                      : registrationOpen
+                        ? "CREATE ACCOUNT"
+                        : "LOGIN"}
+                  </button>
+                </form>
+
+                <div className="auth-panel__divider" data-depth="4" />
+
+                <p className="auth-switch" data-depth="5">
+                  {registrationOpen ? "ALREADY REGISTERED?" : "NEW TO ORBITWATCH?"}
+                  <button
+                    disabled={busy}
+                    onClick={() => onSwitch(registrationOpen ? "login" : "register")}
+                    type="button"
+                  >
+                    {registrationOpen ? "LOGIN" : "CREATE ACCOUNT"}
+                  </button>
+                </p>
+
+                <div className="auth-panel__status" data-depth="3">
+                  <span><i /> BACKEND LINK READY</span>
+                  <span>SOLAR SYSTEM ACTIVE</span>
+                </div>
+              </SpatialSurface>
+            </div>
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {!launching ? (
+          <motion.button
+            key="preview-toggle"
+            className="auth-preview-toggle"
+            type="button"
+            aria-pressed={previewOpen}
+            onClick={() => setPreviewOpen((value) => !value)}
+            initial={{ opacity: 0, x: 18 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: 18 }}
+            transition={{ duration: 0.18 }}
           >
-            {registrationOpen ? "Already have an account?" : "New to OrbitWatch?"}
-            <button
-              onClick={() =>
-                navigateToPage(registrationOpen ? "login" : "register")
-              }
-              type="button"
-            >
-              {registrationOpen ? "Login" : "Create account"}
-            </button>
-          </motion.p>
-        </LiquidGlass>
-      </motion.div>
+            <span>{previewOpen ? "Interface hidden" : "System view"}</span>
+            <strong>{previewOpen ? "RETURN TO LOGIN" : "PREVIEW SYSTEM"}</strong>
+          </motion.button>
+        ) : null}
+      </AnimatePresence>
     </main>
   );
 }
-
-export default AuthPage;

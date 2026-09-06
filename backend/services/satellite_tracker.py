@@ -248,7 +248,7 @@ def get_satellite_trajectories(
     }
 
 
-def get_satellite_orbit(norad_id: int, samples: int = 300) -> dict:
+def get_satellite_orbit(norad_id: int, samples: int = 480) -> dict:
     if samples < 2:
         raise ValueError("Orbit requires at least 2 samples")
 
@@ -256,9 +256,8 @@ def get_satellite_orbit(norad_id: int, samples: int = 300) -> dict:
     orbital_period_minutes = (2 * pi) / satellite.model.no_kozai
     orbital_period_seconds = orbital_period_minutes * 60
     initial_time = datetime.now(timezone.utc)
-    positions = []
-
     step_seconds = orbital_period_seconds / (samples - 1)
+    positions = []
 
     for i in range(samples):
         future_time = initial_time + timedelta(seconds=i * step_seconds)
@@ -268,8 +267,10 @@ def get_satellite_orbit(norad_id: int, samples: int = 300) -> dict:
         latitude = float(location.latitude.degrees)
         longitude = float(location.longitude.degrees)
         altitude = float(location.elevation.km)
+
         positions.append(
             {
+                "timestamp": future_time.isoformat(),
                 "latitude": round(latitude, 4),
                 "longitude": round(longitude, 4),
                 "altitude_km": round(altitude, 2),
@@ -281,11 +282,16 @@ def get_satellite_orbit(norad_id: int, samples: int = 300) -> dict:
     return {
         "name": satellite.name.strip(),
         "norad_id": norad_id,
+        "start_timestamp": initial_time.isoformat(),
+        "end_timestamp": (
+            initial_time + timedelta(seconds=orbital_period_seconds)
+        ).isoformat(),
         "orbital_period_minutes": round(orbital_period_minutes, 2),
+        "step_seconds": round(step_seconds, 3),
+        "samples": samples,
         "positions": positions,
         **cache_details,
     }
-
 
 if __name__ == "__main__":
     satellite = get_satellite_trajectories(

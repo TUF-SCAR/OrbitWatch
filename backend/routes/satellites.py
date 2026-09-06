@@ -1,4 +1,5 @@
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
+from core.security import get_current_user
 from schemas.satellites import TrajectoryBatchRequest
 from services.orbital_data_service import get_orbital_data_status
 from services.satellite_catalog import (
@@ -12,7 +13,11 @@ from services.satellite_tracker import (
     get_satellite_orbit,
 )
 
-router = APIRouter(prefix="/api/satellites", tags=["Satellites"])
+router = APIRouter(
+    prefix="/api/satellites",
+    tags=["Satellites"],
+    dependencies=[Depends(get_current_user)],
+)
 
 
 def check_norad_id(norad_id: int) -> None:

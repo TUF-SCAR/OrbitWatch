@@ -1,0 +1,49 @@
+.solar-auth-scene,
+.solar-auth-scene__cesium {
+  position: absolute;
+  inset: 0;
+}
+
+.solar-auth-scene {
+  z-index: 0;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 50% 50%, rgba(39, 109, 138, 0.09), transparent 30rem),
+    radial-gradient(circle at 70% 22%, rgba(94, 80, 165, 0.07), transparent 25rem),
+    #01040a;
+}
+
+.solar-auth-scene__cesium,
+.solar-auth-scene__cesium .cesium-viewer,
+.solar-auth-scene__cesium .cesium-widget,
+.solar-auth-scene__cesium canvas {
+  width: 100% !important;
+  height: 100% !important;
+}
+
+.solar-auth-scene .cesium-viewer-bottom,
+.solar-auth-scene .cesium-viewer-toolbar {
+  display: none !important;
+}
+
+.solar-auth-scene__cesium {
+  opacity: 0.97;
+  filter: saturate(1.02) brightness(0.94);
+  transition:
+    opacity 600ms ease,
+    filter 600ms ease;
+}
+
+.solar-auth-scene.is-launching .solar-auth-scene__cesium {
+  opacity: 1;
+  filter: saturate(1.08) brightness(0.99);
+}
+
+.solar-auth-scene__vignette {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(circle at center, transparent 0 63%, rgba(1, 4, 10, 0.10) 78%, rgba(1, 4, 10, 0.38) 100%),
+    linear-gradient(180deg, rgba(1, 4, 10, 0.34) 0, transparent 15%, transparent 85%, rgba(1, 4, 10, 0.36) 100%);
+}

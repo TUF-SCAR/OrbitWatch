@@ -4,8 +4,8 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from models.user import User
 from core.database import get_database_session
-from core.security import check_username_char, check_email
-from schemas.auth import RegisterRequest, LoginRequest, AuthResponse
+from core.security import check_username_char, check_email, get_current_user
+from schemas.auth import RegisterRequest, LoginRequest, AuthResponse, UserResponse
 from services.auth import hash_password, verify_password, create_access_token
 
 router = APIRouter(prefix="/api/auth", tags=["Authentication"])
@@ -15,9 +15,9 @@ router = APIRouter(prefix="/api/auth", tags=["Authentication"])
 def Registration(
     user: RegisterRequest, database: Session = Depends(get_database_session)
 ) -> AuthResponse:
-    username = user.username
-    email = user.email
-    password = user.password
+    username = user.username.strip()
+    email = user.email.strip()
+    password = user.password.strip()
 
     if len(username) < 3 or len(username) > 50:
         raise HTTPException(
@@ -85,8 +85,8 @@ def Registration(
 def Login(
     user: LoginRequest, database: Session = Depends(get_database_session)
 ) -> AuthResponse:
-    username_or_email = user.username_or_email
-    password = user.password
+    username_or_email = user.username_or_email.strip()
+    password = user.password.strip()
 
     if "@" in username_or_email:
         if not check_email(email=username_or_email):
@@ -139,3 +139,8 @@ def Login(
         access_token=access_token,
         token_type="bearer",
     )
+
+
+@router.get("/me", response_model=UserResponse)
+def Me(current_user: User = Depends(get_current_user)) -> User:
+    return current_user

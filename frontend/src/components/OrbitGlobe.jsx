@@ -33,6 +33,7 @@ import {
   TimeIntervalCollection,
   Transforms,
   UrlTemplateImageryProvider,
+  VelocityOrientationProperty,
   Viewer,
   createGooglePhotorealistic3DTileset,
   createWorldImageryAsync,
@@ -40,10 +41,73 @@ import {
 import { fetchSatelliteOrbit, fetchSatelliteTrajectories } from "../services/orbitwatchApi.js";
 import { fetchOpenDisasterEvents } from "../services/eonetApi.js";
 import { getSpaceObject } from "../data/spaceObjects.js";
+import { createSolarSystemLayer } from "../services/solarSystemLayer.js";
+import { getSatelliteModelUrl } from "../data/satelliteModels.js";
 import { PLACE_LABELS } from "../data/placeLabels.js";
 
 const EARTH_RADIUS_KM = 6371.0088;
 const EARTH_MU = 3.986004418e14;
+
+
+const MIB = 1024 * 1024;
+
+function detectOrbitWatchMemoryProfile() {
+  const reportedGb =
+    typeof navigator !== "undefined" && Number.isFinite(Number(navigator.deviceMemory))
+      ? Number(navigator.deviceMemory)
+      : 8;
+
+  if (reportedGb <= 4) {
+    return {
+      name: "low",
+      reportedGb,
+      resolutionScale: 0.72,
+      targetFrameRate: 30,
+      googleCacheBytes: 96 * MIB,
+      googleOverflowBytes: 24 * MIB,
+      googleSse: 14,
+      terrainTileCacheSize: 28,
+      perFragmentAtmosphere: false,
+      highDynamicRange: false,
+      msaaSamples: 1,
+      skipLevelOfDetail: true,
+    };
+  }
+
+  if (reportedGb <= 8) {
+    return {
+      name: "balanced-low-memory",
+      reportedGb,
+      resolutionScale: 0.82,
+      targetFrameRate: 30,
+      googleCacheBytes: 128 * MIB,
+      googleOverflowBytes: 32 * MIB,
+      googleSse: 12,
+      terrainTileCacheSize: 42,
+      perFragmentAtmosphere: false,
+      highDynamicRange: false,
+      msaaSamples: 1,
+      skipLevelOfDetail: true,
+    };
+  }
+
+  return {
+    name: "high",
+    reportedGb,
+    resolutionScale: 0.95,
+    targetFrameRate: 45,
+    googleCacheBytes: 192 * MIB,
+    googleOverflowBytes: 48 * MIB,
+    googleSse: 9,
+    terrainTileCacheSize: 64,
+    perFragmentAtmosphere: true,
+    highDynamicRange: true,
+    msaaSamples: 2,
+    skipLevelOfDetail: false,
+  };
+}
+
+const ORBITWATCH_MEMORY_PROFILE = detectOrbitWatchMemoryProfile();
 
 const CATEGORY_COLORS = {
   Stations: Color.fromCssColorString("#8be8ff"),
@@ -263,45 +327,79 @@ function makeEarthAtNightLayer() {
   return layer;
 }
 
-async function applyBaseMap(viewer, googleTiles, googleReady, effectiveMap, mapRequestRef) {
+async function applyBaseMap(
+  viewer,
+  googleTiles,
+  googleReady,
+  effectiveMap,
+  mapRequestRef,
+) {
   if (!viewer || viewer.isDestroyed()) return;
-  const requestId = ++mapRequestRef.current;
-  const wantsGoogle = effectiveMap === "google" && viewer.scene.mode !== SceneMode.SCENE2D && Boolean(googleTiles);
-  const useGoogle = wantsGoogle && googleReady;
 
-  // Keep the Google tileset visible while its first view streams, but do not
-  // remove the raster globe until the initial tiles are actually ready. This
-  // prevents the black/empty Earth seen when the 3D tiles need a few seconds
-  // to arrive on first load.
-  if (googleTiles) googleTiles.show = wantsGoogle;
-  viewer.scene.globe.show = !useGoogle;
+  const requestId = ++mapRequestRef.current;
+  const wantsGoogle =
+    effectiveMap === "google" &&
+    viewer.scene.mode !== SceneMode.SCENE2D &&
+    Boolean(googleTiles);
+
+  if (googleTiles) {
+    googleTiles.show = wantsGoogle;
+    googleTiles.maximumScreenSpaceError =
+      ORBITWATCH_MEMORY_PROFILE.googleSse;
+
+    if (!wantsGoogle) {
+      googleTiles.trimLoadedTiles?.();
+    }
+  }
+
   viewer.scene.globe.enableLighting = true;
   viewer.scene.globe.dynamicAtmosphereLighting = true;
   viewer.scene.globe.dynamicAtmosphereLightingFromSun = true;
 
-  if (useGoogle) {
+  if (wantsGoogle && googleReady) {
+    viewer.scene.globe.show = false;
     viewer.imageryLayers.removeAll(true);
     viewer.scene.requestRender();
     return;
   }
 
-  // While Google 3D is warming up, show a real Earth underneath instead of an
-  // empty ellipsoid. Once initialTilesLoaded fires we atomically switch to the
-  // photorealistic tileset.
+  viewer.scene.globe.show = true;
+
   const rasterMap = wantsGoogle ? "esri" : effectiveMap;
   const factory = RASTER_MAPS[rasterMap] || RASTER_MAPS.esri;
+
   let provider;
+
   try {
     provider = await factory();
   } catch (error) {
-    console.warn(`OrbitWatch: ${rasterMap} map unavailable; falling back to Esri.`, error);
+    console.warn(
+      `OrbitWatch: ${rasterMap} map unavailable; falling back to Esri.`,
+      error,
+    );
   }
-  if (!provider) provider = await RASTER_MAPS.esri();
-  if (requestId !== mapRequestRef.current || viewer.isDestroyed()) return;
+
+  if (!provider) {
+    provider = await RASTER_MAPS.esri();
+  }
+
+  if (
+    requestId !== mapRequestRef.current ||
+    viewer.isDestroyed()
+  ) {
+    return;
+  }
 
   viewer.imageryLayers.removeAll(true);
   viewer.imageryLayers.addImageryProvider(provider);
-  if (import.meta.env.VITE_CESIUM_ION_TOKEN) viewer.imageryLayers.add(makeEarthAtNightLayer());
+
+  if (
+    !wantsGoogle &&
+    import.meta.env.VITE_CESIUM_ION_TOKEN
+  ) {
+    viewer.imageryLayers.add(makeEarthAtNightLayer());
+  }
+
   viewer.scene.requestRender();
 }
 
@@ -339,6 +437,8 @@ export default function OrbitGlobe({
   onViewTelemetry,
   globeRef,
   startupCountry,
+  selectedCelestialBody,
+  onCelestialSelect,
 }) {
   const mountRef = useRef(null);
   const viewerRef = useRef(null);
@@ -365,6 +465,9 @@ export default function OrbitGlobe({
   const modeRef = useRef(mode);
   const sceneModeRef = useRef(sceneMode);
   const shownOrbitIdsRef = useRef(shownOrbitIds);
+  const solarSystemLayerRef = useRef(null);
+  const satelliteModelDetailRef = useRef(null);
+  const onCelestialSelectRef = useRef(onCelestialSelect);
 
   selectedIdRef.current = selectedId;
   labelsEnabledRef.current = labelsEnabled;
@@ -374,6 +477,7 @@ export default function OrbitGlobe({
   modeRef.current = mode;
   sceneModeRef.current = sceneMode;
   shownOrbitIdsRef.current = shownOrbitIds;
+  onCelestialSelectRef.current = onCelestialSelect;
 
   useImperativeHandle(globeRef, () => ({
     focusSelected() {
@@ -409,6 +513,44 @@ export default function OrbitGlobe({
       const entity = entityMapRef.current.get(selectedIdRef.current)?.entity;
       return setCameraPreset(viewerRef.current, preset, followStateRef, entity);
     },
+    focusCelestial(bodyId) {
+      const viewer = viewerRef.current;
+
+      if (!viewer) {
+        return false;
+      }
+
+      releaseViewerCamera(
+        viewer,
+        followStateRef,
+      );
+
+      if (!bodyId || bodyId === "earth") {
+        solarSystemLayerRef.current
+          ?.focus("earth");
+
+        return setCameraPreset(
+          viewer,
+          "earth",
+          followStateRef,
+          null,
+        );
+      }
+
+      solarSystemLayerRef.current
+        ?.focus(bodyId);
+
+      return true;
+    },
+    followCelestial(bodyId) {
+      const viewer = viewerRef.current;
+      if (!viewer) return false;
+
+      releaseViewerCamera(viewer, followStateRef);
+      return Boolean(
+        solarSystemLayerRef.current?.follow(bodyId),
+      );
+    },
   }), []);
 
   useEffect(() => {
@@ -429,11 +571,18 @@ export default function OrbitGlobe({
       fullscreenButton: false,
       infoBox: false,
       selectionIndicator: false,
-      terrain: Terrain.fromWorldTerrain({ requestVertexNormals: true, requestWaterMask: true }),
+      terrain: Terrain.fromWorldTerrain({ requestVertexNormals: false, requestWaterMask: false }),
+      requestRenderMode: true,
+      maximumRenderTimeChange: 1 / 30,
+      msaaSamples: ORBITWATCH_MEMORY_PROFILE.msaaSamples,
       shouldAnimate: true,
     });
 
     viewerRef.current = viewer;
+    viewer.resolutionScale = ORBITWATCH_MEMORY_PROFILE.resolutionScale;
+    viewer.targetFrameRate = ORBITWATCH_MEMORY_PROFILE.targetFrameRate;
+    viewer.scene.globe.tileCacheSize = ORBITWATCH_MEMORY_PROFILE.terrainTileCacheSize;
+    viewer.scene.globe.showWaterEffect = false;
     viewer.scene.backgroundColor = Color.fromCssColorString("#01040a");
     viewer.scene.globe.baseColor = Color.fromCssColorString("#07101a");
     viewer.scene.globe.showGroundAtmosphere = true;
@@ -442,10 +591,10 @@ export default function OrbitGlobe({
     viewer.scene.globe.dynamicAtmosphereLightingFromSun = true;
     viewer.scene.atmosphere.dynamicLighting = DynamicAtmosphereLightingType.SUNLIGHT;
     viewer.scene.skyAtmosphere.show = true;
-    viewer.scene.skyAtmosphere.perFragmentAtmosphere = true;
-    viewer.scene.sun.show = true;
-    viewer.scene.moon.show = true;
-    viewer.scene.highDynamicRange = true;
+    viewer.scene.skyAtmosphere.perFragmentAtmosphere = ORBITWATCH_MEMORY_PROFILE.perFragmentAtmosphere;
+    viewer.scene.sun.show = false;
+    viewer.scene.moon.show = false;
+    viewer.scene.highDynamicRange = ORBITWATCH_MEMORY_PROFILE.highDynamicRange;
     viewer.scene.fog.enabled = true;
     viewer.scene.fog.density = 0.00008;
     viewer.scene.screenSpaceCameraController.minimumZoomDistance = 1.0;
@@ -475,13 +624,23 @@ export default function OrbitGlobe({
         const tileset = await createGooglePhotorealistic3DTileset(
           { onlyUsingWithGoogleGeocoder: true },
           {
-            maximumScreenSpaceError: 5,
+            maximumScreenSpaceError: ORBITWATCH_MEMORY_PROFILE.googleSse,
+            cacheBytes: ORBITWATCH_MEMORY_PROFILE.googleCacheBytes,
+            maximumCacheOverflowBytes: ORBITWATCH_MEMORY_PROFILE.googleOverflowBytes,
             dynamicScreenSpaceError: true,
+            dynamicScreenSpaceErrorFactor: 28.0,
+            skipLevelOfDetail: ORBITWATCH_MEMORY_PROFILE.skipLevelOfDetail,
+            baseScreenSpaceError: 1024,
+            skipScreenSpaceErrorFactor: 16,
+            skipLevels: 1,
+            immediatelyLoadDesiredLevelOfDetail: false,
+            loadSiblings: false,
+            cullWithChildrenBounds: true,
+            foveatedScreenSpaceError: true,
+            foveatedTimeDelay: 0.25,
+            preloadWhenHidden: false,
+            preloadFlightDestinations: false,
             enableCollision: true,
-            // Imagery draping is experimental. If a future overlay is slow or
-            // unavailable, Google's original photorealistic texture must still
-            // render instead of holding every 3D tile in a black loading state.
-            asynchronouslyLoadImagery: true,
           },
         );
         if (destroyed || viewer.isDestroyed()) return;
@@ -504,7 +663,7 @@ export default function OrbitGlobe({
         // never race past us on a fast connection/cache hit.
         tileset.initialTilesLoaded?.addEventListener?.(activateGoogleWhenReady);
         tileset.tileFailed?.addEventListener?.((failure) => {
-          console.warn("OrbitWatch: a Google Photorealistic tile failed to load; raster Earth remains available underneath.", failure);
+          console.warn("OrbitWatch: a Google Photorealistic tile failed to load.", failure);
         });
         viewer.scene.primitives.add(tileset);
 
@@ -552,12 +711,128 @@ export default function OrbitGlobe({
       placeEntityIdsRef.current.push(labelId);
     }
 
+    // LiveEarthWarmup on the auth screen does not pass onCelestialSelect.
+    // Keep that hidden viewer Earth-only. The full solar system is created
+    // only for the real authenticated OrbitWatch App.
+    if (typeof onCelestialSelectRef.current === "function") {
+      solarSystemLayerRef.current = createSolarSystemLayer(
+        viewer,
+        {
+          hideEarthDetail: () => {
+            const googleTiles =
+              googleTilesRef.current;
+
+            if (googleTiles) {
+              googleTiles.show = false;
+              googleTiles.trimLoadedTiles?.();
+            }
+
+            viewer.scene.globe.show = false;
+
+            for (
+              const data
+              of entityMapRef.current.values()
+            ) {
+              data.entity.show = false;
+
+              if (data.orbitEntity) {
+                data.orbitEntity.show = false;
+              }
+            }
+
+            if (
+              satelliteModelDetailRef.current
+            ) {
+              satelliteModelDetailRef.current.show = false;
+            }
+          },
+
+          showEarthDetail: () => {
+            viewer.scene.globe.show = true;
+
+            const googleTiles =
+              googleTilesRef.current;
+
+            if (googleTiles) {
+              googleTiles.show = true;
+            }
+
+            for (
+              const [noradId, data]
+              of entityMapRef.current.entries()
+            ) {
+              data.entity.show = true;
+
+              if (data.orbitEntity) {
+                data.orbitEntity.show =
+                  shownOrbitIdsRef.current.has(
+                    noradId,
+                  );
+              }
+            }
+
+            if (
+              satelliteModelDetailRef.current
+            ) {
+              satelliteModelDetailRef.current.show = true;
+            }
+
+            applyBaseMap(
+              viewer,
+              googleTilesRef.current,
+              googleReadyRef.current,
+              desiredMap(
+                modeRef.current,
+                sceneModeRef.current,
+                mapStyleRef.current,
+              ),
+              mapRequestRef,
+            );
+          },
+        },
+      );
+      solarSystemLayerRef.current?.setSelected(
+        selectedCelestialBody || "earth",
+      );
+    }
+
     const handler = new ScreenSpaceEventHandler(viewer.scene.canvas);
     handler.setInputAction((movement) => {
       const picked = viewer.scene.pick(movement.position);
-      const noradId = picked?.id?.properties?.noradId?.getValue?.();
-      if (noradId) onObjectSelectRef.current?.(Number(noradId));
+
+      const celestialId =
+        picked?.id?.properties?.celestialId?.getValue?.();
+
+      if (celestialId) {
+        const bodyId = String(celestialId);
+        solarSystemLayerRef.current?.setSelected(bodyId);
+        onCelestialSelectRef.current?.(bodyId);
+        return;
+      }
+
+      const noradId =
+        picked?.id?.properties?.noradId?.getValue?.();
+
+      if (noradId) {
+        onObjectSelectRef.current?.(Number(noradId));
+      }
     }, ScreenSpaceEventType.LEFT_CLICK);
+
+    handler.setInputAction((movement) => {
+      const picked = viewer.scene.pick(movement.position);
+
+      const celestialId =
+        picked?.id?.properties?.celestialId?.getValue?.();
+
+      if (!celestialId) return;
+
+      const bodyId = String(celestialId);
+      onCelestialSelectRef.current?.(bodyId);
+      solarSystemLayerRef.current?.setSelected(bodyId);
+
+      // Double click follows the real moving body in this same Cesium viewer.
+      solarSystemLayerRef.current?.follow(bodyId);
+    }, ScreenSpaceEventType.LEFT_DOUBLE_CLICK);
 
     handler.setInputAction((movement) => {
       const picked = viewer.scene.pick(movement.endPosition);
@@ -613,16 +888,27 @@ export default function OrbitGlobe({
       destroyed = true;
       removePreRender();
       handler.destroy();
-      viewer.destroy();
-      viewerRef.current = null;
-      googleTilesRef.current = null;
-      googleReadyRef.current = false;
+
+      const solarLayer = solarSystemLayerRef.current;
+      solarSystemLayerRef.current = null;
+      solarLayer?.destroy();
+
+      satelliteModelDetailRef.current = null;
       entityMapRef.current.clear();
       placeEntityIdsRef.current = [];
       disasterEntityIdsRef.current = [];
+      googleTilesRef.current = null;
+      googleReadyRef.current = false;
       followStateRef.current = null;
+
+      viewer.destroy();
+      viewerRef.current = null;
     };
   }, [startupCountry]);
+
+  useEffect(() => {
+    solarSystemLayerRef.current?.setSelected(selectedCelestialBody);
+  }, [selectedCelestialBody]);
 
   useEffect(() => {
     const viewer = viewerRef.current;
@@ -630,10 +916,14 @@ export default function OrbitGlobe({
     if (mode === "time") {
       viewer.clock.currentTime = JulianDate.fromDate(selectedTime);
       viewer.clock.shouldAnimate = false;
+      viewer.scene.maximumRenderTimeChange = Number.POSITIVE_INFINITY;
     } else {
       viewer.clock.currentTime = JulianDate.now();
       viewer.clock.shouldAnimate = mode === "live";
+      viewer.scene.maximumRenderTimeChange =
+        mode === "live" ? 1 / ORBITWATCH_MEMORY_PROFILE.targetFrameRate : Number.POSITIVE_INFINITY;
     }
+    viewer.scene.requestRender();
   }, [selectedTime, mode]);
 
   useEffect(() => {
@@ -757,6 +1047,7 @@ export default function OrbitGlobe({
             // backend request is in flight, then only its position property is
             // swapped. No remove/re-add flash and no availability gap.
             existing.entity.position = sampled;
+            existing.entity.orientation = new VelocityOrientationProperty(sampled);
             existing.entity.name = object?.name || trajectory.name;
             existing.trajectory = trajectory;
             existing.period = period;
@@ -766,6 +1057,7 @@ export default function OrbitGlobe({
           const entity = viewer.entities.add({
             name: object?.name || trajectory.name,
             position: sampled,
+            orientation: new VelocityOrientationProperty(sampled),
             properties: { noradId },
             point: {
               pixelSize: selected ? 8 : 4.5,
@@ -780,7 +1072,7 @@ export default function OrbitGlobe({
               image: satelliteIconDataUri(colorCss, object?.category),
               width: selected ? 35 : 27,
               height: selected ? 35 : 27,
-              distanceDisplayCondition: new DistanceDisplayCondition(0, 9_000_000),
+              distanceDisplayCondition: new DistanceDisplayCondition(4_300_000, 10_500_000),
               scaleByDistance: new NearFarScalar(25_000, 1.35, 8_500_000, 0.55),
             },
             label: {
@@ -838,6 +1130,137 @@ export default function OrbitGlobe({
       }
     }
   }, [selectedId]);
+  useEffect(() => {
+    const viewer = viewerRef.current;
+
+    if (!viewer) {
+      return undefined;
+    }
+
+    const previous =
+      satelliteModelDetailRef.current;
+
+    satelliteModelDetailRef.current = null;
+
+    if (
+      previous &&
+      !viewer.isDestroyed()
+    ) {
+      viewer.entities.remove(previous);
+    }
+
+    if (!selectedId) {
+      return undefined;
+    }
+
+    const base =
+      entityMapRef.current.get(
+        selectedId,
+      );
+
+    if (!base) {
+      return undefined;
+    }
+
+    let cancelled = false;
+    const controller =
+      new AbortController();
+
+    async function loadSelectedSatelliteModel() {
+      const object =
+        getSpaceObject(selectedId);
+
+      const url =
+        getSatelliteModelUrl(object);
+      try {
+        if (
+          cancelled ||
+          controller.signal.aborted ||
+          viewer.isDestroyed()
+        ) {
+          return;
+        }
+
+        const current =
+          entityMapRef.current.get(
+            selectedId,
+          );
+
+        if (!current) return;
+
+        const detail =
+          viewer.entities.add({
+            name:
+              `${object?.name || selectedId} detail model`,
+            position:
+              current.entity.position,
+            orientation:
+              new VelocityOrientationProperty(
+                current.entity.position,
+              ),
+            properties: {
+              noradId: selectedId,
+            },
+            model: {
+              uri: url,
+              minimumPixelSize: 34,
+              maximumScale: 4200,
+              distanceDisplayCondition:
+                new DistanceDisplayCondition(
+                  0,
+                  4_800_000,
+                ),
+              silhouetteColor:
+                (
+                  CATEGORY_COLORS[
+                    object?.category
+                  ] || Color.WHITE
+                ).withAlpha(0.82),
+              silhouetteSize: 1.1,
+              runAnimations: false,
+            },
+          });
+
+        satelliteModelDetailRef.current =
+          detail;
+      } catch (error) {
+        if (
+          error?.name !== "AbortError"
+        ) {
+          console.warn(
+            "OrbitWatch: selected satellite model could not load",
+            error,
+          );
+        }
+      }
+    }
+
+    loadSelectedSatelliteModel();
+
+    return () => {
+      cancelled = true;
+      controller.abort();
+
+      const detail =
+        satelliteModelDetailRef.current;
+
+      if (
+        detail &&
+        !viewer.isDestroyed()
+      ) {
+        viewer.entities.remove(detail);
+      }
+
+      if (
+        satelliteModelDetailRef.current ===
+        detail
+      ) {
+        satelliteModelDetailRef.current =
+          null;
+      }
+    };
+  }, [selectedId]);
+
 
   useEffect(() => {
     const viewer = viewerRef.current;

@@ -1,3 +1,4 @@
+import { AnimatePresence, motion } from "motion/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Aperture } from "lucide-react";
 import ModeRail from "./components/ModeRail.jsx";
@@ -14,6 +15,7 @@ import MapSettings from "./components/MapSettings.jsx";
 import SpatialSurface from "./components/SpatialSurface.jsx";
 import CinematicStage from "./components/CinematicStage.jsx";
 import ProfilePanel from "./components/ProfilePanel.jsx";
+import SystemMenu from "./components/SystemMenu.jsx";
 import { fetchSatelliteCatalog, fetchSatellitePosition } from "./services/orbitwatchApi.js";
 import { getSpaceObject, SPACE_OBJECTS } from "./data/spaceObjects.js";
 
@@ -36,6 +38,8 @@ export default function App({ currentUser, onLogout, hudActive = true, onSceneRe
   const [explorerOpen, setExplorerOpen] = useState(false);
   const [mapSettingsOpen, setMapSettingsOpen] = useState(false);
   const [cameraMenuOpen, setCameraMenuOpen] = useState(false);
+  const [systemMenuOpen, setSystemMenuOpen] = useState(false);
+  const [selectedCelestialBody, setSelectedCelestialBody] = useState("earth");
   const [profileOpen, setProfileOpen] = useState(false);
   const [limitMessage, setLimitMessage] = useState("");
   const [telemetry, setTelemetry] = useState(null);
@@ -88,6 +92,7 @@ export default function App({ currentUser, onLogout, hudActive = true, onSceneRe
     setExplorerOpen(false);
     setMapSettingsOpen(false);
     setCameraMenuOpen(false);
+    setSystemMenuOpen(false);
     setProfileOpen(false);
   }, []);
 
@@ -267,6 +272,7 @@ export default function App({ currentUser, onLogout, hudActive = true, onSceneRe
   const changeMode = useCallback((nextMode) => {
     releaseCamera();
     closeFloatingPanels();
+    setSelectedCelestialBody("earth");
     setMode(nextMode);
     setLimitMessage("");
 
@@ -310,6 +316,25 @@ export default function App({ currentUser, onLogout, hudActive = true, onSceneRe
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [mode, changeMode, closeFloatingPanels, releaseCamera]);
+
+  function handleCelestialPick(bodyId) {
+    setSelectedCelestialBody(bodyId || "earth");
+  }
+
+  function selectCelestialBody(bodyId) {
+    const nextBody = bodyId || "earth";
+
+    releaseCamera();
+    setSelectedCelestialBody(nextBody);
+    setSystemMenuOpen(false);
+    setExplorerOpen(false);
+    setMapSettingsOpen(false);
+    setCameraMenuOpen(false);
+
+    window.requestAnimationFrame(() => {
+      globeRef.current?.focusCelestial?.(nextBody);
+    });
+  }
 
   function focusSelected() {
     const started = globeRef.current?.focusSelected();
@@ -370,6 +395,8 @@ export default function App({ currentUser, onLogout, hudActive = true, onSceneRe
         selectedTime={selectedTime}
         mode={mode}
         startupCountry={startupCountry}
+        selectedCelestialBody={selectedCelestialBody}
+        onCelestialSelect={handleCelestialPick}
         refreshNonce={refreshNonce}
         mapStyle={mapStyle}
         labelsEnabled={labelsEnabled}
@@ -381,7 +408,9 @@ export default function App({ currentUser, onLogout, hudActive = true, onSceneRe
         globeRef={globeRef}
       />
 
-      <div className="space-vignette" />
+      
+      
+<div className="space-vignette" />
       <div className="coordinate-grid" />
       {/* CINEMATIC HUD STAGES */}
       <CinematicStage cycle={hudCycle} active={hudActive} side="top" delay={0} loaderAnchor="top" zIndex={30}>
@@ -420,9 +449,26 @@ export default function App({ currentUser, onLogout, hudActive = true, onSceneRe
         <SceneDock
         mode={mode}
         mapOpen={mapSettingsOpen}
-        onToggleMap={() => { setMapSettingsOpen((value) => !value); setExplorerOpen(false); setCameraMenuOpen(false); }}
+        onToggleMap={() => {
+          setMapSettingsOpen((value) => !value);
+          setExplorerOpen(false);
+          setCameraMenuOpen(false);
+          setSystemMenuOpen(false);
+        }}
         cameraOpen={cameraMenuOpen}
-        onToggleCamera={() => { setCameraMenuOpen((value) => !value); setMapSettingsOpen(false); setExplorerOpen(false); }}
+        onToggleCamera={() => {
+          setCameraMenuOpen((value) => !value);
+          setMapSettingsOpen(false);
+          setExplorerOpen(false);
+          setSystemMenuOpen(false);
+        }}
+        systemOpen={systemMenuOpen}
+        onToggleSystem={() => {
+          setSystemMenuOpen((value) => !value);
+          setMapSettingsOpen(false);
+          setCameraMenuOpen(false);
+          setExplorerOpen(false);
+        }}
       />
       </CinematicStage>
 
@@ -433,7 +479,14 @@ export default function App({ currentUser, onLogout, hudActive = true, onSceneRe
         onClose={() => setCameraMenuOpen(false)}
       />
 
-      <MapSettings
+      
+      <SystemMenu
+        open={systemMenuOpen}
+        activeBodyId={selectedCelestialBody}
+        onSelectBody={selectCelestialBody}
+        onClose={() => setSystemMenuOpen(false)}
+      />
+<MapSettings
         open={mapSettingsOpen && mode !== "disaster"}
         mapStyle={mapStyle}
         onMapStyleChange={(nextMap) => { releaseCamera(); setMapStyle(nextMap); }}
@@ -442,7 +495,7 @@ export default function App({ currentUser, onLogout, hudActive = true, onSceneRe
         onClose={() => setMapSettingsOpen(false)}
       />
 
-      {!explorerOpen && !mapSettingsOpen && !cameraMenuOpen && mode === "live" && (
+      {!explorerOpen && !mapSettingsOpen && !cameraMenuOpen && !systemMenuOpen && mode === "live" && (
         <CinematicStage cycle={hudCycle} active={hudActive} side="bottom" delay={1.36} loaderAnchor="bottom" zIndex={32}>
           <LiveDock
           selectedObject={selectedObject}
@@ -455,11 +508,11 @@ export default function App({ currentUser, onLogout, hudActive = true, onSceneRe
         </CinematicStage>
       )}
 
-      {!explorerOpen && !mapSettingsOpen && !cameraMenuOpen && mode === "time" && (
+      {!explorerOpen && !mapSettingsOpen && !cameraMenuOpen && !systemMenuOpen && mode === "time" && (
         <TimeDock selectedTime={selectedTime} onTimeChange={setSelectedTime} onReturnLive={() => setSelectedTime(new Date())} trackedCount={timeTrackedIds.length} maxTracked={TIME_OBJECT_LIMIT} />
       )}
 
-      {!explorerOpen && !mapSettingsOpen && !cameraMenuOpen && mode === "disaster" && (
+      {!explorerOpen && !mapSettingsOpen && !cameraMenuOpen && !systemMenuOpen && mode === "disaster" && (
         <DisasterDock activeLayers={disasterLayers} onLayersChange={setDisasterLayers} sceneMode={sceneMode} onSceneModeChange={changeSceneMode} />
       )}
 
@@ -475,7 +528,7 @@ export default function App({ currentUser, onLogout, hudActive = true, onSceneRe
         limitMessage={limitMessage}
       />
 
-      {!explorerOpen && !mapSettingsOpen && !cameraMenuOpen && mode !== "disaster" && (
+      {!explorerOpen && !mapSettingsOpen && !cameraMenuOpen && !systemMenuOpen && mode !== "disaster" && (
         <CinematicStage cycle={hudCycle} active={hudActive} side="right" delay={1.70} loaderAnchor="right" zIndex={33}>
           <InspectorPanel
           object={selectedObject}

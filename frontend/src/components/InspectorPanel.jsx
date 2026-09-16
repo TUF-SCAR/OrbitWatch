@@ -1,5 +1,6 @@
 import { BookOpen, Crosshair, Eye, EyeOff, Radio, RotateCcw, X } from "lucide-react";
 import SpatialSurface from "./SpatialSurface.jsx";
+import SatelliteModelViewer from "./SatelliteModelViewer.jsx";
 import { formatAltitude, formatCoordinate, formatUtcTime } from "../utils/spaceFormatters.js";
 import { getObjectReferenceUrl } from "../data/objectReferences.js";
 
@@ -33,7 +34,9 @@ export default function InspectorPanel({
         <span>{object.category}</span><span>NORAD {object.noradId}</span>
       </div>
 
-      <div className="telemetry-grid" data-depth="6">
+      
+      <SatelliteModelViewer object={object} />
+<div className="telemetry-grid" data-depth="6">
         <div className="telemetry-primary"><small>ALTITUDE</small><strong>{formatAltitude(telemetry?.altitude_km)}</strong></div>
         <div><small>LATITUDE</small><strong>{formatCoordinate(telemetry?.latitude, "N", "S")}</strong></div>
         <div><small>LONGITUDE</small><strong>{formatCoordinate(telemetry?.longitude, "E", "W")}</strong></div>

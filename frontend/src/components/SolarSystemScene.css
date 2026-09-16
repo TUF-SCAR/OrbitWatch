@@ -1,5 +1,5 @@
 .solar-auth-scene,
-.solar-auth-scene__cesium {
+.solar-auth-scene__canvas {
   position: absolute;
   inset: 0;
 }
@@ -13,30 +13,27 @@
     #01040a;
 }
 
-.solar-auth-scene__cesium,
-.solar-auth-scene__cesium .cesium-viewer,
-.solar-auth-scene__cesium .cesium-widget,
-.solar-auth-scene__cesium canvas {
-  width: 100% !important;
-  height: 100% !important;
-}
-
-.solar-auth-scene .cesium-viewer-bottom,
-.solar-auth-scene .cesium-viewer-toolbar {
-  display: none !important;
-}
-
-.solar-auth-scene__cesium {
+.solar-auth-scene__canvas {
+  width: 100%;
+  height: 100%;
+  display: block;
   opacity: 0.97;
   filter: saturate(1.02) brightness(0.94);
+  touch-action: none;
+  cursor: grab;
   transition:
     opacity 600ms ease,
     filter 600ms ease;
 }
 
-.solar-auth-scene.is-launching .solar-auth-scene__cesium {
+.solar-auth-scene__canvas:active {
+  cursor: grabbing;
+}
+
+.solar-auth-scene.is-launching .solar-auth-scene__canvas {
   opacity: 1;
   filter: saturate(1.08) brightness(0.99);
+  cursor: default;
 }
 
 .solar-auth-scene__vignette {

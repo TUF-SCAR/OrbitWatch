@@ -1504,3 +1504,7 @@ a.secondary-action { text-decoration: none; }
 .brand-lockup--profile{pointer-events:none!important;cursor:default!important}
 .profile-panel{left:auto!important;right:18px!important;top:72px!important;transform-origin:right top!important}
 @media(max-width:700px){.profile-panel{left:auto!important;right:10px!important;width:min(360px,calc(100vw - 20px))!important}}
+
+
+/* Planet view overlays the always-mounted Live Earth viewer. */
+.celestial-view-layer { position: absolute; inset: 0; z-index: 2; pointer-events: auto; }

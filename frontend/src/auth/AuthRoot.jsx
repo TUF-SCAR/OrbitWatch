@@ -11,7 +11,6 @@ import {
 import App from "../App.jsx";
 import AuthPage from "../pages/AuthPage.jsx";
 import BootSequence from "../components/BootSequence.jsx";
-import LiveEarthWarmup from "../components/LiveEarthWarmup.jsx";
 import {
   clearAccessToken,
   fetchCurrentUser,
@@ -25,8 +24,7 @@ import {
 import "./AuthRoot.css";
 
 const INTRO_MINIMUM_MS = 6400;
-const GUEST_LIVE_WARM_MS = 900;
-const GUEST_AUTH_WARM_MS = 850;
+const GUEST_BOOT_MINIMUM_MS = 1750;
 const TOKEN_BOOT_MINIMUM_MS = 1250;
 
 function pageFromPath() {
@@ -60,8 +58,7 @@ export default function AuthRoot() {
 
   const [bootVisible, setBootVisible] = useState(true);
   const [bootMinimumDone, setBootMinimumDone] = useState(false);
-  const [liveEarthWarmupVisible, setLiveEarthWarmupVisible] = useState(!initialToken);
-  const [authSceneMounted, setAuthSceneMounted] = useState(Boolean(initialToken));
+  const [authSceneMounted, setAuthSceneMounted] = useState(true);
 
   const [launching, setLaunching] = useState(false);
   const [introMinimumDone, setIntroMinimumDone] = useState(false);
@@ -113,7 +110,6 @@ export default function AuthRoot() {
     setHudActive(false);
     setBootVisible(false);
     setBootMinimumDone(true);
-    setLiveEarthWarmupVisible(false);
     setAuthSceneMounted(true);
     setAuthPage("login");
     replacePath("/login");
@@ -153,15 +149,8 @@ export default function AuthRoot() {
     } else {
       timers.push(
         window.setTimeout(() => {
-          setLiveEarthWarmupVisible(false);
-          setAuthSceneMounted(true);
-        }, GUEST_LIVE_WARM_MS),
-      );
-
-      timers.push(
-        window.setTimeout(() => {
           setBootMinimumDone(true);
-        }, GUEST_LIVE_WARM_MS + GUEST_AUTH_WARM_MS),
+        }, GUEST_BOOT_MINIMUM_MS),
       );
     }
 
@@ -194,7 +183,6 @@ export default function AuthRoot() {
         setCurrentUser(null);
         setSessionState("guest");
         setAuthPage("login");
-        setLiveEarthWarmupVisible(false);
         setAuthSceneMounted(true);
         if (bootMinimumDone) setBootVisible(false);
         replacePath("/login");
@@ -312,9 +300,6 @@ export default function AuthRoot() {
 
   return (
     <main className="auth-root-shell">
-      {liveEarthWarmupVisible && bootVisible ? (
-        <LiveEarthWarmup />
-      ) : null}
 
       {appMounted ? (
         <motion.div

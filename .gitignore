@@ -3,6 +3,7 @@ __pycache__/
 *.pyc
 *.pyo
 nothing.py
+.orbitwatch-backups/
 
 # Logs
 logs

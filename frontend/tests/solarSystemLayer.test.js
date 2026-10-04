@@ -1,9 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { setTimeout as schedule, clearTimeout as cancel } from "node:timers";
-import { Cartesian3, EntityCollection, Event, JulianDate, Matrix3, Matrix4, Model, ScreenSpaceEventHandler, ScreenSpaceEventType, Transforms } from "cesium";
-import { bodyPositionInertial } from "../src/data/solarSystemEphemeris.js";
-import { createSolarSystemLayer } from "../src/services/solarSystemLayer.js";
+import { Cartesian3, EntityCollection, Event, JulianDate, Material, Matrix3, Matrix4, Model, PolylineCollection, ScreenSpaceEventHandler, ScreenSpaceEventType, Transforms } from "cesium";
+import { AU_METERS, bodyPositionFixed, bodyPositionInertial } from "../src/data/solarSystemEphemeris.js";
+import { SOLAR_OVERVIEW_IDS, solarSystemScales } from "../src/services/solarSystemLod.js";
+import { createSolarSystemLayer, pickSolarSystemObject } from "../src/services/solarSystemLayer.js";
 
 function harness(context) {
   const listeners = new Map(), actions = new Map(), timers = new Set();
@@ -24,6 +25,7 @@ function harness(context) {
   context.mock.method(Transforms, "computeIcrfToFixedMatrix", (time, result) => Matrix3.fromRotationZ(0.7 - JulianDate.secondsDifference(time, start) * 2 * Math.PI / 86164, result));
   const primitives = new Set(), models = [];
   let failModel = false, failFlight = false;
+  context.mock.method(Material, "fromType", (_type, uniforms) => ({ uniforms: { ...uniforms }, destroy() {}, isDestroyed: () => false }));
   context.mock.method(Model, "fromGltfAsync", async (options) => {
     if (failModel) throw new Error("Synthetic model failure");
     const model = { ...options, readyEvent: new Event(), errorEvent: new Event(), ready: false, destroyed: false,
@@ -33,20 +35,35 @@ function harness(context) {
     return model;
   });
   const camera = {
+    frustum: { far: 1e10 },
     positionWC: new Cartesian3(0, 0, 30000000), directionWC: new Cartesian3(0, 0, -1), upWC: Cartesian3.clone(Cartesian3.UNIT_Y),
     right: Cartesian3.clone(Cartesian3.UNIT_X), up: Cartesian3.clone(Cartesian3.UNIT_Y), transform: Matrix4.clone(Matrix4.IDENTITY), offset: null,
-    lookAtTransform(transform, offset) { this.transform = Matrix4.clone(transform); if (offset) this.offset = { ...offset }; },
+    lookAtTransform(transform, offset) { this.transform = Matrix4.clone(transform); if (offset) { this.offset = { ...offset }; this.positionWC = Matrix4.multiplyByPoint(transform, new Cartesian3(offset.range * Math.cos(offset.pitch) * Math.sin(offset.heading), offset.range * Math.cos(offset.pitch) * Math.cos(offset.heading), -offset.range * Math.sin(offset.pitch)), new Cartesian3()); } },
     cancelFlight() {}, setView() {},
-    flyToBoundingSphere(_sphere, options) { if (failFlight) throw new Error("Synthetic flight failure"); queueMicrotask(options.complete); },
+    flyToBoundingSphere(sphere, options) { if (failFlight) throw new Error("Synthetic flight failure"); this.positionWC = Cartesian3.add(sphere.center, new Cartesian3(0, 0, options.offset.range), new Cartesian3()); queueMicrotask(options.complete); },
   };
   const controller = { minimumZoomDistance: 10, maximumZoomDistance: 1e12, enableInputs: true };
   const viewer = { entities: new EntityCollection(), camera, clock: { currentTime: start, onTick: new Event(), shouldAnimate: false }, isDestroyed: () => false,
     scene: { canvas: target, screenSpaceCameraController: controller, requestRender() {},
-      primitives: { add(model) { primitives.add(model); queueMicrotask(() => { model.ready = true; model.readyEvent.raiseEvent(); }); }, remove(model) { primitives.delete(model); model.destroy(); } },
+      primitives: { add(model) { primitives.add(model); if (model.readyEvent) queueMicrotask(() => { model.ready = true; model.readyEvent.raiseEvent(); }); return model; }, remove(model) { primitives.delete(model); model.destroy(); } },
     },
   };
   return { viewer, actions, primitives, models, listeners, timers, start, dispose, failModels: () => { failModel = true; }, failFlights: () => { failFlight = true; } };
 }
+
+test("wide marker picking prioritizes a planet under an orbit line while Earth keeps its native pick", () => {
+  const line = { id: { polyline: {} } }, planet = { id: { properties: { celestialId: "jupiter" } } };
+  const satellite = { id: { properties: { noradId: 25544 } } }, position = { x: 100, y: 100 };
+  let native = 0, drill = 0;
+  const scene = { pick(at) { assert.equal(at, position); native++; return satellite; },
+    drillPick(at, limit) { assert.equal(at, position); assert.equal(limit, 12); drill++; return [line, planet]; } };
+  assert.equal(pickSolarSystemObject(scene, position, false), satellite);
+  assert.equal(pickSolarSystemObject(scene, position, true), planet);
+  assert.equal(native, 1);
+  assert.equal(drill, 1);
+  scene.drillPick = () => [];
+  assert.equal(pickSolarSystemObject(scene, position, true), undefined);
+});
 
 test("local layer synchronizes family positions, controls, models and orbit visibility; Earth and cleanup survive", async (context) => {
   const fixture = harness(context);
@@ -61,7 +78,7 @@ test("local layer synchronizes family positions, controls, models and orbit visi
     viewer.clock.currentTime = start;
     assert.equal((await layer.focus(focus)).degraded, false);
     const arrival = Matrix4.clone(viewer.camera.transform);
-    const initialModel = Matrix4.clone([...fixture.primitives].find((model) => model.url.endsWith(`/${focus}.glb`)).modelMatrix);
+    const initialModel = Matrix4.clone([...fixture.primitives].find((model) => model.url?.endsWith(`/${focus}.glb`)).modelMatrix);
     // Sample a sub-second render time, without refreshing throttled positions.
     viewer.clock.currentTime = JulianDate.addSeconds(start, 0.5, new JulianDate());
     viewer.clock.onTick.raiseEvent();
@@ -73,12 +90,12 @@ test("local layer synchronizes family positions, controls, models and orbit visi
     const expected = Matrix3.multiplyByVector(Matrix3.fromRotationZ(0.7), relative, new Cartesian3());
     assert.ok(Cartesian3.distance(actual, expected) < 0.01, `${focus}: sibling evaluated at render time`);
     assert.ok(Matrix3.equalsEpsilon(initialRotation, Matrix3.IDENTITY, 1e-14), "arrival axes preserve flight framing");
-    const model = [...fixture.primitives].find((item) => item.url.endsWith(`/${focus}.glb`));
+    const model = [...fixture.primitives].find((item) => item.url?.endsWith(`/${focus}.glb`));
     const modelLocal = Matrix4.multiply(inverse, model.modelMatrix, new Matrix4());
     const initialLocal = Matrix4.multiply(Matrix4.inverseTransformation(arrival, new Matrix4()), initialModel, new Matrix4());
     assert.ok(Matrix4.equalsEpsilon(modelLocal, initialLocal, 0.01), `${focus}: model/rings do not spin with Earth`);
     assert.ok(Matrix3.equalsEpsilon(Matrix4.getMatrix3(modelLocal, new Matrix3()), Matrix4.getMatrix3(initialLocal, new Matrix3()), 1e-12), `${focus}: surface orientation is inertial`);
-    const orbit = viewer.entities.values.find((entity) => entity.polyline);
+    const orbit = viewer.entities.getById(`celestial-orbit-${focus}`);
     assert.equal(orbit.show, ["phobos", "europa", "titan"].includes(focus));
     assert.equal(orbit.polyline.positions.getValue(viewer.clock.currentTime).length, 97, "hidden solar orbit data retained");
     actions.get(ScreenSpaceEventType.LEFT_DOWN)();
@@ -101,15 +118,16 @@ test("local layer synchronizes family positions, controls, models and orbit visi
   }
   for (const focus of ["eris", "bennu"]) {
     await layer.focus(focus);
-    assert.equal(viewer.entities.values.find((entity) => entity.polyline).show, false);
+    assert.equal(viewer.entities.getById(`celestial-orbit-${focus}`).show, false);
   }
   await layer.focus("earth");
-  assert.equal(fixture.primitives.size, 0);
+  assert.equal([...fixture.primitives].filter((item) => item.url).length, 0);
   assert.equal(viewer.scene.screenSpaceCameraController.enableInputs, true);
   assert.ok(Matrix4.equals(viewer.camera.transform, Matrix4.IDENTITY));
-  assert.equal(viewer.entities.values.filter((entity) => entity.polyline).length, 0);
+  assert.ok(viewer.entities.values.filter((entity) => entity.polyline).every((entity) => !entity.show || !entity.polyline.show.getValue()), "all solar/local paths hidden at close Earth");
   layer.destroy();
   layer.destroy();
+  assert.equal(fixture.primitives.size, 0, "all orbit collections and models released");
   assert.equal(viewer.entities.values.length, 0);
   assert.equal(viewer.clock.onTick.numberOfListeners, 0);
   assert.equal(fixture.timers.size, 0);
@@ -130,5 +148,96 @@ test("failed models retain usable local fallback and failed travel restores its 
   assert.ok(Matrix4.equalsEpsilon(fixture.viewer.camera.transform, before, 0.001));
   assert.equal(fixture.viewer.entities.getById("celestial-deimos").position.isConstant, false);
   assert.equal(fixture.viewer.entities.getById("celestial-phobos").ellipsoid.show.getValue(), true);
-  assert.equal(fixture.viewer.entities.values.find((entity) => entity.polyline).show, true);
+  assert.equal(fixture.viewer.entities.getById("celestial-orbit-phobos").show, true);
+});
+
+test("continuous zoom reuses bounded solar paths and markers without loading distant models", async (context) => {
+  const fixture = harness(context);
+  const { viewer, actions, start } = fixture;
+  let live = true;
+  const layer = createSolarSystemLayer(viewer, { isLive: () => live });
+  context.after(() => { layer.destroy(); fixture.dispose(); });
+  const orbit = (id) => viewer.entities.getById(`celestial-orbit-${id}`);
+  const zoom = (range) => { actions.get(ScreenSpaceEventType.WHEEL)(-Math.log(range / viewer.camera.offset.range) / 0.0015); layer.updatePositions(true); };
+  for (const focus of ["mars", "jupiter", "moon", "europa"]) {
+    await layer.focus(focus);
+    const scales = solarSystemScales(focus), initialModels = fixture.models.length;
+    const modelSet = [...fixture.primitives].filter((item) => item.url);
+    assert.equal(orbit(scales.parent)?.show ?? false, false, `${focus}: no close heliocentric line`);
+    zoom(scales.localEnd);
+    const moon = scales.family.find((id) => id !== focus && ["phobos", "deimos", "moon", "io", "europa", "ganymede", "callisto"].includes(id));
+    if (moon) assert.equal(orbit(moon).show, true, `${focus}: local moon paths`);
+    zoom(scales.solarEnd);
+    assert.equal(orbit(scales.parent).show, true);
+    zoom(100 * AU_METERS);
+    assert.equal(layer.isWide(), true);
+    assert.ok(viewer.camera.frustum.far > 100 * AU_METERS, "AU context remains inside extended frustum");
+    for (const id of SOLAR_OVERVIEW_IDS) {
+      const entity = viewer.entities.getById(`celestial-${id}`);
+      assert.equal(entity.show, true, id);
+      assert.equal(entity.point.show.getValue(), true, id);
+      assert.equal(entity.label.show.getValue(), true, id);
+      assert.ok(Cartesian3.distance(entity.position.getValue(viewer.clock.currentTime), bodyPositionFixed(id, viewer.clock.currentTime)) < 0.001);
+      if (id !== "sun") {
+        assert.equal(orbit(id).show, true, id);
+        assert.equal(orbit(id).polyline.positions.getValue(viewer.clock.currentTime).length, 97);
+      }
+    }
+    assert.equal(viewer.entities.getById("celestial-ceres").show, false);
+    assert.equal(fixture.models.length, initialModels, "overview/selection never loads more GLBs");
+    const entities = [...viewer.entities.values];
+    layer.selectMarker("saturn");
+    assert.equal(viewer.entities.getById("celestial-saturn").point.outlineWidth.getValue(), 2);
+    assert.equal(fixture.models.length, initialModels, "selecting a marker does not travel");
+    assert.deepEqual([...fixture.primitives].filter((item) => item.url), modelSet);
+    const points = orbit("mars").polyline.positions.getValue(start);
+    const groups = [...fixture.primitives].filter((item) => item instanceof PolylineCollection);
+    assert.ok(groups.length <= 2, "only solar and current parent system own path buffers");
+    const buffers = groups.flatMap((group) => Array.from({ length: group.length }, (_, i) => group.get(i).positions));
+    for (let i = 0; i < 3; i++) {
+      zoom(scales.radius * 5.5);
+      assert.equal(layer.isWide(), false);
+      assert.equal(orbit(scales.parent).show, false);
+      zoom(100 * AU_METERS);
+      assert.equal(orbit("mars").polyline.positions.getValue(start), points, "camera zoom keeps sampled geometry/arrays");
+    }
+    groups.flatMap((group) => Array.from({ length: group.length }, (_, i) => group.get(i).positions)).forEach((buffer, index) => assert.equal(buffer, buffers[index], "zoom never replaces GPU path vertices"));
+    assert.deepEqual(viewer.entities.values, entities, "camera movements reuse entities");
+    // Solar paths remain stable in the local inertial frame between samples.
+    zoom(scales.solarEnd);
+    const sample = orbit(scales.parent).polyline.positions.getValue(start)[12];
+    const before = Cartesian3.subtract(sample, bodyPositionFixed("sun", start), new Cartesian3());
+    const later = JulianDate.addSeconds(start, 0.5, new JulianDate());
+    const after = Cartesian3.subtract(orbit(scales.parent).polyline.positions.getValue(later)[12], bodyPositionFixed("sun", later), new Cartesian3());
+    const expected = Matrix3.multiplyByVector(Matrix3.fromRotationZ(-0.5 * 2 * Math.PI / 86164), before, new Cartesian3());
+    assert.ok(Cartesian3.distance(after, expected) < 0.01, "same-time path transform cancels Earth's rotation");
+    viewer.clock.currentTime = later;
+    layer.updatePositions();
+    for (const group of groups) for (let i = 0; i < group.length; i++) {
+      const line = group.get(i);
+      if (!line.show) continue;
+      const world = Matrix4.multiplyByPoint(group.modelMatrix, line.positions[12], new Cartesian3());
+      const data = line.id.polyline.positions.getValue(later)[12];
+      assert.ok(Cartesian3.distance(world, data) < 0.01, "GPU parent/inertial transform agrees with same-time world data");
+    }
+    viewer.clock.currentTime = start;
+  }
+  await layer.focus("earth");
+  assert.equal([...fixture.primitives].filter((item) => item.url).length, 0);
+  assert.equal(viewer.scene.screenSpaceCameraController.enableInputs, true);
+  viewer.camera.positionWC = new Cartesian3(0, 0, 30e6);
+  layer.updatePositions(true);
+  assert.equal(orbit("earth").show, false);
+  assert.equal(viewer.camera.frustum.far, 1e10, "native close Earth frustum is restored");
+  viewer.camera.positionWC = new Cartesian3(0, 0, 100 * AU_METERS);
+  layer.updatePositions(true);
+  assert.equal(orbit("earth").show, true, "native Earth camera reaches same context");
+  live = false;
+  layer.updatePositions(true);
+  assert.ok(viewer.entities.values.every((entity) => !entity.show), "context belongs only to Live Mode");
+  layer.destroy();
+  assert.equal(fixture.primitives.size, 0, "all orbit collections and models released");
+  assert.equal(viewer.entities.values.length, 0);
+  assert.equal(viewer.clock.onTick.numberOfListeners, 0);
+  assert.equal(viewer.camera.frustum.far, 1e10, "cleanup restores original frustum");
 });

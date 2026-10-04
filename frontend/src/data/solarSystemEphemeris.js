@@ -264,7 +264,7 @@ function vectorAtMeanAnomaly(id, meanAnomaly, time) {
 
 export function sampleBodyOrbitFixed(id, time, steps = 128) {
   const body = CELESTIAL_BODIES[id];
-  if (!body || id === "earth") return [];
+  if (!body) return [];
 
   const earth = planetHeliocentric("earth", time);
   const matrix = inertialToFixedMatrix(time);

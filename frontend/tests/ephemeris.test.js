@@ -27,7 +27,7 @@ test("all catalog destinations have finite metre coordinates and closed orbits",
         assert.ok(distanceKm >= reference.semimajorKm * (1 - reference.eccentricity) - 1, id);
         assert.ok(distanceKm <= reference.semimajorKm * (1 + reference.eccentricity) + 1, id);
       }
-      if (id === "earth" || id === "sun") continue;
+      if (id === "sun") continue;
       const points = sampleBodyOrbitFixed(id, time, 96);
       assert.equal(points.length, 97, id);
       assert.ok(Cartesian3.distance(points[0], points.at(-1)) < 1, `${id}: orbit closure`);
@@ -42,7 +42,7 @@ test("all catalog destinations have finite metre coordinates and closed orbits",
 
 test("astronomical orbit geometry has a bounded vertex count", () => {
   const time = JulianDate.fromIso8601("2026-09-17T00:00:00Z");
-  for (const id of ["mars", "neptune", "pluto", "eris", "bennu", "phobos"]) {
+  for (const id of ["earth", "mars", "neptune", "pluto", "eris", "bennu", "phobos"]) {
     const positions = sampleBodyOrbitFixed(id, time, 96);
     const geometry = PolylineGeometry.createGeometry(new PolylineGeometry({ positions, width: 1, arcType: ArcType.NONE }));
     assert.ok(geometry.attributes.position.values.length < 5000, id);

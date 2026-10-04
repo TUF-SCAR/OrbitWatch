@@ -40,7 +40,7 @@ import {
 import { fetchSatelliteOrbit, fetchSatelliteTrajectories } from "../services/orbitwatchApi.js";
 import { fetchOpenDisasterEvents } from "../services/eonetApi.js";
 import { getSpaceObject } from "../data/spaceObjects.js";
-import { createSolarSystemLayer } from "../services/solarSystemLayer.js";
+import { createSolarSystemLayer, pickSolarSystemObject } from "../services/solarSystemLayer.js";
 import { createSelectedSatelliteDetail } from "../services/selectedSatelliteDetail.js";
 import { applyBaseMap as updateBaseMap } from "../services/baseMap.js";
 import { createPlaceLabelLayer } from "../services/placeLabelLayer.js";
@@ -474,6 +474,7 @@ export default function OrbitGlobe({
 
       return solarSystemLayerRef.current?.focus(bodyId || "earth");
     },
+    selectCelestialMarker(id) { solarSystemLayerRef.current?.selectMarker(id); },
     async searchPlaces(query, signal) {
       const viewer = viewerRef.current;
       const token = import.meta.env.VITE_CESIUM_ION_TOKEN;
@@ -580,9 +581,12 @@ export default function OrbitGlobe({
     const removeReady = viewer.scene.postRender.addEventListener(() => { removeReady(); callbacksRef.current.onSceneReady?.(); });
     let idleState = "waiting", pointerHeld = false, lastIdleFrame = performance.now(), lastIdleInteraction = lastInteractionRef.current;
     const touchCamera = () => { lastInteractionRef.current = performance.now(); if (idleState === "framing") viewer.camera.cancelFlight(); idleState = "waiting"; };
-    const pointerDown = () => { pointerHeld = true; touchCamera(); };
+    let pointerStart = null, cameraDragged = false;
+    const pointerDown = (event) => { pointerHeld = true; pointerStart = { x: event.clientX, y: event.clientY }; cameraDragged = false; touchCamera(); };
+    const pointerMove = (event) => { if (pointerHeld && pointerStart && Math.hypot(event.clientX - pointerStart.x, event.clientY - pointerStart.y) > 5) cameraDragged = true; };
     const pointerUp = () => { if (pointerHeld) { pointerHeld = false; touchCamera(); } };
     viewer.scene.canvas.addEventListener("pointerdown", pointerDown);
+    viewer.scene.canvas.addEventListener("pointermove", pointerMove);
     window.addEventListener("pointerup", pointerUp);
     viewer.scene.canvas.addEventListener("wheel", touchCamera, { passive: true });
     viewer.cesiumWidget.screenSpaceEventHandler.removeInputAction(ScreenSpaceEventType.LEFT_DOUBLE_CLICK);
@@ -675,6 +679,7 @@ export default function OrbitGlobe({
       solarSystemLayerRef.current = createSolarSystemLayer(
         viewer,
         {
+          isLive: () => modeRef.current === "live" && sceneModeRef.current === "3d",
           onDetailReady: (id) => callbacksRef.current.onDetailReady?.(id),
           hideEarthDetail: () => {
             earthActiveRef.current = false;
@@ -759,15 +764,17 @@ export default function OrbitGlobe({
     }
 
     const handler = new ScreenSpaceEventHandler(viewer.scene.canvas);
+    const pickSceneObject = (position) => pickSolarSystemObject(viewer.scene, position, solarSystemLayerRef.current?.isWide());
     handler.setInputAction((movement) => {
-      const picked = viewer.scene.pick(movement.position);
+      if (cameraDragged) return;
+      const picked = pickSceneObject(movement.position);
 
       const celestialId =
         picked?.id?.properties?.celestialId?.getValue?.();
 
       if (celestialId) {
         const bodyId = String(celestialId);
-        onCelestialSelectRef.current?.(bodyId);
+        onCelestialSelectRef.current?.(bodyId, solarSystemLayerRef.current?.isWide());
         return;
       }
 
@@ -778,7 +785,8 @@ export default function OrbitGlobe({
     }, ScreenSpaceEventType.LEFT_CLICK);
 
     handler.setInputAction((movement) => {
-      const picked = viewer.scene.pick(movement.position);
+      if (cameraDragged) return;
+      const picked = pickSceneObject(movement.position);
 
       const celestialId =
         picked?.id?.properties?.celestialId?.getValue?.();
@@ -786,10 +794,10 @@ export default function OrbitGlobe({
       if (!celestialId) return;
 
       const bodyId = String(celestialId);
-      onCelestialSelectRef.current?.(bodyId);
+      onCelestialSelectRef.current?.(bodyId, solarSystemLayerRef.current?.isWide());
 
       // Double click follows the real moving body in this same Cesium viewer.
-      solarSystemLayerRef.current?.follow(bodyId);
+      if (!solarSystemLayerRef.current?.isWide()) solarSystemLayerRef.current?.follow(bodyId);
     }, ScreenSpaceEventType.LEFT_DOUBLE_CLICK);
 
     handler.setInputAction((movement) => {
@@ -833,7 +841,7 @@ export default function OrbitGlobe({
 
       const follow = followStateRef.current;
       if (lastIdleInteraction !== lastInteractionRef.current) { idleState = "waiting"; lastIdleInteraction = lastInteractionRef.current; }
-      const idleEligible = !follow && !pointerHeld && viewer.camera.positionCartographic.height > 100_000 && modeRef.current === "live" && earthActiveRef.current && controllerIdle(viewer) && now - lastInteractionRef.current > 30000 && !window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      const idleEligible = !solarSystemLayerRef.current?.isWide() && !follow && !pointerHeld && viewer.camera.positionCartographic.height > 100_000 && modeRef.current === "live" && earthActiveRef.current && controllerIdle(viewer) && now - lastInteractionRef.current > 30000 && !window.matchMedia("(prefers-reduced-motion: reduce)").matches;
       if (idleEligible) {
         if (idleState === "waiting") {
           idleState = "framing";
@@ -866,6 +874,7 @@ export default function OrbitGlobe({
       removeReady();
       removeRenderError();
       viewer.scene.canvas.removeEventListener("pointerdown", pointerDown);
+      viewer.scene.canvas.removeEventListener("pointermove", pointerMove);
       window.removeEventListener("pointerup", pointerUp);
       viewer.scene.canvas.removeEventListener("wheel", touchCamera);
       removePreRender();

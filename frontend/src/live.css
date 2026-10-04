@@ -350,3 +350,10 @@ input[type="checkbox"] { accent-color:#8de8fa; width:16px; height:16px; cursor:p
   .explorer-body > * { flex-shrink:0; }
   .explorer-body .object-list { flex:none; overflow:visible; }
 }
+
+.celestial-travel-card { width: min(320px, calc(100vw - 2 * var(--ui-edge))); }
+.celestial-travel-card .hud-panel__header { display: flex; justify-content: space-between; align-items: center; }
+.celestial-travel-card h2 { margin: 6px 0 0; font-size: 23px; }
+.celestial-travel-card p { color: var(--text-muted, #9aa8be); font-size: 12px; line-height: 1.6; margin: 0 0 10px; }
+.celestial-travel-card .inspector-actions { display: flex; }
+.celestial-travel-card .inspector-actions button { flex: 1; }

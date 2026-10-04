@@ -1,101 +1,21 @@
-import { Crosshair, MapPin, Orbit, RefreshCcw, Satellite } from "lucide-react";
+import { Orbit } from "lucide-react";
 import { useEffect, useState } from "react";
 import SpatialSurface from "./SpatialSurface.jsx";
-
-function formatCameraAltitude(value) {
-  if (!Number.isFinite(value)) return "—";
-  if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(2)}M km`;
-  if (value >= 1000) return `${Math.round(value).toLocaleString()} km`;
-  return `${value.toFixed(value < 10 ? 1 : 0)} km`;
+import { CELESTIAL_BODIES } from "../data/celestialBodies.js";
+import { bodyCoverageNote, bodyFacts } from "../data/celestialFacts.js";
+function Facts({ id, onOpen }) {
+  const facts = bodyFacts(id);
+  const [index, setIndex] = useState(0);
+  const [paused, setPaused] = useState(false);
+  useEffect(() => { if (paused) return; const timer = window.setInterval(() => setIndex((value) => (value + 1) % facts.length), 10000); return () => window.clearInterval(timer); }, [facts.length, paused]);
+  return <button className="body-fact" onMouseEnter={() => setPaused(true)} onMouseLeave={() => setPaused(false)} onFocus={() => setPaused(true)} onBlur={() => setPaused(false)} onClick={onOpen}><small>{CELESTIAL_BODIES[id]?.name} · {index + 1}/{facts.length}</small><span>{facts[index]}</span>{bodyCoverageNote(id) && <small>{bodyCoverageNote(id)}</small>}<b>INSPECT ↗</b></button>;
 }
-
-function formatCursor(lat, lon) {
-  if (!Number.isFinite(lat) || !Number.isFinite(lon)) return "—";
-  const ns = lat >= 0 ? "N" : "S";
-  const ew = lon >= 0 ? "E" : "W";
-  return `${Math.abs(lat).toFixed(2)}°${ns}  ${Math.abs(lon).toFixed(2)}°${ew}`;
-}
-
-export default function LiveDock({
-  selectedObject,
-  viewTelemetry,
-  onRefresh,
-  trackedCount = 0,
-  allOrbitsVisible = false,
-  onToggleAllOrbits,
-}) {
-  const [now, setNow] = useState(new Date());
-
-  useEffect(() => {
-    const id = window.setInterval(() => setNow(new Date()), 1000);
-    return () => window.clearInterval(id);
-  }, []);
-
-  const utc = now.toLocaleTimeString("en-GB", {
-    hour12: false,
-    timeZone: "UTC",
-  });
-
-  return (
-    <SpatialSurface
-      side="bottom"
-      strength={2.8}
-      className="live-dock live-telemetry-dock"
-    >
-      <div className="telemetry-item" data-depth="3">
-        <span>UTC</span><strong>{utc}</strong>
-      </div>
-      <div className="dock-divider" />
-      <div className="telemetry-item" data-depth="4">
-        <Satellite size={18} />
-        <span>CAMERA</span>
-        <strong>{formatCameraAltitude(viewTelemetry?.cameraAltitudeKm)}</strong>
-      </div>
-      <div className="dock-divider" />
-      <div className="telemetry-item telemetry-item--cursor" data-depth="5">
-        <MapPin size={18} />
-        <span>CURSOR</span>
-        <strong>
-          {formatCursor(
-            viewTelemetry?.cursorLatitude,
-            viewTelemetry?.cursorLongitude,
-          )}
-        </strong>
-      </div>
-
-      {selectedObject && (
-        <>
-          <div className="dock-divider" />
-          <div className="telemetry-item telemetry-item--selected" data-depth="5">
-            <Crosshair size={18} />
-            <span>SELECTED</span>
-            <strong>{selectedObject.name}</strong>
-          </div>
-        </>
-      )}
-
-      <div className="dock-divider" />
-      <button
-        className={`dock-command dock-command--orbit ${allOrbitsVisible ? "is-active" : ""}`}
-        onClick={onToggleAllOrbits}
-        disabled={!trackedCount}
-        title={allOrbitsVisible ? "Hide all loaded satellite orbits" : "Show all loaded satellite orbits"}
-        data-depth="5"
-      >
-        <Orbit size={17} />
-        <span>{allOrbitsVisible ? "HIDE ORBITS" : "SHOW ORBITS"}</span>
-        <b>{trackedCount}</b>
-      </button>
-
-      <button
-        className="dock-command dock-command--icon"
-        onClick={onRefresh}
-        title="Refresh live satellite positions"
-        aria-label="Refresh live satellite positions"
-        data-depth="5"
-      >
-        <RefreshCcw size={19} />
-      </button>
-    </SpatialSurface>
-  );
+export default function LiveDock({ bodyId = "earth", travel, detailState, viewTelemetry, trackedCount = 0, allOrbitsVisible, onToggleAllOrbits, feedAge, onOpenBody }) {
+  return <SpatialSurface side="bottom" strength={2.8} className="live-dock live-telemetry-dock">
+    {travel ? <div className="travel-status" role="status"><i /><strong>{CELESTIAL_BODIES[travel.from]?.name.toUpperCase()} → {CELESTIAL_BODIES[travel.to]?.name.toUpperCase()}</strong><span>Preparing destination · controls resume on arrival</span></div> : bodyId !== "earth" ? <><Facts key={bodyId} id={bodyId} onOpen={onOpenBody} />{detailState === "degraded" && <small>DETAIL RETRYING</small>}</> : <>
+      <div className="telemetry-item"><span>CAMERA</span><strong>{Number.isFinite(viewTelemetry?.cameraAltitudeKm) ? `${Math.round(viewTelemetry.cameraAltitudeKm).toLocaleString()} km` : "—"}</strong></div><div className="dock-divider" />
+      <div className="telemetry-item"><span>ORBITAL DATA AGE</span><strong>{Number.isFinite(feedAge) ? `${Math.floor(feedAge / 60)} min` : "Unavailable"}</strong></div><div className="dock-divider" />
+      <button className={`dock-command ${allOrbitsVisible ? "is-active" : ""}`} onClick={onToggleAllOrbits} disabled={!trackedCount} aria-pressed={allOrbitsVisible}><Orbit size={18} />{allOrbitsVisible ? "HIDE ORBITS" : "SHOW ORBITS"}<b>{trackedCount}</b></button>
+    </>}
+  </SpatialSurface>;
 }

@@ -671,3 +671,19 @@
   pointer-events: none !important;
   visibility: hidden !important;
 }
+/* Auth WebGL scene and mechanical panel extraction. */
+.solar-system-webgl { position:absolute; inset:0; overflow:hidden; }
+.solar-system-webgl canvas { display:block; width:100%; height:100%; touch-action:none; }
+.auth-page__content { padding:0!important; display:flex; align-items:center; justify-content:center; }
+.auth-panel { max-height:calc(100dvh - 100px); overflow:auto; }
+.auth-preview-toggle { width:180px; height:66px; right:18px; padding:12px; gap:6px; border:1px solid var(--accent-line); }
+.auth-preview-toggle span, .auth-preview-toggle strong { writing-mode:horizontal-tb; transform:none; }
+.auth-preview-toggle span { font-size:10px; }
+.auth-preview-toggle strong { font-size:12px; }
+.auth-extraction-arm { position:absolute; z-index:40; width:650px; height:260px; left:calc(50% + 180px); top:calc(50% - 135px); transform-origin:100% 80%; animation:arm-reach 1600ms cubic-bezier(.22,.7,.3,1) both; pointer-events:none; filter:drop-shadow(0 10px 14px #0009); }
+.auth-page__content.is-extracting .auth-panel { animation:panel-carry 1600ms cubic-bezier(.22,.7,.3,1) both; pointer-events:none; }
+.auth-extraction-arm .arm-grip { transform-origin:100px 90px; animation:grip-close 1600ms ease both; }
+@keyframes arm-reach { 0% { transform:translateX(100vw) rotate(16deg); } 40%,53% { transform:translateX(0) rotate(0); } 100% { transform:translateX(110vw) rotate(-5deg); } }
+@keyframes panel-carry { 0%,53% { transform:translateX(0) rotateY(0); } 100% { transform:translateX(110vw) rotateY(-10deg); } }
+@keyframes grip-close { 0%,35% { transform:scaleY(1.8); } 48%,100% { transform:scaleY(.8); } }
+@media(max-width:760px) { .auth-preview-toggle { top:auto; bottom:15px; right:15px; height:45px; width:170px; transform:none; } .auth-preview-toggle span { display:none; } .auth-panel { max-height:calc(100dvh - 130px); width:min(430px,calc(100vw - 28px)); } .auth-extraction-arm { left:calc(50% + 140px); } }

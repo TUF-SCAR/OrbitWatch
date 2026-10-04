@@ -1,5 +1,6 @@
 const API_BASE = (import.meta.env.VITE_API_BASE_URL || "http://127.0.0.1:8000").replace(/\/$/, "");
 const AUTH_TOKEN_KEY = "orbitwatch_access_token";
+let sessionToken = null;
 
 export class OrbitWatchApiError extends Error {
   constructor(message, status, detail = null) {
@@ -11,15 +12,17 @@ export class OrbitWatchApiError extends Error {
 }
 
 export function getStoredAccessToken() {
-  return window.localStorage.getItem(AUTH_TOKEN_KEY);
+  try { return window.localStorage.getItem(AUTH_TOKEN_KEY) || sessionToken; } catch { return sessionToken; }
 }
 
 export function storeAccessToken(token) {
-  if (token) window.localStorage.setItem(AUTH_TOKEN_KEY, token);
+  sessionToken = token || null;
+  try { if (token) window.localStorage.setItem(AUTH_TOKEN_KEY, token); } catch { /* Private browsing can keep the session in memory. */ }
 }
 
 export function clearAccessToken() {
-  window.localStorage.removeItem(AUTH_TOKEN_KEY);
+  sessionToken = null;
+  try { window.localStorage.removeItem(AUTH_TOKEN_KEY); } catch { /* In-memory session is already cleared. */ }
 }
 
 async function requestJson(path, options = {}) {
@@ -30,14 +33,19 @@ async function requestJson(path, options = {}) {
     headers.set("Authorization", `Bearer ${token}`);
   }
 
-  const response = await fetch(`${API_BASE}${path}`, { ...options, headers });
+  const signal = options.signal
+    ? AbortSignal.any([options.signal, AbortSignal.timeout(10000)])
+    : AbortSignal.timeout(10000);
+  const response = await fetch(`${API_BASE}${path}`, { ...options, headers, signal });
 
   if (!response.ok) {
     let detail = null;
     try {
       const body = await response.json();
       detail = body?.detail ?? null;
-    } catch {}
+    } catch {
+      // Non-JSON provider errors use the HTTP status below.
+    }
 
     if (
       response.status === 401 &&
@@ -49,9 +57,9 @@ async function requestJson(path, options = {}) {
     }
 
     throw new OrbitWatchApiError(
-      detail || `OrbitWatch API ${response.status}: ${response.statusText}`,
+      typeof detail === "string" ? detail : `Request failed (${response.status}). Please try again.`,
       response.status,
-      detail,
+      typeof detail === "string" ? detail : null,
     );
   }
 

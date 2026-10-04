@@ -14,15 +14,15 @@ export default function DisasterDock({ activeLayers, onLayersChange, sceneMode, 
   }
 
   return (
-    <SpatialSurface as="aside" side="left" strength={4} className="disaster-dock">
+    <SpatialSurface as="aside" side="left" strength={4} className="disaster-dock" aria-label="Disaster layers">
       <div className="disaster-dock__head" data-depth="3">
         <div><div className="eyebrow">DISASTER LAB</div><div className="disaster-dock__title"><Layers3 size={19} /> LIVE EARTH LAYERS</div></div>
         <span className="source-chip">LIVE</span>
       </div>
 
       <div className="lab-view-switch" data-depth="6">
-        <button className={sceneMode === "3d" ? "is-active" : ""} onClick={() => onSceneModeChange("3d")}><Box size={18} />3D</button>
-        <button className={sceneMode === "2d" ? "is-active" : ""} onClick={() => onSceneModeChange("2d")}><Map size={18} />2D</button>
+        <button className={sceneMode === "3d" ? "is-active" : ""} aria-pressed={sceneMode === "3d"} onClick={() => onSceneModeChange("3d")}><Box size={18} />3D</button>
+        <button className={sceneMode === "2d" ? "is-active" : ""} aria-pressed={sceneMode === "2d"} onClick={() => onSceneModeChange("2d")}><Map size={18} />2D</button>
       </div>
 
       <div className="disaster-layer-list" data-depth="5">

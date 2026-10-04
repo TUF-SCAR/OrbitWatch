@@ -6,7 +6,7 @@ export const CELESTIAL_BODIES = {
   earth: { id: "earth", name: "Earth", type: "Planet", parent: "sun", radiusKm: 6371.0088, color: "#4d9ff5", orbitColor: "rgba(77,159,245,.27)", texture: "/textures/planets/earth.jpg" },
   mars: { id: "mars", name: "Mars", type: "Planet", parent: "sun", radiusKm: 3389.5, color: "#c95d3c", orbitColor: "rgba(201,93,60,.25)", texture: "/textures/planets/mars.jpg" },
   jupiter: { id: "jupiter", name: "Jupiter", type: "Planet", parent: "sun", radiusKm: 69911, color: "#d4b18f", orbitColor: "rgba(212,177,143,.25)", texture: "/textures/planets/jupiter.jpg", rings: [1.65, 2.20] },
-  saturn: { id: "saturn", name: "Saturn", type: "Planet", parent: "sun", radiusKm: 58232, color: "#dfc68d", orbitColor: "rgba(223,198,141,.25)", texture: "/textures/planets/saturn.jpg", rings: [1.30, 1.52, 1.78, 2.04, 2.28] },
+  saturn: { id: "saturn", name: "Saturn", type: "Planet", parent: "sun", radiusKm: 58232, color: "#dfc68d", orbitColor: "rgba(223,198,141,.25)", texture: "/textures/planets/saturn.jpg", rings: [1.28, 1.58, 2.02, 2.10, 2.35] },
   uranus: { id: "uranus", name: "Uranus", type: "Planet", parent: "sun", radiusKm: 25362, color: "#8ed5d9", orbitColor: "rgba(142,213,217,.25)", texture: "/textures/planets/uranus.jpg", rings: [1.62, 1.82, 2.02] },
   neptune: { id: "neptune", name: "Neptune", type: "Planet", parent: "sun", radiusKm: 24622, color: "#4f76df", orbitColor: "rgba(79,118,223,.27)", texture: "/textures/planets/neptune.jpg", rings: [1.62, 2.10, 2.54] },
 
@@ -45,7 +45,7 @@ export const CELESTIAL_BODIES = {
   ceres: { id: "ceres", name: "Ceres", type: "Dwarf Planet", parent: "sun", radiusKm: 469.7, color: "#77746e", orbitColor: "rgba(139,133,122,.18)", texture: "/textures/planets/ceres.jpg" },
   pluto: { id: "pluto", name: "Pluto", type: "Dwarf Planet", parent: "sun", radiusKm: 1188.3, color: "#b5a38e", orbitColor: "rgba(181,163,142,.18)", texture: "/textures/planets/pluto.jpg" },
   eris: { id: "eris", name: "Eris", type: "Dwarf Planet", parent: "sun", radiusKm: 1163, color: "#dce1e5", orbitColor: "rgba(220,225,229,.16)", texture: "/textures/planets/eris.jpg" },
-  haumea: { id: "haumea", name: "Haumea", type: "Dwarf Planet", parent: "sun", radiusKm: 780, color: "#d8dbd8", orbitColor: "rgba(216,219,216,.16)", texture: "/textures/planets/haumea.jpg" },
+  haumea: { id: "haumea", name: "Haumea", type: "Dwarf Planet", parent: "sun", radiusKm: 780, color: "#d8dbd8", orbitColor: "rgba(216,219,216,.16)", texture: "/textures/planets/haumea.jpg", rings: [2.887, 2.977] },
   makemake: { id: "makemake", name: "Makemake", type: "Dwarf Planet", parent: "sun", radiusKm: 715, color: "#ad8e72", orbitColor: "rgba(173,142,114,.16)", texture: "/textures/planets/makemake.jpg" },
 
   vesta: { id: "vesta", name: "Vesta", type: "Asteroid", parent: "sun", radiusKm: 262.7, color: "#8b8780", orbitColor: "rgba(139,135,128,.14)" },

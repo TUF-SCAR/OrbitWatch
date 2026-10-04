@@ -1,363 +1,67 @@
-import {
-  AnimatePresence,
-  motion,
-} from "motion/react";
-import {
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-} from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import App from "../App.jsx";
 import AuthPage from "../pages/AuthPage.jsx";
 import BootSequence from "../components/BootSequence.jsx";
-import {
-  clearAccessToken,
-  fetchCurrentUser,
-  getStoredAccessToken,
-  storeAccessToken,
-} from "../services/orbitwatchApi.js";
-import {
-  getCachedStartupCountry,
-  resolveStartupCountry,
-} from "../services/startupCountry.js";
+import { clearAccessToken, fetchCurrentUser, getStoredAccessToken, storeAccessToken } from "../services/orbitwatchApi.js";
+import { getCachedStartupCountry, resolveStartupCountry } from "../services/startupCountry.js";
 import "./AuthRoot.css";
-
-const INTRO_MINIMUM_MS = 6400;
-const GUEST_BOOT_MINIMUM_MS = 1750;
-const TOKEN_BOOT_MINIMUM_MS = 1250;
-
-function pageFromPath() {
-  return window.location.pathname === "/register"
-    ? "register"
-    : "login";
-}
-
-function replacePath(path) {
-  if (window.location.pathname !== path) {
-    window.history.replaceState({}, "", path);
-  }
-}
-
-function pushPath(path) {
-  if (window.location.pathname !== path) {
-    window.history.pushState({}, "", path);
-  }
-}
-
+function pageFromPath() { return window.location.pathname === "/register" ? "register" : "login"; }
 export default function AuthRoot() {
-  const initialToken = getStoredAccessToken();
-  const timersRef = useRef([]);
-  const countryLockedRef = useRef(false);
-
-  const [sessionState, setSessionState] = useState(
-    initialToken ? "checking" : "guest",
-  );
+  const [initialToken] = useState(getStoredAccessToken);
+  const [phase, setPhase] = useState(initialToken ? "checking" : "guest");
   const [authPage, setAuthPage] = useState(pageFromPath);
-  const [currentUser, setCurrentUser] = useState(null);
-
-  const [bootVisible, setBootVisible] = useState(true);
-  const [bootMinimumDone, setBootMinimumDone] = useState(false);
-  const [authSceneMounted, setAuthSceneMounted] = useState(true);
-
-  const [launching, setLaunching] = useState(false);
-  const [introMinimumDone, setIntroMinimumDone] = useState(false);
-  const [liveReady, setLiveReady] = useState(false);
-  const [liveVisible, setLiveVisible] = useState(false);
-  const [hudActive, setHudActive] = useState(false);
-  const [hudCycle, setHudCycle] = useState(0);
-  const [startupCountry, setStartupCountry] = useState(
-    () => getCachedStartupCountry(),
-  );
-
-  const clearTimers = useCallback(() => {
-    timersRef.current.forEach((timer) => window.clearTimeout(timer));
-    timersRef.current = [];
-  }, []);
-
-  const queueTimer = useCallback((callback, milliseconds) => {
-    const timer = window.setTimeout(callback, milliseconds);
-    timersRef.current.push(timer);
-    return timer;
-  }, []);
-
-  const beginIntro = useCallback(() => {
-    countryLockedRef.current = true;
-    clearTimers();
-    setBootVisible(false);
-    setLaunching(true);
-    setIntroMinimumDone(false);
-    setLiveVisible(false);
-    setHudActive(false);
-    setHudCycle((value) => value + 1);
-    setSessionState("launching");
-    replacePath("/");
-
-    queueTimer(() => {
-      setIntroMinimumDone(true);
-    }, INTRO_MINIMUM_MS);
-  }, [clearTimers, queueTimer]);
-
-  const logout = useCallback(() => {
-    clearTimers();
-    clearAccessToken();
-    setCurrentUser(null);
-    setSessionState("guest");
-    setLaunching(false);
-    setIntroMinimumDone(false);
-    setLiveReady(false);
-    setLiveVisible(false);
-    setHudActive(false);
-    setBootVisible(false);
-    setBootMinimumDone(true);
-    setAuthSceneMounted(true);
-    setAuthPage("login");
-    replacePath("/login");
-  }, [clearTimers]);
-
-  const handleLiveReady = useCallback(() => {
-    setLiveReady(true);
-  }, []);
-
+  const [user, setUser] = useState(null);
+  const [bootDone, setBootDone] = useState(false);
+  const [sceneReady, setSceneReady] = useState(false);
+  const [travelDone, setTravelDone] = useState(false);
+  const [cycle, setCycle] = useState(0);
+  const [country, setCountry] = useState(getCachedStartupCountry);
+  const countryLocked = useRef(false);
+  const authenticated = phase === "ready";
+  const liveVisible = (phase === "handoff" || authenticated);
+  const startTravel = useCallback(() => { setTravelDone(false); setCycle((value) => value + 1); setPhase("travel"); window.history.replaceState({}, "", "/"); }, []);
+  const logout = useCallback(() => { clearAccessToken(); setUser(null); setSceneReady(false); setTravelDone(false); setPhase("guest"); setAuthPage("login"); window.history.replaceState({}, "", "/login"); }, []);
+  const onSceneReady = useCallback(() => setSceneReady(true), []);
+  useEffect(() => { const timer = window.setTimeout(() => setBootDone(true), 850); return () => window.clearTimeout(timer); }, []);
   useEffect(() => {
     const controller = new AbortController();
-
-    resolveStartupCountry(controller.signal)
-      .then((country) => {
-        if (!countryLockedRef.current) {
-          setStartupCountry(country);
-        }
-      })
-      .catch((error) => {
-        if (error?.name !== "AbortError") {
-          // India is already the synchronous fallback.
-        }
-      });
-
+    resolveStartupCountry(controller.signal).then((result) => { if (!countryLocked.current && !controller.signal.aborted) setCountry(result); }).catch(() => {});
     return () => controller.abort();
   }, []);
-
   useEffect(() => {
-    const timers = [];
-
-    if (initialToken) {
-      timers.push(
-        window.setTimeout(() => {
-          setBootMinimumDone(true);
-        }, TOKEN_BOOT_MINIMUM_MS),
-      );
-    } else {
-      timers.push(
-        window.setTimeout(() => {
-          setBootMinimumDone(true);
-        }, GUEST_BOOT_MINIMUM_MS),
-      );
-    }
-
-    return () => {
-      timers.forEach((timer) => window.clearTimeout(timer));
-    };
-  }, []);
-
-  useEffect(() => {
-    const onUnauthorized = () => logout();
-    window.addEventListener("orbitwatch:unauthorized", onUnauthorized);
-    return () => window.removeEventListener("orbitwatch:unauthorized", onUnauthorized);
-  }, [logout]);
-
-  useEffect(() => {
-    if (sessionState !== "checking") return undefined;
-
+    if (!initialToken) return;
     const controller = new AbortController();
-
-    fetchCurrentUser(controller.signal)
-      .then((user) => {
-        setCurrentUser(user);
-        setLiveReady(false);
-        setSessionState("token-ready");
-        replacePath("/");
-      })
-      .catch((error) => {
-        if (error?.name === "AbortError") return;
-        clearAccessToken();
-        setCurrentUser(null);
-        setSessionState("guest");
-        setAuthPage("login");
-        setAuthSceneMounted(true);
-        if (bootMinimumDone) setBootVisible(false);
-        replacePath("/login");
-      });
-
+    fetchCurrentUser(controller.signal).then((result) => {
+      if (controller.signal.aborted) return;
+      countryLocked.current = true; setUser(result); startTravel();
+    }).catch(() => { if (!controller.signal.aborted) logout(); });
     return () => controller.abort();
-  }, [sessionState, bootMinimumDone]);
-
+  }, [initialToken, startTravel, logout]);
+  useEffect(() => { window.addEventListener("orbitwatch:unauthorized", logout); return () => window.removeEventListener("orbitwatch:unauthorized", logout); }, [logout]);
   useEffect(() => {
-    if (
-      sessionState === "guest" &&
-      bootMinimumDone &&
-      authSceneMounted
-    ) {
-      setBootVisible(false);
-    }
-  }, [sessionState, bootMinimumDone, authSceneMounted]);
-
+    if (phase !== "travel") return;
+    const timer = window.setTimeout(() => setTravelDone(true), window.matchMedia("(prefers-reduced-motion: reduce)").matches ? 150 : 2200);
+    return () => window.clearTimeout(timer);
+  }, [phase]);
   useEffect(() => {
-    if (
-      sessionState === "token-ready" &&
-      bootMinimumDone &&
-      authSceneMounted
-    ) {
-      beginIntro();
-    }
-  }, [sessionState, bootMinimumDone, authSceneMounted, beginIntro]);
-
+    if (phase !== "travel" || !travelDone || !sceneReady) return;
+    const timer = window.setTimeout(() => setPhase("handoff"), 0);
+    return () => window.clearTimeout(timer);
+  }, [phase, travelDone, sceneReady]);
+  useEffect(() => { if (phase !== "handoff") return; const timer = window.setTimeout(() => setPhase("ready"), 600); return () => window.clearTimeout(timer); }, [phase]);
   useEffect(() => {
-    if (
-      sessionState !== "launching" ||
-      !introMinimumDone ||
-      !liveReady
-    ) {
-      return undefined;
-    }
-
-    setLiveVisible(true);
-
-    const hudTimer = window.setTimeout(() => {
-      setHudActive(true);
-    }, 480);
-
-    const finishTimer = window.setTimeout(() => {
-      setLaunching(false);
-      setSessionState("authenticated");
-      replacePath("/");
-    }, 1150);
-
-    return () => {
-      window.clearTimeout(hudTimer);
-      window.clearTimeout(finishTimer);
-    };
-  }, [sessionState, introMinimumDone, liveReady]);
-
-  useEffect(() => {
-    if (
-      sessionState === "guest" &&
-      !["/login", "/register"].includes(window.location.pathname)
-    ) {
-      replacePath(`/${authPage}`);
-    }
-  }, [sessionState, authPage]);
-
-  useEffect(() => {
-    function onPopState() {
-      if (
-        sessionState === "authenticated" ||
-        sessionState === "launching" ||
-        sessionState === "token-ready"
-      ) {
-        replacePath("/");
-        return;
-      }
-
-      if (sessionState === "guest") {
-        setAuthPage(pageFromPath());
-      }
-    }
-
-    window.addEventListener("popstate", onPopState);
-    return () => window.removeEventListener("popstate", onPopState);
-  }, [sessionState]);
-
+    const pop = () => { if (phase === "guest") setAuthPage(pageFromPath()); else window.history.replaceState({}, "", "/"); };
+    window.addEventListener("popstate", pop); return () => window.removeEventListener("popstate", pop);
+  }, [phase]);
   async function completeAuthentication(response) {
-    if (!response?.access_token) {
-      throw new Error("Backend did not return an access token.");
-    }
-
+    if (!response?.access_token) throw new Error("Backend did not return an access token.");
     storeAccessToken(response.access_token);
-
-    try {
-      const user = await fetchCurrentUser();
-      setCurrentUser(user);
-      setLiveReady(false);
-      setAuthSceneMounted(true);
-      beginIntro();
-    } catch (error) {
-      clearAccessToken();
-      throw error;
-    }
+    try { const result = await fetchCurrentUser(); countryLocked.current = true; setUser(result); setSceneReady(false); setPhase("extract"); }
+    catch (error) { clearAccessToken(); throw error; }
   }
-
-  function switchAuth(page) {
-    const next = page === "register" ? "register" : "login";
-    setAuthPage(next);
-    pushPath(`/${next}`);
-  }
-
-  const appMounted = Boolean(currentUser);
-  const authLayerMounted =
-    authSceneMounted && sessionState !== "authenticated";
-  const showAuthInterface =
-    sessionState === "guest" && !launching;
-
-  return (
-    <main className="auth-root-shell">
-
-      {appMounted ? (
-        <motion.div
-          className="auth-root-layer auth-root-layer--live"
-          initial={false}
-          animate={{ opacity: liveVisible ? 1 : 0 }}
-          transition={{
-            duration: 0.92,
-            ease: [0.22, 1, 0.36, 1],
-          }}
-          aria-hidden={!liveVisible}
-        >
-          <App
-            currentUser={currentUser}
-            onLogout={logout}
-            hudActive={hudActive}
-            hudCycle={hudCycle}
-            onSceneReady={handleLiveReady}
-                    startupCountry={startupCountry}
-          />
-        </motion.div>
-      ) : null}
-
-      <AnimatePresence>
-        {authLayerMounted ? (
-          <motion.div
-            key="auth-layer"
-            className="auth-root-layer auth-root-layer--auth"
-            initial={{ opacity: 1 }}
-            animate={{ opacity: liveVisible ? 0 : 1 }}
-            exit={{ opacity: 0 }}
-            transition={{
-              duration: 0.92,
-              ease: [0.22, 1, 0.36, 1],
-            }}
-          >
-            <AuthPage
-              authType={authPage}
-              launching={launching}
-              showInterface={showAuthInterface}
-              onAuthenticated={completeAuthentication}
-              onSwitch={switchAuth}
-            />
-          </motion.div>
-        ) : null}
-      </AnimatePresence>
-
-      <AnimatePresence>
-        {bootVisible ? (
-          <BootSequence
-            key="boot"
-            preparingLive={
-              sessionState === "checking" ||
-              sessionState === "token-ready"
-            }
-          />
-        ) : null}
-      </AnimatePresence>
-    </main>
-  );
+  return <div className="auth-root-shell">
+    {user && <div className={`auth-root-layer auth-root-layer--live ${liveVisible ? "is-visible" : ""}`} style={{ opacity: liveVisible ? 1 : 0, transition: "opacity 600ms ease" }} inert={!liveVisible} aria-hidden={!liveVisible}><App currentUser={user} onLogout={logout} hudActive={authenticated} hudCycle={cycle} onSceneReady={onSceneReady} startupCountry={country} /></div>}
+    {!authenticated && <div className="auth-root-layer auth-root-layer--auth" style={{ opacity: liveVisible ? 0 : 1, transition: "opacity 600ms ease", pointerEvents: liveVisible ? "none" : "auto" }} inert={phase !== "guest" && phase !== "extract"}><AuthPage authType={authPage} launching={phase === "travel" || phase === "handoff"} extracting={phase === "extract"} onExtracted={startTravel} startupCountry={country} showInterface={phase === "guest" || phase === "extract"} onAuthenticated={completeAuthentication} onSwitch={(next) => { setAuthPage(next); window.history.pushState({}, "", `/${next}`); }} /></div>}
+    {(!bootDone || phase === "checking") && <BootSequence preparingLive={phase === "checking"} />}
+  </div>;
 }

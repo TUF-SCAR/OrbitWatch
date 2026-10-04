@@ -4,7 +4,8 @@ import reactHooks from "eslint-plugin-react-hooks";
 import reactRefresh from "eslint-plugin-react-refresh";
 
 export default [
-  { ignores: ["dist"] },
+  // Prebuilt Google Draco decoder distribution; application sources stay linted.
+  { ignores: ["dist", "public/decoders/**"] },
   {
     files: ["**/*.{js,jsx}"],
     languageOptions: {

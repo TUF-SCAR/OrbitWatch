@@ -5,7 +5,7 @@ import "./BootSequence.css";
 export default function BootSequence({ preparingLive = false }) {
   return (
     <motion.div
-      className="boot-sequence"
+      className="boot-sequence" role="status" aria-label={preparingLive ? "Restoring your session" : "Starting OrbitWatch"}
       initial={{ opacity: 1 }}
       exit={{ opacity: 0, filter: "blur(12px)" }}
       transition={{ duration: 0.42, ease: [0.22, 1, 0.36, 1] }}
@@ -38,35 +38,10 @@ export default function BootSequence({ preparingLive = false }) {
         </span>
       </motion.div>
 
-      <div className="boot-sequence__checks">
+      <div className="boot-sequence__progress" aria-hidden="true">
         <motion.span
-          initial={{ opacity: 0.25 }}
-          animate={{ opacity: 1 }}
-          transition={{ duration: 0.25, delay: 0.18 }}
-        >
-          <i /> INTERFACE MODULES
-        </motion.span>
-        <motion.span
-          initial={{ opacity: 0.25 }}
-          animate={{ opacity: 1 }}
-          transition={{ duration: 0.25, delay: 0.42 }}
-        >
-          <i /> CESIUM RENDERER
-        </motion.span>
-        <motion.span
-          initial={{ opacity: 0.25 }}
-          animate={{ opacity: 1 }}
-          transition={{ duration: 0.25, delay: 0.68 }}
-        >
-          <i /> ORBITWATCH SERVICES
-        </motion.span>
-      </div>
-
-      <div className="boot-sequence__progress">
-        <motion.span
-          initial={{ scaleX: 0 }}
-          animate={{ scaleX: 1 }}
-          transition={{ duration: preparingLive ? 2.4 : 2.05, ease: [0.22, 1, 0.36, 1] }}
+          animate={{ opacity: [0.25, 1, 0.25] }}
+          transition={{ duration: 1.6, repeat: Infinity }}
         />
       </div>
     </motion.div>

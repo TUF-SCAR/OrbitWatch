@@ -7,7 +7,7 @@ import {
   Orbit,
   UserRound,
 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import SolarSystemScene from "../components/SolarSystemScene.jsx";
 import SpatialSurface from "../components/SpatialSurface.jsx";
 import {
@@ -16,13 +16,13 @@ import {
 } from "../services/orbitwatchApi.js";
 import "./AuthPage.css";
 
-function AuthField({ icon: FieldIcon, label, trailing, ...inputProperties }) {
+function AuthField({ icon: FieldIcon, label, trailing, errorId, ...inputProperties }) {
   return (
     <label className="auth-field">
       <span>{label}</span>
       <div>
         <FieldIcon size={16} />
-        <input {...inputProperties} />
+        <input {...inputProperties} aria-describedby={errorId} aria-invalid={Boolean(errorId)} />
         {trailing || null}
       </div>
     </label>
@@ -32,6 +32,9 @@ function AuthField({ icon: FieldIcon, label, trailing, ...inputProperties }) {
 export default function AuthPage({
   authType,
   launching,
+  extracting = false,
+  onExtracted,
+  startupCountry,
   onAuthenticated,
   onSwitch,
   showInterface = true,
@@ -46,6 +49,11 @@ export default function AuthPage({
   const [formMessage, setFormMessage] = useState("");
   const [requestRunning, setRequestRunning] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(false);
+  useEffect(() => {
+    if (!extracting) return;
+    const timer = window.setTimeout(onExtracted, window.matchMedia("(prefers-reduced-motion: reduce)").matches ? 150 : 1600);
+    return () => window.clearTimeout(timer);
+  }, [extracting, onExtracted]);
 
   async function submitAuthentication(event) {
     event.preventDefault();
@@ -98,13 +106,13 @@ export default function AuthPage({
     }
   }
 
-  const busy = requestRunning || launching;
+  const busy = requestRunning || launching || extracting;
   const interfaceVisible = !launching && !previewOpen;
 
   return (
     <main
       data-auth-interface={showInterface ? "visible" : "hidden"} className="auth-page">
-      <SolarSystemScene launching={launching} />
+      <SolarSystemScene launching={launching} startupCountry={startupCountry} interactive={previewOpen} />
 
       <AnimatePresence>
         {interfaceVisible ? (
@@ -144,7 +152,8 @@ export default function AuthPage({
               <span data-depth="5">SECURE ACCESS</span>
             </SpatialSurface>
 
-            <div className="auth-page__content">
+            <div className={`auth-page__content ${extracting ? "is-extracting" : ""}`} inert={extracting}>
+              {extracting && <svg className="auth-extraction-arm" viewBox="0 0 650 260" aria-hidden="true"><defs><linearGradient id="arm-metal"><stop stopColor="#263b47" /><stop offset=".5" stopColor="#aec5ce" /><stop offset="1" stopColor="#314855" /></linearGradient></defs><path d="M640 200 L450 170 L300 50 L100 90" fill="none" stroke="url(#arm-metal)" strokeWidth="27" strokeLinejoin="round" /><g fill="#132c3a" stroke="#8cc4d4" strokeWidth="5"><circle cx="450" cy="170" r="22" /><circle cx="300" cy="50" r="22" /><circle cx="100" cy="90" r="16" /></g><path className="arm-grip" d="M100 90 L50 60 L14 60 M100 90 L50 120 L14 120" fill="none" stroke="#b1d4dc" strokeWidth="11" strokeLinecap="square" /><path d="M450 170 L300 50" stroke="#78e4f4" strokeWidth="3" /></svg>}
               <SpatialSurface
                 as="section"
                 key={authType}
@@ -166,7 +175,7 @@ export default function AuthPage({
                     <h1>{registrationOpen ? "Create your account" : "Welcome back"}</h1>
                     <p>
                       {registrationOpen
-                        ? "Create your identity for synchronized watchlists, alerts, and observation tools."
+                        ? "Create your OrbitWatch account to explore Earth and orbital objects."
                         : "Authenticate to initialize your OrbitWatch workspace."}
                     </p>
                   </span>
@@ -174,7 +183,7 @@ export default function AuthPage({
 
                 <form className="auth-form" data-depth="6" onSubmit={submitAuthentication}>
                   {registrationOpen ? (
-                    <AuthField
+                    <AuthField errorId={formMessage ? "auth-form-error" : undefined}
                       autoComplete="username"
                       icon={UserRound}
                       label="USERNAME"
@@ -186,7 +195,7 @@ export default function AuthPage({
                       value={username}
                     />
                   ) : (
-                    <AuthField
+                    <AuthField errorId={formMessage ? "auth-form-error" : undefined}
                       autoComplete="username"
                       icon={UserRound}
                       label="USERNAME OR EMAIL"
@@ -200,7 +209,7 @@ export default function AuthPage({
                   )}
 
                   {registrationOpen ? (
-                    <AuthField
+                    <AuthField errorId={formMessage ? "auth-form-error" : undefined}
                       autoComplete="email"
                       icon={Mail}
                       label="EMAIL"
@@ -213,7 +222,7 @@ export default function AuthPage({
                     />
                   ) : null}
 
-                  <AuthField
+                  <AuthField errorId={formMessage ? "auth-form-error" : undefined}
                     autoComplete={registrationOpen ? "new-password" : "current-password"}
                     icon={LockKeyhole}
                     label="PASSWORD"
@@ -236,7 +245,7 @@ export default function AuthPage({
                   />
 
                   {registrationOpen ? (
-                    <AuthField
+                    <AuthField errorId={formMessage ? "auth-form-error" : undefined}
                       autoComplete="new-password"
                       icon={LockKeyhole}
                       label="CONFIRM PASSWORD"
@@ -250,7 +259,7 @@ export default function AuthPage({
                     />
                   ) : null}
 
-                  {formMessage ? <p className="auth-form-message">{formMessage}</p> : null}
+                  {formMessage ? <p id="auth-form-error" role="alert" className="auth-form-message">{formMessage}</p> : null}
 
                   <button className="auth-submit-button" disabled={busy} type="submit">
                     <span className="auth-submit-button__signal" />
@@ -276,7 +285,7 @@ export default function AuthPage({
                 </p>
 
                 <div className="auth-panel__status" data-depth="3">
-                  <span><i /> BACKEND LINK READY</span>
+                  <span><i /> SECURE ACCOUNT ACCESS</span>
                   <span>SOLAR SYSTEM ACTIVE</span>
                 </div>
               </SpatialSurface>
@@ -286,7 +295,7 @@ export default function AuthPage({
       </AnimatePresence>
 
       <AnimatePresence>
-        {!launching ? (
+        {!launching && !extracting && showInterface ? (
           <motion.button
             key="preview-toggle"
             className="auth-preview-toggle"

@@ -3,8 +3,8 @@ import SpatialSurface from "./SpatialSurface.jsx";
 
 const modes = [
   { id: "live", label: "Live", icon: Activity },
-  { id: "time", label: "Time", icon: Clock3 },
-  { id: "disaster", label: "Lab", icon: Flame },
+  { id: "time", label: "Time Explorer", icon: Clock3 },
+  { id: "disaster", label: "Disaster Lab", icon: Flame },
 ];
 
 export default function ModeRail({ mode, onChange }) {

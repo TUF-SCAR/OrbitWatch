@@ -640,7 +640,7 @@ button { -webkit-tap-highlight-color: transparent; }
 .spatial-surface [data-depth="6"] { transform: translateZ(6px); }
 .spatial-surface [data-depth="7"] { transform: translateZ(7px); }
 .spatial-surface [data-depth="8"] { transform: translateZ(8px); }
-@keyframes spatialIn { from { opacity: 0; filter: blur(3px); } to { opacity: 1; filter: blur(0); } }
+@keyframes spatialIn { from { opacity: 0; } to { opacity: 1; } }
 
 /* Keep centred docks centred without consuming the transform used for tilt. */
 .live-dock,

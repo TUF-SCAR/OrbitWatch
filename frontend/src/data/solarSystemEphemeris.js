@@ -66,6 +66,18 @@ const MOON_ELEMENTS = {
   hydra:{aKm:64738,e:.005,argPeri:0,M0:340,i:.3,node:0,periodDays:38.20177},
 };
 
+// Expose the same reference elements used by the scene to the inspector.
+// Moon/small-body values are simplified catalog models, not fitted ephemerides.
+export function bodyOrbitalReference(id) {
+  const moon = MOON_ELEMENTS[id];
+  if (moon) return { semimajorKm: moon.aKm, eccentricity: moon.e, inclination: moon.i, periodDays: moon.periodDays };
+  const planet = PLANET_ELEMENTS[id];
+  const small = SMALL_BODY_ELEMENTS[id];
+  if (!planet && !small) return null;
+  const [a, e, i] = planet ? planet.base : [small.a, small.e, small.i];
+  return { semimajorKm: a * AU_METERS / 1000, semimajorAu: a, eccentricity: e, inclination: i, periodDays: planet ? 360 * 36525 / planet.rate[3] : 365.2568983 * a ** 1.5 };
+}
+
 function jd(time) {
   return JulianDate.toDate(time).getTime() / 86400000 + 2440587.5;
 }

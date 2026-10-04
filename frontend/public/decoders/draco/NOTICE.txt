@@ -1,0 +1,4 @@
+Google Draco — https://github.com/google/draco
+Copyright 2016 The Draco Authors. All rights reserved.
+Apache License 2.0; see LICENSE.txt.
+Unmodified glTF decoder distribution bundled with Three.js 0.183.2.

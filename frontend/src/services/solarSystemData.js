@@ -13,12 +13,12 @@ function parseOne(name,data){
   return {name:data.object?.fullname?.trim() || data.object?.shortname || name,a,e,i,om,w,ma,n,epoch};
 }
 export async function loadSmallBodyElements(signal){
-  try { const cached=JSON.parse(localStorage.getItem(CACHE_KEY)||'null'); if(cached && Date.now()-cached.savedAt<MAX_AGE && Array.isArray(cached.items)) return cached.items; } catch {}
+  try { const cached=JSON.parse(localStorage.getItem(CACHE_KEY)||'null'); if(cached && Date.now()-cached.savedAt<MAX_AGE && Array.isArray(cached.items)) return cached.items; } catch { /* Browser storage is optional. */ }
   const results=await Promise.allSettled(SMALL_BODY_NAMES.map(async(name)=>{
     const url=`https://ssd-api.jpl.nasa.gov/sbdb.api?sstr=${encodeURIComponent(name)}&full-prec=true`;
     const response=await fetch(url,{signal}); if(!response.ok) throw new Error(`${name}: ${response.status}`); return parseOne(name,await response.json());
   }));
   const items=results.map((r)=>r.status==='fulfilled'?r.value:null).filter(Boolean);
-  if(items.length){ try{ localStorage.setItem(CACHE_KEY,JSON.stringify({savedAt:Date.now(),items})); }catch{} }
+  if(items.length){ try{ localStorage.setItem(CACHE_KEY,JSON.stringify({savedAt:Date.now(),items})); }catch { /* Browser storage is optional. */ } }
   return items;
 }

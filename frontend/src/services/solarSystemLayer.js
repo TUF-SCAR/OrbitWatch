@@ -1,6 +1,6 @@
-import { ArcType, BoundingSphere, CallbackPositionProperty, Cartesian2, Cartesian3, Color, ConstantPositionProperty, DistanceDisplayCondition, HeadingPitchRange, JulianDate, LabelStyle, Matrix4, Model, ScreenSpaceEventHandler, ScreenSpaceEventType } from "cesium";
+import { ArcType, BoundingSphere, CallbackPositionProperty, CallbackProperty, Cartesian2, Cartesian3, Color, ConstantPositionProperty, DistanceDisplayCondition, HeadingPitchRange, JulianDate, LabelStyle, Matrix3, Matrix4, Model, ScreenSpaceEventHandler, ScreenSpaceEventType } from "cesium";
 import { ALL_CELESTIAL_IDS, CELESTIAL_BODIES } from "../data/celestialBodies.js";
-import { bodyPositionFixed, sampleBodyOrbitFixed } from "../data/solarSystemEphemeris.js";
+import { bodyLocalTransform, bodyPositionFixed, inertialToFixedMatrix, sampleBodyOrbitFixed } from "../data/solarSystemEphemeris.js";
 import { createSolarSurface } from "./solarSurface.js";
 import { prefersReducedMotion } from "../utils/motionPreferences.js";
 
@@ -51,13 +51,6 @@ export function createSolarSystemLayer(viewer, options = {}) {
       // at AU-scale coordinates. Keep the selected fallback visible; only
       // this one body bypasses the general distance-based detail limit.
       item.entity.ellipsoid.distanceDisplayCondition = active ? undefined : new DistanceDisplayCondition(0, item.radius * 60);
-      // Entity visualizers update before this layer's clock listener. At an
-      // asteroid's scale even one frame of orbital motion displaces its label
-      // or fallback sphere. Evaluate only the destination at the render time;
-      // all other lightweight bodies keep their throttled constant positions.
-      item.entity.position = active
-        ? new CallbackPositionProperty((time, result) => key === "earth" ? Cartesian3.clone(Cartesian3.ZERO, result) : bodyPositionFixed(key, time, result), false)
-        : item.position;
     }
     if (orbit && alive()) viewer.entities.remove(orbit);
     orbit = null;
@@ -65,8 +58,24 @@ export function createSolarSystemLayer(viewer, options = {}) {
       const positions = sampleBodyOrbitFixed(selectedId, viewer.clock.currentTime, 96);
       // These are space coordinates. Geodesic subdivision treats them as an
       // Earth-surface path and can allocate enormous worker buffers at AU scale.
-      if (positions.length) orbit = viewer.entities.add({ polyline: { positions, arcType: ArcType.NONE, width: 1, material: Color.fromCssColorString(CELESTIAL_BODIES[selectedId].color).withAlpha(0.24) } });
+      if (positions.length) orbit = viewer.entities.add({ polyline: { positions: CELESTIAL_BODIES[selectedId].type === "Moon" ? new CallbackProperty((time) => sampleBodyOrbitFixed(selectedId, time, 96), false) : positions, arcType: ArcType.NONE, width: 1, material: Color.fromCssColorString(CELESTIAL_BODIES[selectedId].color).withAlpha(0.24) } });
     }
+    syncLocalEntities();
+  }
+  function syncLocalEntities() {
+    const body = CELESTIAL_BODIES[localBody];
+    const parent = body?.type === "Moon" ? body.parent : localBody;
+    for (const [id, item] of placeholders) {
+      // Entity visualizers precede our tick listener. A throttled sibling
+      // would lag both the parent's translation and Earth's rotation at AU
+      // distances. Evaluate the whole local family at the same scene time.
+      const dynamic = id === selectedId || (localBody && (id === parent || CELESTIAL_BODIES[id].parent === parent));
+      item.entity.position = dynamic
+        ? new CallbackPositionProperty((time, result) => bodyPositionFixed(id, time, result), false)
+        : item.position;
+    }
+    // Retain solar orbit data for future distant views; moon orbits remain useful.
+    if (orbit) orbit.show = !localBody || CELESTIAL_BODIES[selectedId].type === "Moon";
   }
   function loadDetail(id, token) {
     if (id === "earth") return Promise.resolve(true);
@@ -113,16 +122,22 @@ export function createSolarSystemLayer(viewer, options = {}) {
     viewer.camera.lookAtTransform(Matrix4.IDENTITY);
     [controller.minimumZoomDistance, controller.maximumZoomDistance] = originalBounds;
     controller.enableTranslate = true;
+    syncLocalEntities();
   }
   function bindLocal(id) {
     if (id === "earth") return;
     localBody = id;
     const radius = placeholders.get(id).radius;
-    localView = { heading: 0.28, pitch: -0.24, range: radius * framingScale(id), pan: new Cartesian3() };
+    // Anchor the inertial axes to the arrival frame so binding does not rotate
+    // the completed flight. Subsequent Earth rotation cancels in this frame.
+    const basis = Matrix3.transpose(inertialToFixedMatrix(viewer.clock.currentTime), new Matrix3());
+    const modelRotations = new Map([...details].map(([key, model]) => [key, Matrix4.getMatrix3(model.modelMatrix, new Matrix3())]));
+    localView = { heading: 0.28, pitch: -0.24, range: radius * framingScale(id), pan: new Cartesian3(), basis, modelRotations };
     controller.enableInputs = false;
     controller.minimumZoomDistance = radius * 1.08;
     controller.maximumZoomDistance = radius * 90;
     controller.enableTranslate = true;
+    syncLocalEntities();
   }
   function updatePositions(force = false) {
     if (!alive()) return;
@@ -130,19 +145,27 @@ export function createSolarSystemLayer(viewer, options = {}) {
     const updateAll = force || now - lastUpdate > 1000;
     if (updateAll) {
       lastUpdate = now;
-      if (orbit) orbit.polyline.positions = sampleBodyOrbitFixed(selectedId, viewer.clock.currentTime, 96);
+      if (orbit && CELESTIAL_BODIES[selectedId].type !== "Moon") orbit.polyline.positions = sampleBodyOrbitFixed(selectedId, viewer.clock.currentTime, 96);
     }
+    const transform = localBody && !travelling ? bodyLocalTransform(localBody, viewer.clock.currentTime, localView.basis) : null;
+    const rotation = transform ? Matrix4.getMatrix3(transform, new Matrix3()) : null;
     for (const [id, item] of placeholders) {
       if (!updateAll && !details.has(id) && id !== localBody) continue;
       const pos = positionOf(id);
       if (!pos) continue;
       item.position.setValue(pos);
       const model = details.get(id);
-      if (model && !model.isDestroyed()) model.modelMatrix = Matrix4.fromTranslation(pos, new Matrix4());
+      if (model && !model.isDestroyed()) {
+        // Surfaces/rings share the local inertial axes. On departure retain
+        // their last orientation while the existing world-space flight runs.
+        const orientation = rotation ? Matrix3.multiply(rotation, localView.modelRotations.get(id) || Matrix3.IDENTITY, new Matrix3()) : Matrix4.getMatrix3(model.modelMatrix, new Matrix3());
+        model.modelMatrix = Matrix4.fromRotationTranslation(orientation, pos, new Matrix4());
+      }
     }
     if (localBody && !travelling) {
-      const target = Cartesian3.add(positionOf(localBody), localView.pan, new Cartesian3());
-      viewer.camera.lookAtTransform(Matrix4.fromTranslation(target, new Matrix4()), new HeadingPitchRange(localView.heading, localView.pitch, localView.range));
+      const target = Matrix4.multiplyByPoint(transform, localView.pan, new Cartesian3());
+      Matrix4.setTranslation(transform, target, transform);
+      viewer.camera.lookAtTransform(transform, new HeadingPitchRange(localView.heading, localView.pitch, localView.range));
     }
   }
   const localHandler = new ScreenSpaceEventHandler(viewer.scene.canvas);
@@ -157,10 +180,10 @@ export function createSolarSystemLayer(viewer, options = {}) {
     if (!localView || !drag || travelling) return;
     const dx = movement.endPosition.x - movement.startPosition.x, dy = movement.endPosition.y - movement.startPosition.y;
     const radius = placeholders.get(localBody).radius;
-    if (drag === "orbit") { localView.heading -= dx * 0.004; localView.pitch = Math.max(-1.45, Math.min(1.45, localView.pitch - dy * 0.004)); }
+    if (drag === "orbit") { localView.heading += dx * 0.004; localView.pitch = Math.max(-1.45, Math.min(1.45, localView.pitch - dy * 0.004)); }
     else {
-      const right = Cartesian3.multiplyByScalar(viewer.camera.rightWC, -dx * localView.range / 1200, new Cartesian3());
-      const up = Cartesian3.multiplyByScalar(viewer.camera.upWC, dy * localView.range / 1200, new Cartesian3());
+      const right = Cartesian3.multiplyByScalar(viewer.camera.right, -dx * localView.range / 1200, new Cartesian3());
+      const up = Cartesian3.multiplyByScalar(viewer.camera.up, dy * localView.range / 1200, new Cartesian3());
       Cartesian3.add(localView.pan, Cartesian3.add(right, up, right), localView.pan);
       const length = Cartesian3.magnitude(localView.pan);
       if (length > radius * 2) Cartesian3.multiplyByScalar(localView.pan, radius * 2 / length, localView.pan);
@@ -245,6 +268,7 @@ export function createSolarSystemLayer(viewer, options = {}) {
       viewer.camera.setView({ destination: previous.position, orientation: { direction: previous.direction, up: previous.up } });
       localBody = previous.localBody;
       localView = previous.localView;
+      syncLocalEntities();
       const degraded = [...restored].some((key) => key !== "earth" && !details.get(key)?.show);
       for (const key of restored) loadDetail(key, generation);
       updatePositions(true);
@@ -258,6 +282,11 @@ export function createSolarSystemLayer(viewer, options = {}) {
         viewer.clock.shouldAnimate = resumeClock;
         if (resumeClock) viewer.clock.clockStep = resumeClockStep;
         controller.enableInputs = !localBody;
+        // Bind the settled local frame after restoring the clock, including
+        // failed flights in paused Time mode. An earlier render request can
+        // be consumed while travelling still suppresses the local camera.
+        updatePositions(true);
+        viewer.scene.requestRender();
       }
     }
   }

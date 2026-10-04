@@ -2,6 +2,7 @@ import {
   Cartesian3,
   JulianDate,
   Matrix3,
+  Matrix4,
   Transforms,
 } from "cesium";
 import { CELESTIAL_BODIES } from "./celestialBodies.js";
@@ -202,16 +203,30 @@ function eclipticToEquatorial(vector, result = new Cartesian3()) {
   return result;
 }
 
-export function bodyPositionFixed(id, time, result = new Cartesian3()) {
+export function bodyPositionInertial(id, time, result = new Cartesian3()) {
   const ecliptic = geocentricEcliptic(id, time);
   if (!ecliptic) return undefined;
+  return eclipticToEquatorial(ecliptic, result);
+}
 
-  const inertial = eclipticToEquatorial(ecliptic, new Cartesian3());
-  const matrix = Transforms.computeIcrfToFixedMatrix(time, new Matrix3());
+// Positions, orbit lines and local camera must use the same conversion,
+// including the existing inertial fallback while Cesium's ICRF data loads.
+export function inertialToFixedMatrix(time, result = new Matrix3()) {
+  return Transforms.computeIcrfToFixedMatrix(time, result) || Matrix3.clone(Matrix3.IDENTITY, result);
+}
 
-  return matrix
-    ? Matrix3.multiplyByVector(matrix, inertial, result)
-    : Cartesian3.clone(inertial, result);
+export function bodyPositionFixed(id, time, result = new Cartesian3()) {
+  const inertial = bodyPositionInertial(id, time);
+  if (!inertial) return undefined;
+  return Matrix3.multiplyByVector(inertialToFixedMatrix(time), inertial, result);
+}
+
+// A body-centred inertial frame expressed in Cesium's Earth-fixed world.
+// basis is constant in inertial space. R(time) * basis cancels Earth's
+// rotation in the local view without freezing any body's orbital motion.
+export function bodyLocalTransform(id, time, basis, result = new Matrix4()) {
+  const rotation = Matrix3.multiply(inertialToFixedMatrix(time), basis, new Matrix3());
+  return Matrix4.fromRotationTranslation(rotation, bodyPositionFixed(id, time), result);
 }
 
 function vectorAtMeanAnomaly(id, meanAnomaly, time) {
@@ -252,7 +267,7 @@ export function sampleBodyOrbitFixed(id, time, steps = 128) {
   if (!body || id === "earth") return [];
 
   const earth = planetHeliocentric("earth", time);
-  const matrix = Transforms.computeIcrfToFixedMatrix(time, new Matrix3());
+  const matrix = inertialToFixedMatrix(time);
 
   const parentHelio = body.type === "Moon"
     ? (body.parent === "earth" ? earth : heliocentric(body.parent, time))
@@ -281,9 +296,7 @@ export function sampleBodyOrbitFixed(id, time, steps = 128) {
 
     const inertial = eclipticToEquatorial(ecliptic, new Cartesian3());
     points.push(
-      matrix
-        ? Matrix3.multiplyByVector(matrix, inertial, new Cartesian3())
-        : inertial,
+      Matrix3.multiplyByVector(matrix, inertial, new Cartesian3()),
     );
   }
 

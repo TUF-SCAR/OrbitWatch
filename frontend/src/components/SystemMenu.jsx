@@ -46,8 +46,8 @@ export default function SystemMenu({ open, activeBodyId, onSelectBody, onClose }
   if (!open) return null;
 
   return (
-    <SpatialSurface as="aside" side="right" strength={3.8} className="system-menu" aria-label="Solar system navigation">
-      <div className="system-menu__head">
+    <SpatialSurface as="aside" side="right" strength={3.8} className="system-menu hud-panel hud-panel--right" aria-label="Solar system navigation">
+      <div className="system-menu__head hud-panel__header">
         <div>
           <span className="eyebrow">SYSTEM NAVIGATION</span>
           <h2>{page === "map" ? systemId ? `${CELESTIAL_BODIES[systemId].name} system` : "Solar System" : "Object Catalog"}</h2>
@@ -69,7 +69,7 @@ export default function SystemMenu({ open, activeBodyId, onSelectBody, onClose }
               <button className="system-slide-back" onClick={() => setSystemId(null)}><ChevronLeft size={15} /> SOLAR SYSTEM</button>
               <div className="system-map subsystem-map">
                 <button className="subsystem-parent" aria-pressed={activeBodyId === systemId} style={{ "--body-color": CELESTIAL_BODIES[systemId].color }} onClick={() => onSelectBody(systemId)}><i /><strong>{CELESTIAL_BODIES[systemId].name}</strong><small>VISIT PLANET</small></button>
-                {moons.map((body, index) => { const radius = 75 + index * 12; const point = pointOnCircle(radius, index / moons.length * 360 - 90); return <div key={body.id} className="system-orbit" style={{ width: radius * 2, height: radius * 2, borderColor: `${body.color}40` }}><button className={`system-planet ${activeBodyId === body.id ? "is-active" : ""}`} aria-pressed={activeBodyId === body.id} style={{ "--planet-color": body.color, left: radius + point.x, top: radius + point.y }} onClick={() => onSelectBody(body.id)}><i /><span>{body.name}</span></button></div>; })}
+                {moons.map((body, index) => { const radius = 75 + index * 12; const point = pointOnCircle(radius, index / moons.length * 360 - 90); return <div key={body.id} className="system-orbit" style={{ "--orbit-radius": `${radius}px`, borderColor: `${body.color}40` }}><button className={`system-planet ${activeBodyId === body.id ? "is-active" : ""}`} aria-pressed={activeBodyId === body.id} style={{ "--planet-color": body.color, "--orbit-x": `${point.x}px`, "--orbit-y": `${point.y}px` }} onClick={() => onSelectBody(body.id)}><i /><span>{body.name}</span></button></div>; })}
               </div>
             </> : <>
             <div className="system-map">
@@ -94,15 +94,15 @@ export default function SystemMenu({ open, activeBodyId, onSelectBody, onClose }
                   <div
                     key={id}
                     className="system-orbit"
-                    style={{ width: radius * 2, height: radius * 2, borderColor: body.orbitColor }}
+                    style={{ "--orbit-radius": `${radius}px`, borderColor: body.orbitColor }}
                   >
                     <button
                       type="button"
                       className={`system-planet ${activePlanet ? "is-active" : ""}`}
                       style={{
                         "--planet-color": body.color,
-                        left: radius + point.x,
-                        top: radius + point.y,
+                        "--orbit-x": `${point.x}px`,
+                        "--orbit-y": `${point.y}px`,
                       }}
                       onClick={() => browseBody(id)}
                       aria-pressed={activePlanet}
@@ -157,7 +157,7 @@ export default function SystemMenu({ open, activeBodyId, onSelectBody, onClose }
         </div>
       </div>
 
-      <div className="system-menu__foot">
+      <div className="system-menu__foot hud-panel__footer">
         <span>APPROXIMATE EPHEMERIS</span>
         <strong>{Object.keys(CELESTIAL_BODIES).length} OBJECTS</strong>
       </div>

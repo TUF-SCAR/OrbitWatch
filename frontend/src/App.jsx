@@ -20,6 +20,7 @@ import PlaceSearch from "./components/PlaceSearch.jsx";
 import SceneBoundary from "./components/SceneBoundary.jsx";
 import { fetchSatelliteCatalog, fetchSatelliteDataStatus, fetchSatellitePosition } from "./services/orbitwatchApi.js";
 import { SPACE_OBJECTS } from "./data/spaceObjects.js";
+import { navigationVisibility } from "./utils/navigationVisibility.js";
 
 const DEFAULT_MAJOR_OBJECTS = [25544, 20580, 48274, 39084, 58990, 26407];
 const TIME_DEFAULT_OBJECTS = [25544, 20580, 48274, 39084];
@@ -65,6 +66,7 @@ export default function App({ currentUser, onLogout, hudActive = true, onSceneRe
   const [settings, setSettings] = useState(readSettings);
   const [presentation, setPresentation] = useState(false);
   const globeRef = useRef(null);
+  const shellRef = useRef(null);
   const refreshTimerRef = useRef(null);
   const refreshLockRef = useRef(false);
   const travelLockRef = useRef(false);
@@ -78,7 +80,8 @@ export default function App({ currentUser, onLogout, hudActive = true, onSceneRe
   const selectedObject = catalogObjects.find((item) => item.noradId === selectedId) || null;
   const selectedRendered = Boolean(selectedId && activeTrackedIds.includes(selectedId));
   const atEarth = selectedCelestialBody === "earth";
-  const menu = layers.find((item) => ["map", "camera", "system"].includes(item));
+  const navigation = navigationVisibility(mode, atEarth);
+  const menu = layers.find((item) => ["map", "camera", "system"].includes(item) && navigation[item]);
   const allOrbitsVisible = activeTrackedIds.length > 0 && activeTrackedIds.every((id) => shownOrbitIds.has(id));
 
   const closeLayer = useCallback((name) => {
@@ -92,6 +95,8 @@ export default function App({ currentUser, onLogout, hudActive = true, onSceneRe
     });
   }, []);
   const openLayer = useCallback((name) => {
+    const available = navigationVisibility(mode, atEarth);
+    if (Object.hasOwn(available, name) && !available[name]) return;
     layerTriggersRef.current.set(name, document.activeElement);
     setLayers((current) => {
       const sceneMenu = ["map", "camera", "system"].includes(name);
@@ -99,13 +104,16 @@ export default function App({ currentUser, onLogout, hudActive = true, onSceneRe
       const narrow = window.innerWidth < 1100;
       return [...current.filter((item) => item !== name &&
         !(name === "profile" && rightPanel.includes(item)) &&
+        !(rightPanel.includes(name) && item === "place") &&
+        !(name === "place" && rightPanel.includes(item)) &&
+        !(window.innerWidth < 1280 && ((name === "place" && item === "explorer") || (name === "explorer" && item === "place"))) &&
         !(rightPanel.includes(name) && item === "profile") &&
         !(sceneMenu && ["map", "camera", "system", "inspector", "body"].includes(item)) &&
         !(["inspector", "body"].includes(name) && ["map", "camera", "system", "body", "inspector"].includes(item)) &&
-        !(narrow && name === "explorer" && ["inspector", "body", "map", "camera", "system"].includes(item)) &&
+        !(narrow && name === "explorer" && rightPanel.includes(item)) &&
         !(narrow && name !== "explorer" && item === "explorer")), name];
     });
-  }, []);
+  }, [mode, atEarth]);
   const toggleLayer = (name) => layers.includes(name) ? closeLayer(name) : openLayer(name);
   const releaseCamera = useCallback(() => { globeRef.current?.releaseCamera(); setCameraFollowing(false); }, []);
 
@@ -202,9 +210,8 @@ export default function App({ currentUser, onLogout, hudActive = true, onSceneRe
     setSettings(next);
     try { localStorage.setItem("orbitwatch_settings", JSON.stringify(next)); } catch { /* Settings still work for this session. */ }
   }
-  async function changeMode(next) {
-    if (travelLockRef.current) return;
-    if (!atEarth && !await selectCelestialBody("earth")) return;
+  function changeMode(next) {
+    if (travelLockRef.current || !navigation.modeRail) return;
     releaseCamera();
     setLayers([]);
     setSelectedCelestialBody("earth");
@@ -215,7 +222,7 @@ export default function App({ currentUser, onLogout, hudActive = true, onSceneRe
     if (next === "disaster") setSceneMode("3d");
   }
   async function selectCelestialBody(id) {
-    if (travelLockRef.current) return false;
+    if (travelLockRef.current || !navigation.system) return false;
     if (id === selectedCelestialBody) { closeLayer("system"); return true; }
     travelLockRef.current = true;
     setTravelError("");
@@ -235,10 +242,30 @@ export default function App({ currentUser, onLogout, hudActive = true, onSceneRe
   }
 
   useEffect(() => {
-    const resolvePanels = () => { if (window.innerWidth < 1100) setLayers((current) => current.length > 1 ? [current[current.length - 1]] : current); };
+    const resolvePanels = () => {
+      if (window.innerWidth < 1280) setLayers((current) => {
+        if (window.innerWidth < 1100 && current.length > 1) return [current[current.length - 1]];
+        if (current.includes("place") && current.includes("explorer")) return current.filter((item) => item !== (current.indexOf("place") < current.indexOf("explorer") ? "place" : "explorer"));
+        return current;
+      });
+    };
     window.addEventListener("resize", resolvePanels);
     return () => window.removeEventListener("resize", resolvePanels);
   }, []);
+
+  // Reserve the actual bottom dock, including wrapped facts and disclosures.
+  // One shared clearance keeps every floating panel above its changing height.
+  useEffect(() => {
+    const shell = shellRef.current;
+    const dock = shell?.querySelector(".live-dock, .time-dock, .disaster-dock");
+    if (!shell || !dock) return undefined;
+    const measure = () => shell.style.setProperty("--hud-dock-height", `${dock.offsetHeight}px`);
+    const observer = typeof ResizeObserver === "function" ? new ResizeObserver(measure) : null;
+    observer?.observe(dock);
+    window.addEventListener("resize", measure);
+    measure();
+    return () => { observer?.disconnect(); window.removeEventListener("resize", measure); shell.style.removeProperty("--hud-dock-height"); };
+  }, [mode]);
 
   useEffect(() => {
     function onKeyDown(event) {
@@ -256,12 +283,12 @@ export default function App({ currentUser, onLogout, hudActive = true, onSceneRe
       if (event.target instanceof HTMLElement && (event.target.closest("input, textarea, select, [contenteditable='true'], [role='textbox']"))) return;
       if (key === "p") setPresentation((value) => !value);
       else if (presentation) return;
-      else if (key === "/" && atEarth && mode !== "disaster") { event.preventDefault(); openLayer("explorer"); setSearchCycle((value) => value + 1); }
-      else if (key === "m" && atEarth) toggleLayer("map");
-      else if (key === "c" && atEarth) toggleLayer("camera");
-      else if (key === "s") toggleLayer("system");
-      else if (key === "f" && selectedRendered && atEarth) followSelected();
-      else if (key === "o" && atEarth) toggleSelectedOrbit();
+      else if (key === "/" && navigation.explorer) { event.preventDefault(); openLayer("explorer"); setSearchCycle((value) => value + 1); }
+      else if (key === "m" && navigation.map) toggleLayer("map");
+      else if (key === "c" && navigation.camera) toggleLayer("camera");
+      else if (key === "s" && navigation.system) toggleLayer("system");
+      else if (key === "f" && selectedRendered && navigation.explorer) followSelected();
+      else if (key === "o" && navigation.explorer) toggleSelectedOrbit();
     }
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
@@ -269,14 +296,14 @@ export default function App({ currentUser, onLogout, hudActive = true, onSceneRe
 
   const hidden = presentation || Boolean(travel) || !hudActive;
   return (
-    <main className={`orbitwatch-shell mode-${mode} ${travel ? "is-travelling" : ""}`}>
+    <main ref={shellRef} className={`orbitwatch-shell mode-${mode} ${atEarth ? "at-earth" : "off-earth"} ${layers.includes("place") ? "has-place-search" : ""} ${travel ? "is-travelling" : ""}`}>
       <SceneBoundary onReady={onSceneReady} onReset={() => { setSelectedCelestialBody("earth"); setDetailState("ready"); setCameraFollowing(false); setTravel(null); travelLockRef.current = false; setLayers([]); }}><OrbitGlobe trackedIds={mode === "disaster" ? [] : activeTrackedIds} selectedId={selectedId} selectedTime={selectedTime} mode={mode} startupCountry={startupCountry} selectedCelestialBody={selectedCelestialBody} onCelestialSelect={(id) => { if (id === selectedCelestialBody && id !== "earth") openLayer("body"); }} refreshNonce={refreshNonce} mapStyle={mapStyle} labelsEnabled={labelsEnabled} sceneMode={sceneMode} shownOrbitIds={shownOrbitIds} disasterLayers={disasterLayers} onObjectSelect={selectObject} onViewTelemetry={setViewTelemetry} globeRef={globeRef} onSceneReady={onSceneReady} onRefreshComplete={() => setRefreshBusy(false)} onMapStatus={setMapStatus} onDetailReady={(id) => { if (id === selectedCelestialBody) setDetailState("ready"); }} quality={settings.quality} /></SceneBoundary>
       <div className="space-vignette" aria-hidden="true" />
       <div className={`live-interface ${hidden ? "is-hidden" : ""}`} inert={hidden}>
         <CinematicStage cycle={hudCycle} active={hudActive} side="top" loaderAnchor="top" zIndex={30}><TopHud mode={mode} bodyId={selectedCelestialBody} apiState={apiState} currentUser={currentUser} onProfileToggle={() => toggleLayer("profile")} /></CinematicStage>
-        <CinematicStage cycle={hudCycle} active={hudActive} side="left" loaderAnchor="left-rail" zIndex={31}><ModeRail mode={mode} onChange={changeMode} /></CinematicStage>
-        {atEarth && mode !== "disaster" && !layers.includes("explorer") && <CinematicStage cycle={hudCycle} active={hudActive} side="left" loaderAnchor="left-upper" zIndex={32}><SpatialSurface as="button" type="button" side="left" className="explorer-trigger" onClick={() => openLayer("explorer")} title="Object search (/)" aria-label="Open object explorer"><Aperture size={18} /><span>OBJECTS</span><b>{catalogObjects.length}</b></SpatialSurface></CinematicStage>}
-        <CinematicStage cycle={hudCycle} active={hudActive} side="right" loaderAnchor="right-upper" zIndex={31}><SceneDock mode={mode} atEarth={atEarth} mapOpen={menu === "map"} cameraOpen={menu === "camera"} systemOpen={menu === "system"} onToggleMap={() => toggleLayer("map")} onToggleCamera={() => toggleLayer("camera")} onToggleSystem={() => toggleLayer("system")} /></CinematicStage>
+        {navigation.modeRail && <CinematicStage cycle={hudCycle} active={hudActive} side="left" loaderAnchor="left-rail" zIndex={31}><ModeRail mode={mode} onChange={changeMode} /></CinematicStage>}
+        {navigation.explorer && !layers.includes("explorer") && <CinematicStage cycle={hudCycle} active={hudActive} side="left" loaderAnchor="left-upper" zIndex={32}><SpatialSurface as="button" type="button" side="left" className="explorer-trigger" onClick={() => openLayer("explorer")} title="Object search (/)" aria-label="Open object explorer"><Aperture size={18} /><span>OBJECTS</span><b>{catalogObjects.length}</b></SpatialSurface></CinematicStage>}
+        {(navigation.map || navigation.camera || navigation.system) && <CinematicStage cycle={hudCycle} active={hudActive} side="right" loaderAnchor="right-upper" zIndex={31}><SceneDock controls={navigation} mapOpen={menu === "map"} cameraOpen={menu === "camera"} systemOpen={menu === "system"} onToggleMap={() => toggleLayer("map")} onToggleCamera={() => toggleLayer("camera")} onToggleSystem={() => toggleLayer("system")} /></CinematicStage>}
         {atEarth && <PlaceSearch open={layers.includes("place")} onOpen={() => openLayer("place")} onClose={() => closeLayer("place")} onVisit={(destination) => { releaseCamera(); globeRef.current?.flyToPlace(destination); }} globeRef={globeRef} />}
         <ProfilePanel open={layers.includes("profile")} user={currentUser} onClose={() => closeLayer("profile")} onLogout={onLogout} settings={settings} onSettingsChange={changeSettings} />
         <CameraMenu open={menu === "camera"} hasSelected={selectedRendered} onPreset={(preset) => { globeRef.current?.setCameraPreset(preset); setCameraFollowing(false); closeLayer("camera"); }} onClose={() => closeLayer("camera")} />

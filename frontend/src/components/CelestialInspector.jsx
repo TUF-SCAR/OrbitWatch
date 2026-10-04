@@ -33,8 +33,9 @@ export default function CelestialInspector({ bodyId, sceneTime, onClose, detailS
     ...(body.parent ? [["Parent body", CELESTIAL_BODIES[body.parent].name]] : []),
     ...(orbit ? [["Orbital period", `${number(orbit.periodDays, 3)} Earth days`], ["Semimajor axis", axis], ["Eccentricity", number(orbit.eccentricity, 4)], ["Inclination", `${number(Math.abs(orbit.inclination))}°`]] : []),
   ];
-  return <SpatialSurface as="aside" side="right" className="inspector-panel celestial-inspector" aria-label="Celestial inspector">
-    <div className="inspector-panel__head"><div><span className="eyebrow">CELESTIAL OVERVIEW</span><h1>{body.name}</h1></div><button className="icon-button" onClick={onClose} aria-label="Close celestial inspector"><X size={20} /></button></div>
+  return <SpatialSurface as="aside" side="right" className="inspector-panel celestial-inspector hud-panel hud-panel--right" aria-label="Celestial inspector">
+    <div className="inspector-panel__head hud-panel__header"><div><span className="eyebrow">CELESTIAL OVERVIEW</span><h1>{body.name}</h1></div><button className="icon-button" onClick={onClose} aria-label="Close celestial inspector"><X size={20} /></button></div>
+    <div className="hud-panel__body inspector-body">
     <div className="object-ident"><span>{body.type}</span><span>REFERENCE DATA</span></div>
     <a className="inspector-reference" href={bodyScienceSource(bodyId)} target="_blank" rel="noreferrer">Scientific reference ↗</a>
     <div className="inspector-scroll">
@@ -46,5 +47,6 @@ export default function CelestialInspector({ bodyId, sceneTime, onClose, detailS
     {CELESTIAL_NOTES[bodyId]?.length > 0 && <><h3>Science highlights</h3><p>{CELESTIAL_NOTES[bodyId].slice(0, 3).join(" ")}</p><p>Open the scientific reference above for the full exploration history and current research.</p></>}
     <h3>In this scene</h3><p>Positions are calculated from approximate orbital elements at the scene time. They are not a live spacecraft feed or precision navigation ephemeris.</p><p>{bodyRepresentation(bodyId)}</p>{detailState === "degraded" && <p className="inline-warning">Detailed model unavailable. A lightweight reference body remains visible while detail retries.</p>}
     <h3>Controls</h3><p>Drag to orbit. Scroll to zoom. Right-drag to pan around the body. Use System to visit another destination.</p><h3>Sources</h3>{[...bodyAdditionalSources(bodyId), ...BODY_SOURCES].map((source) => <p key={source.url}><a href={source.url} target="_blank" rel="noreferrer">{source.label} ↗</a></p>)}{bodyTextureSource(bodyId) && <a href={bodyTextureSource(bodyId)} target="_blank" rel="noreferrer">NASA texture source ↗</a>}</div>
+    </div>
   </SpatialSurface>;
 }

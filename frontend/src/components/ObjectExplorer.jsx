@@ -91,13 +91,14 @@ export default function ObjectExplorer({ open, onClose, objects, trackedIds, sel
 
   if (!open) return null;
   return (
-    <SpatialSurface as="aside" side="left" strength={1.2} className="object-explorer" aria-label="Object explorer" onKeyDown={(event) => {
+    <SpatialSurface as="aside" side="left" strength={1.2} className="object-explorer hud-panel hud-panel--left" aria-label="Object explorer" onKeyDown={(event) => {
       if (event.key === "Escape" && chooser) { event.stopPropagation(); setChooser(null); }
     }}>
-      <div className="object-explorer__head">
+      <div className="object-explorer__head hud-panel__header">
         <div><div className="eyebrow">CATALOG / {objects.length} OBJECTS</div><h2>Object Explorer</h2></div>
         <button type="button" className="icon-button" onClick={onClose} aria-label="Close object explorer"><X size={18} /></button>
       </div>
+      <div className="explorer-body hud-panel__body">
       <label className="search-field"><Search size={16} /><span className="sr-only">Search objects</span><input ref={searchRef} value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Name, NORAD, operator, country…" /></label>
       <div className="explorer-filters">
         <label>TYPE<select value={category} onChange={(event) => setCategory(event.target.value)}>{["All", ...new Set(objects.map((item) => item.category))].map((item) => <option key={item}>{item}</option>)}</select></label>
@@ -118,8 +119,9 @@ export default function ObjectExplorer({ open, onClose, objects, trackedIds, sel
           <div className="object-row__actions"><button type="button" onClick={() => tracked.has(item.noradId) ? onUnload([item.noradId]) : onLoad([item.noradId])}>{tracked.has(item.noradId) ? "UNLOAD" : "LOAD"}</button><button type="button" aria-label={`Add ${item.name} to collection`} onClick={() => openChooser({ kind: "add", ids: [item.noradId] })}>ADD</button>{collection && <button type="button" aria-label={`Remove ${item.name} from collection`} onClick={() => saveCollections(collections.map((group) => group.id === collectionId ? { ...group, ids: group.ids.filter((id) => id !== item.noradId) } : group))}>REMOVE</button>}</div>
         </div>)}
       </div>
+      </div>
       {selected.size >= 2 && <div className="selection-actions"><button type="button" disabled={!selectedIds.every((id) => !tracked.has(id))} onClick={() => onLoad(selectedIds)}>LOAD</button><button type="button" disabled={!selectedIds.every((id) => tracked.has(id))} onClick={() => onUnload(selectedIds)}>UNLOAD</button><button type="button" onClick={() => openChooser({ kind: "add", ids: selectedIds })}>ADD</button></div>}
-      <div className="object-explorer__foot"><span>{filtered.length} results · {selected.size} selected</span><span>{trackedIds.length} loaded</span></div>
+      <div className="object-explorer__foot hud-panel__footer"><span>{filtered.length} results · {selected.size} selected</span><span>{trackedIds.length} loaded</span></div>
       {chooser && <div ref={chooserRef} onKeyDown={chooserKeys} className="collection-chooser" role="dialog" aria-modal="true" aria-label="Manage custom filter"><button type="button" className="icon-button" aria-label="Close collection chooser" onClick={() => setChooser(null)}><X size={16} /></button><h3>{chooser.kind === "rename" ? "Rename collection" : "Add to your collection"}</h3>{chooser.kind === "add" && collections.map((item) => <button type="button" key={item.id} onClick={() => addToCollection(item.id)}>{item.name}</button>)}<form onSubmit={submitName}><label>{chooser.kind === "rename" ? "Collection name" : "Create new filter"}<input autoFocus required maxLength={48} value={name} onChange={(event) => setName(event.target.value)} /></label><button type="submit">{chooser.kind === "rename" ? "RENAME" : "CREATE"}</button></form></div>}
     </SpatialSurface>
   );

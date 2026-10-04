@@ -8,8 +8,8 @@ export default function MapSettings({ open, mapStyle, onMapStyleChange, labelsEn
   const fixedLabels = ["osm", "bing-road"].includes(mapStyle);
 
   return (
-    <SpatialSurface as="aside" side="right" strength={3.2} className="map-settings" aria-label="Map settings">
-      <div className="map-settings__head" data-depth="2">
+    <SpatialSurface as="aside" side="right" strength={3.2} className="map-settings hud-panel hud-panel--right" aria-label="Map settings">
+      <div className="map-settings__head hud-panel__header" data-depth="2">
         <div>
           <div className="eyebrow"><Map size={15} /> MAP SETTINGS</div>
           <h2>Choose the Earth</h2>
@@ -17,6 +17,7 @@ export default function MapSettings({ open, mapStyle, onMapStyleChange, labelsEn
         <button className="icon-button" onClick={onClose} aria-label="Close map settings"><X size={20} /></button>
       </div>
 
+      <div className="hud-panel__body map-settings__body">
       {mapStatus && <p role="status" className="inline-warning">{mapStatus}</p>}
 
       <div className="map-gallery" data-depth="4">
@@ -45,6 +46,7 @@ export default function MapSettings({ open, mapStyle, onMapStyleChange, labelsEn
         <span><strong>Place labels</strong><small>{fixedLabels ? "Names are part of this provider’s map. Choose satellite imagery to hide them." : "Country and city names appear as you zoom in. For streets, choose Bing Labels or OpenStreetMap."}</small></span>
         <i>{labelsEnabled || fixedLabels ? "ON" : "OFF"}</i>
       </button>
+      </div>
     </SpatialSurface>
   );
 }

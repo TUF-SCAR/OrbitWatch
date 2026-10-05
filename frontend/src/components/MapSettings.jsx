@@ -1,14 +1,15 @@
+import { AnimatePresence } from "motion/react";
 import { Check, KeyRound, Map, Tags, X } from "lucide-react";
 import SpatialSurface from "./SpatialSurface.jsx";
 import { MAP_OPTIONS } from "../data/mapOptions.js";
 
 export default function MapSettings({ open, mapStyle, onMapStyleChange, labelsEnabled, onLabelsChange, onClose, mapStatus }) {
-  if (!open) return null;
+
   const hasCartoKey = Boolean(import.meta.env.VITE_CARTO_API_KEY);
   const fixedLabels = ["osm", "bing-road"].includes(mapStyle);
 
   return (
-    <SpatialSurface as="aside" side="right" strength={3.2} className="map-settings hud-panel hud-panel--right" aria-label="Map settings">
+    <AnimatePresence>{open && <SpatialSurface as="aside" side="right" strength={3.2} className="map-settings hud-panel hud-panel--right" aria-label="Map settings">
       <div className="map-settings__head hud-panel__header" data-depth="2">
         <div>
           <div className="eyebrow"><Map size={15} /> MAP SETTINGS</div>
@@ -47,6 +48,6 @@ export default function MapSettings({ open, mapStyle, onMapStyleChange, labelsEn
         <i>{labelsEnabled || fixedLabels ? "ON" : "OFF"}</i>
       </button>
       </div>
-    </SpatialSurface>
+    </SpatialSurface>}</AnimatePresence>
   );
 }

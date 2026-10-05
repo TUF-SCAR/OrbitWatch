@@ -26,9 +26,46 @@ export function distanceFade(distance, start, end, reduced = false) {
   return t * t * (3 - 2 * t);
 }
 
-export function solarSystemLod(scales, range, reduced = false) {
+export const LOD_STAGES = ["close", "local-system", "heliocentric", "overview"];
+
+// Distinct enter/exit boundaries stabilize stage changes. Fades remain a
+// separate continuous visual policy and never alter scientific positions.
+export function stableLodStage(scales, range, previous = "close") {
+  const boundaries = [scales.localStart, scales.solarStart, scales.overviewStart];
+  let index = Math.max(0, LOD_STAGES.indexOf(previous));
+  while (index < 3 && range >= boundaries[index] * 1.15) index++;
+  while (index > 0 && range < boundaries[index - 1] * 0.85) index--;
+  return LOD_STAGES[index];
+}
+
+export function representationWeights(distance, radius, previous = false, reduced = false) {
+  const symbolic = reduced ? distance >= radius * (previous ? 26 : 36) : distanceFade(distance, radius * 28, radius * 44);
+  // Physical fades out first. A marker never protrudes from a visible limb;
+  // model and fallback are exclusive owners of the physical phase.
+  const physical = reduced ? 1 - Number(symbolic) : 1 - distanceFade(distance, radius * 18, radius * 28);
+  return { physical, symbolic };
+}
+
+// Keep the opaque imaged globe until its disc matches a screen-space marker.
+// The centered marker is occluded by the globe before ownership changes, so
+// neither a disappearing Earth nor a dot protruding through its limb occurs.
+export function surfaceSymbolicHandoff(distance, radius, height, fov, previous = false) {
+  const diameter = height * radius / (Math.max(distance, radius) * Math.tan(fov / 2));
+  return diameter <= (previous ? 11 : 9);
+}
+
+export function rangeToScale(range, minimum) {
+  return Math.max(0, Math.min(1, Math.log(Math.max(range, minimum) / minimum) / Math.log(MAX_SOLAR_RANGE / minimum)));
+}
+export function scaleToRange(value, minimum) {
+  return minimum * (MAX_SOLAR_RANGE / minimum) ** Math.max(0, Math.min(1, value));
+}
+
+export function solarSystemLod(scales, range, reduced = false, previous = "close") {
   const local = distanceFade(range, scales.localStart, scales.localEnd, reduced);
   const solar = distanceFade(range, scales.solarStart, scales.solarEnd, reduced);
   const overview = distanceFade(range, scales.overviewStart, scales.overviewEnd, reduced);
-  return { local, solar, overview, stage: overview > 0 ? "overview" : solar > 0 ? "heliocentric" : local > 0 ? "local-system" : "close" };
+  const stage = stableLodStage(scales, range, previous);
+  if (reduced) { const index = LOD_STAGES.indexOf(stage); return { local: Number(index >= 1), solar: Number(index >= 2), overview: Number(index >= 3), stage }; }
+  return { local, solar, overview, stage };
 }

@@ -1,4 +1,8 @@
+import { useReducedMotionPreference } from "../utils/useReducedMotion.js";
 import { useRef } from "react";
+import { motion, useIsPresent } from "motion/react";
+import { HUD_EASE, MOTION } from "../utils/motionTokens.js";
+const SURFACES = { div: motion.div, aside: motion.aside, button: motion.button, section: motion.section, nav: motion.nav };
 
 const SIDE_BASE = {
   left: { rx: -1.2, ry: 3.8 },
@@ -19,11 +23,14 @@ export default function SpatialSurface({
   ...props
 }) {
   const ref = useRef(null);
+  const reduced = useReducedMotionPreference();
+  const present = useIsPresent();
+  const Surface = SURFACES[Tag] || Tag;
   const base = SIDE_BASE[side] || SIDE_BASE.center;
 
   function handlePointerMove(event) {
     const node = ref.current;
-    if (!node) return;
+    if (!node || reduced) return;
     const rect = node.getBoundingClientRect();
     const nx = ((event.clientX - rect.left) / Math.max(rect.width, 1)) * 2 - 1;
     const ny = ((event.clientY - rect.top) / Math.max(rect.height, 1)) * 2 - 1;
@@ -49,7 +56,9 @@ export default function SpatialSurface({
   }
 
   return (
-    <Tag
+    <Surface
+      initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+      transition={{ duration: reduced ? 0.04 : MOTION.panel, ease: HUD_EASE }}
       ref={ref}
       className={`spatial-surface spatial-surface--${side} ${className}`.trim()}
       style={{
@@ -59,8 +68,9 @@ export default function SpatialSurface({
       onPointerMove={handlePointerMove}
       onPointerLeave={handlePointerLeave}
       {...props}
+      inert={Boolean(props.inert) || !present}
     >
       {children}
-    </Tag>
+    </Surface>
   );
 }

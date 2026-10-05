@@ -1,3 +1,4 @@
+import { AnimatePresence } from "motion/react";
 import { useEffect, useRef, useState } from "react";
 import { Search, X, Plus, Trash2, Pencil } from "lucide-react";
 import SpatialSurface from "./SpatialSurface.jsx";
@@ -89,9 +90,9 @@ export default function ObjectExplorer({ open, onClose, objects, trackedIds, sel
     setName("");
   }
 
-  if (!open) return null;
+
   return (
-    <SpatialSurface as="aside" side="left" strength={1.2} className="object-explorer hud-panel hud-panel--left" aria-label="Object explorer" onKeyDown={(event) => {
+    <AnimatePresence>{open && <SpatialSurface as="aside" side="left" strength={1.2} className="object-explorer hud-panel hud-panel--left" aria-label="Object explorer" onKeyDown={(event) => {
       if (event.key === "Escape" && chooser) { event.stopPropagation(); setChooser(null); }
     }}>
       <div className="object-explorer__head hud-panel__header">
@@ -123,6 +124,6 @@ export default function ObjectExplorer({ open, onClose, objects, trackedIds, sel
       {selected.size >= 2 && <div className="selection-actions"><button type="button" disabled={!selectedIds.every((id) => !tracked.has(id))} onClick={() => onLoad(selectedIds)}>LOAD</button><button type="button" disabled={!selectedIds.every((id) => tracked.has(id))} onClick={() => onUnload(selectedIds)}>UNLOAD</button><button type="button" onClick={() => openChooser({ kind: "add", ids: selectedIds })}>ADD</button></div>}
       <div className="object-explorer__foot hud-panel__footer"><span>{filtered.length} results · {selected.size} selected</span><span>{trackedIds.length} loaded</span></div>
       {chooser && <div ref={chooserRef} onKeyDown={chooserKeys} className="collection-chooser" role="dialog" aria-modal="true" aria-label="Manage custom filter"><button type="button" className="icon-button" aria-label="Close collection chooser" onClick={() => setChooser(null)}><X size={16} /></button><h3>{chooser.kind === "rename" ? "Rename collection" : "Add to your collection"}</h3>{chooser.kind === "add" && collections.map((item) => <button type="button" key={item.id} onClick={() => addToCollection(item.id)}>{item.name}</button>)}<form onSubmit={submitName}><label>{chooser.kind === "rename" ? "Collection name" : "Create new filter"}<input autoFocus required maxLength={48} value={name} onChange={(event) => setName(event.target.value)} /></label><button type="submit">{chooser.kind === "rename" ? "RENAME" : "CREATE"}</button></form></div>}
-    </SpatialSurface>
+    </SpatialSurface>}</AnimatePresence>
   );
 }

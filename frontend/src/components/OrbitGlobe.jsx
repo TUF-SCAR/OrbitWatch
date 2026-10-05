@@ -367,6 +367,7 @@ export default function OrbitGlobe({
   startupCountry,
   selectedCelestialBody,
   onCelestialSelect,
+  onScaleChange,
   onSceneReady,
   onRefreshComplete,
   onMapStatus,
@@ -379,7 +380,7 @@ export default function OrbitGlobe({
   const startupCameraCommittedRef = useRef(false);
   const initialModeCameraResetRef = useRef(true);
   const initialCountryRef = useRef(startupCountry);
-  const callbacksRef = useRef({ onSceneReady, onRefreshComplete, onMapStatus, onDetailReady });
+  const callbacksRef = useRef({ onSceneReady, onRefreshComplete, onMapStatus, onDetailReady, onScaleChange });
   const applyBaseMap = (...args) => updateBaseMap(...args, RASTER_MAPS, (status) => callbacksRef.current.onMapStatus?.(status));
   const earthActiveRef = useRef(true);
   const lastInteractionRef = useRef(0);
@@ -418,9 +419,9 @@ export default function OrbitGlobe({
   sceneModeRef.current = sceneMode;
   shownOrbitIdsRef.current = shownOrbitIds;
   onCelestialSelectRef.current = onCelestialSelect;
-  callbacksRef.current = { onSceneReady, onRefreshComplete, onMapStatus, onDetailReady };
+  callbacksRef.current = { onSceneReady, onRefreshComplete, onMapStatus, onDetailReady, onScaleChange };
   qualityRef.current = quality;
-  }, [selectedId, labelsEnabled, onObjectSelect, onViewTelemetry, mapStyle, mode, sceneMode, shownOrbitIds, onCelestialSelect, onSceneReady, onRefreshComplete, onMapStatus, onDetailReady, quality]);
+  }, [selectedId, labelsEnabled, onObjectSelect, onViewTelemetry, mapStyle, mode, sceneMode, shownOrbitIds, onCelestialSelect, onSceneReady, onRefreshComplete, onMapStatus, onDetailReady, onScaleChange, quality]);
 
   useImperativeHandle(globeRef, () => ({
     focusSelected() {
@@ -473,6 +474,12 @@ export default function OrbitGlobe({
       );
 
       return solarSystemLayerRef.current?.focus(bodyId || "earth");
+    },
+    setCelestialScale(value) {
+      lastInteractionRef.current = performance.now();
+      const changed = solarSystemLayerRef.current?.setScale(value);
+      if (changed) viewerRef.current?.camera.cancelFlight();
+      return changed;
     },
     selectCelestialMarker(id) { solarSystemLayerRef.current?.selectMarker(id); },
     async searchPlaces(query, signal) {
@@ -681,6 +688,12 @@ export default function OrbitGlobe({
         {
           isLive: () => modeRef.current === "live" && sceneModeRef.current === "3d",
           onDetailReady: (id) => callbacksRef.current.onDetailReady?.(id),
+          onScaleChange: (state) => callbacksRef.current.onScaleChange?.(state),
+          setEarthRepresentation: (show) => {
+            if (!earthActiveRef.current) return;
+            viewer.scene.globe.show = show;
+            if (googleTilesRef.current) googleTilesRef.current.show = show;
+          },
           hideEarthDetail: () => {
             earthActiveRef.current = false;
             mapRequestRef.current += 1;
@@ -841,7 +854,7 @@ export default function OrbitGlobe({
 
       const follow = followStateRef.current;
       if (lastIdleInteraction !== lastInteractionRef.current) { idleState = "waiting"; lastIdleInteraction = lastInteractionRef.current; }
-      const idleEligible = !solarSystemLayerRef.current?.isWide() && !follow && !pointerHeld && viewer.camera.positionCartographic.height > 100_000 && modeRef.current === "live" && earthActiveRef.current && controllerIdle(viewer) && now - lastInteractionRef.current > 30000 && !window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      const idleEligible = !solarSystemLayerRef.current?.isSystemScale() && !follow && !pointerHeld && viewer.camera.positionCartographic.height > 100_000 && modeRef.current === "live" && earthActiveRef.current && controllerIdle(viewer) && now - lastInteractionRef.current > 30000 && !window.matchMedia("(prefers-reduced-motion: reduce)").matches;
       if (idleEligible) {
         if (idleState === "waiting") {
           idleState = "framing";

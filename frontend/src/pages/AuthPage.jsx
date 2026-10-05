@@ -1,3 +1,4 @@
+import { useReducedMotionPreference } from "../utils/useReducedMotion.js";
 import { AnimatePresence, motion } from "motion/react";
 import {
   Eye,
@@ -39,6 +40,7 @@ export default function AuthPage({
   onSwitch,
   showInterface = true,
 }) {
+  const reduced = useReducedMotionPreference();
   const registrationOpen = authType === "register";
   const [username, setUsername] = useState("");
   const [usernameOrEmail, setUsernameOrEmail] = useState("");
@@ -119,12 +121,12 @@ export default function AuthPage({
           <motion.div
             key="auth-interface"
             className="auth-interface"
-            initial={{ opacity: 0, filter: "blur(10px)" }}
+            initial={{ opacity: 0, filter: reduced ? "none" : "blur(10px)" }}
             animate={{ opacity: 1, filter: "blur(0px)" }}
             exit={{
               opacity: 0,
-              filter: "blur(8px)",
-              scale: 0.992,
+              filter: reduced ? "none" : "blur(8px)",
+              scale: reduced ? 1 : 0.992,
             }}
             transition={{ duration: 0.16, ease: [0.22, 1, 0.36, 1] }}
           >

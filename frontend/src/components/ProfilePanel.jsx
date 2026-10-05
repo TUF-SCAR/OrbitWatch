@@ -1,3 +1,4 @@
+import { AnimatePresence } from "motion/react";
 import { CalendarDays, Clock3, LogOut, Mail, ShieldCheck, UserRound, X } from "lucide-react";
 import SpatialSurface from "./SpatialSurface.jsx";
 
@@ -8,8 +9,8 @@ function dateText(value) {
 }
 
 export default function ProfilePanel({ open, user, onClose, onLogout, settings, onSettingsChange }) {
-  if (!open || !user) return null;
-  return <SpatialSurface as="aside" side="right" strength={3} className="profile-panel hud-panel hud-panel--right" aria-label="Profile and settings">
+  if (!user) return null;
+  return <AnimatePresence>{open && <SpatialSurface as="aside" side="right" strength={3} className="profile-panel hud-panel hud-panel--right" aria-label="Profile and settings">
     <header className="profile-panel__header hud-panel__header" data-depth="4">
       <div><small className="eyebrow">ORBITWATCH IDENTITY</small><h2>Profile & settings</h2></div>
       <button className="icon-button" type="button" aria-label="Close profile" onClick={onClose}><X size={18} /></button>
@@ -43,5 +44,5 @@ export default function ProfilePanel({ open, user, onClose, onLogout, settings, 
       </section>
     </div>
     <footer className="profile-panel__footer hud-panel__footer" data-depth="5"><span>Authenticated session</span><button type="button" onClick={onLogout}><LogOut size={16} /> Logout</button></footer>
-  </SpatialSurface>;
+  </SpatialSurface>}</AnimatePresence>;
 }

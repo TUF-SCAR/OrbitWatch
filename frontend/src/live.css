@@ -270,7 +270,7 @@ input[type="checkbox"] { accent-color:#8de8fa; width:16px; height:16px; cursor:p
 .camera-popover { --panel-width:280px; }
 .camera-popover__grid { gap:var(--control-gap); }
 .camera-popover__grid button { min-height:var(--control-height); }
-.system-menu { --panel-width:420px; height:calc(100dvh - var(--ui-panel-top) - var(--ui-bottom-safe)); max-height:640px; }
+.system-menu { --panel-width:420px; height:calc(100dvh - var(--ui-panel-top) - var(--ui-edge)); max-height:640px; }
 .system-map { --diagram-scale:1; }
 .system-orbit { width:calc(var(--orbit-radius) * 2 * var(--diagram-scale)); height:calc(var(--orbit-radius) * 2 * var(--diagram-scale)); }
 .system-planet { left:calc(50% + var(--orbit-x) * var(--diagram-scale)); top:calc(50% + var(--orbit-y) * var(--diagram-scale)); }
@@ -357,3 +357,32 @@ input[type="checkbox"] { accent-color:#8de8fa; width:16px; height:16px; cursor:p
 .celestial-travel-card p { color: var(--text-muted, #9aa8be); font-size: 12px; line-height: 1.6; margin: 0 0 10px; }
 .celestial-travel-card .inspector-actions { display: flex; }
 .celestial-travel-card .inspector-actions button { flex: 1; }
+
+/* Shared motion hierarchy: feedback, panels, then cinematic travel. */
+:root { --motion-feedback:160ms; --motion-panel:280ms; --motion-travel:650ms; --motion-ease:cubic-bezier(.22,1,.36,1); }
+.live-interface { transition:opacity var(--motion-travel) var(--motion-ease); }
+.spatial-surface { animation:none; transition:transform var(--motion-panel) var(--motion-ease), box-shadow var(--motion-feedback) ease, border-color var(--motion-feedback) ease; }
+.spatial-surface.is-pointer-active { transition:transform var(--motion-feedback) var(--motion-ease), box-shadow var(--motion-feedback) ease, border-color var(--motion-feedback) ease; }
+.system-menu__track { transition:transform var(--motion-panel) var(--motion-ease); }
+.cinematic-stage.is-ready .cinematic-stage__content > * { animation:stage-settle var(--motion-panel) var(--motion-ease) both; }
+@keyframes stage-settle { from { opacity:0; } to { opacity:1; } }
+.system-scale { position:absolute; left:50%; bottom:calc(var(--ui-bottom-safe, 112px) + 16px); margin-left:-140px; width:280px; padding:12px 15px; border:1px solid var(--line-strong); background:rgba(3,8,15,.94); box-shadow:0 12px 36px #0006; pointer-events:auto; }
+.system-scale__heading,.system-scale__ends { display:flex; justify-content:space-between; gap:12px; font-size:9px; letter-spacing:.1em; color:var(--text-muted,#8aa1b2); }
+.system-scale__heading output { color:var(--accent); font-variant-numeric:tabular-nums; letter-spacing:0; }
+.system-scale input { width:100%; margin:13px 0 9px; accent-color:var(--accent); cursor:pointer; }
+.system-scale input:focus-visible { outline:2px solid var(--accent); outline-offset:5px; }
+.system-scale__ends { font-size:8px; }
+@media(max-width:720px) { .system-scale { width:230px; margin-left:-115px; bottom:calc(var(--ui-bottom-safe,112px) + 8px); } }
+@media(prefers-reduced-motion:reduce) { .system-menu__track,.spatial-surface,.live-interface { transition:none; } .cinematic-stage.is-ready .cinematic-stage__content > * { animation:none; } }
+
+/* Fixed map framing; Catalog alone owns vertical scrolling. */
+.system-slide--map { overflow:hidden; scrollbar-gutter:auto; display:grid; grid-template-rows:var(--control-height) minmax(0,1fr) var(--control-height) auto; gap:var(--control-gap); }
+.system-slide--map .system-map { height:auto; min-height:0; --diagram-scale:1; }
+.system-slide--map .system-slide-back,.system-slide--map .system-slide-next,.system-slide--map .system-map__note { margin:0; }
+.system-map-back-slot { height:var(--control-height); }
+.system-slide--catalog { overflow-y:auto; }
+.system-slide--map .system-map__sun { width:max(14px,calc(27px * var(--diagram-scale))); height:max(14px,calc(27px * var(--diagram-scale))); }
+.system-slide--map .system-map__sun span { inset:max(2px,calc(5px * var(--diagram-scale))); }
+.subsystem-map .system-orbit { z-index:5; }
+.system-map .system-planet span { pointer-events:none; }
+.system-map .system-planet::before { inset:calc(-2px * var(--diagram-scale)); }

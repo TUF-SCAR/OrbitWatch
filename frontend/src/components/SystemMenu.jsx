@@ -1,5 +1,7 @@
+import { useReducedMotionPreference } from "../utils/useReducedMotion.js";
+import { AnimatePresence } from "motion/react";
 import { ChevronLeft, ChevronRight, X } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { CELESTIAL_BODIES, CELESTIAL_GROUPS } from "../data/celestialBodies.js";
 import SpatialSurface from "./SpatialSurface.jsx";
 import "./SystemMenu.css";
@@ -36,17 +38,28 @@ function BodyRow({ body, active, onSelect }) {
 }
 
 export default function SystemMenu({ open, activeBodyId, onSelectBody, onClose }) {
+  const reduced = useReducedMotionPreference();
   const [page, setPage] = useState("map");
   const [systemId, setSystemId] = useState(null);
+  const mapRef = useRef(null);
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !open) return;
+    const count = Object.values(CELESTIAL_BODIES).filter(body => body.type === "Moon" && body.parent === systemId).length;
+    const radius = systemId ? 75 + Math.max(0, count - 1) * 12 : 169;
+    const fit = () => map.style.setProperty("--diagram-scale", Math.max(0.1, Math.min(1, (map.clientWidth - 100) / (radius * 2), (map.clientHeight - 26) / (radius * 2))));
+    const observer = new ResizeObserver(fit); observer.observe(map); fit();
+    return () => observer.disconnect();
+  }, [open, systemId, page]);
   const moons = Object.values(CELESTIAL_BODIES).filter((body) => body.type === "Moon" && body.parent === systemId);
   function browseBody(id) {
     if (Object.values(CELESTIAL_BODIES).some((body) => body.type === "Moon" && body.parent === id)) { setSystemId(id); setPage("map"); }
     else onSelectBody(id);
   }
-  if (!open) return null;
+
 
   return (
-    <SpatialSurface as="aside" side="right" strength={3.8} className="system-menu hud-panel hud-panel--right" aria-label="Solar system navigation">
+    <AnimatePresence>{open && <SpatialSurface as="aside" side="right" strength={3.8} className="system-menu hud-panel hud-panel--right" aria-label="Solar system navigation">
       <div className="system-menu__head hud-panel__header">
         <div>
           <span className="eyebrow">SYSTEM NAVIGATION</span>
@@ -63,16 +76,17 @@ export default function SystemMenu({ open, activeBodyId, onSelectBody, onClose }
       </div>
 
       <div className="system-menu__viewport">
-        <div className="system-menu__track" data-page={page}>
-          <section className="system-slide" inert={page !== "map"}>
+        <div className="system-menu__track" data-page={page} style={reduced ? { transition: "none" } : undefined}>
+          <section className="system-slide system-slide--map" inert={page !== "map"}>
             {systemId ? <>
               <button className="system-slide-back" onClick={() => setSystemId(null)}><ChevronLeft size={15} /> SOLAR SYSTEM</button>
-              <div className="system-map subsystem-map">
+              <div ref={mapRef} className="system-map subsystem-map">
                 <button className="subsystem-parent" aria-pressed={activeBodyId === systemId} style={{ "--body-color": CELESTIAL_BODIES[systemId].color }} onClick={() => onSelectBody(systemId)}><i /><strong>{CELESTIAL_BODIES[systemId].name}</strong><small>VISIT PLANET</small></button>
                 {moons.map((body, index) => { const radius = 75 + index * 12; const point = pointOnCircle(radius, index / moons.length * 360 - 90); return <div key={body.id} className="system-orbit" style={{ "--orbit-radius": `${radius}px`, borderColor: `${body.color}40` }}><button className={`system-planet ${activeBodyId === body.id ? "is-active" : ""}`} aria-pressed={activeBodyId === body.id} style={{ "--planet-color": body.color, "--orbit-x": `${point.x}px`, "--orbit-y": `${point.y}px` }} onClick={() => onSelectBody(body.id)}><i /><span>{body.name}</span></button></div>; })}
               </div>
             </> : <>
-            <div className="system-map">
+            <div className="system-map-back-slot" aria-hidden="true" />
+            <div ref={mapRef} className="system-map">
               <button
                 type="button"
                 className={`system-map__sun ${activeBodyId === "sun" ? "is-active" : ""}`}
@@ -122,7 +136,7 @@ export default function SystemMenu({ open, activeBodyId, onSelectBody, onClose }
             <div className="system-map__note">SCHEMATIC UI MAP // REAL DISTANCES ARE USED IN THE 3D SCENE</div>
           </section>
 
-          <section className="system-slide" inert={page !== "catalog"}>
+          <section className="system-slide system-slide--catalog" inert={page !== "catalog"}>
             <div className="system-catalog">
               {[
                 ["Star","STAR"],
@@ -161,6 +175,6 @@ export default function SystemMenu({ open, activeBodyId, onSelectBody, onClose }
         <span>APPROXIMATE EPHEMERIS</span>
         <strong>{Object.keys(CELESTIAL_BODIES).length} OBJECTS</strong>
       </div>
-    </SpatialSurface>
+    </SpatialSurface>}</AnimatePresence>
   );
 }

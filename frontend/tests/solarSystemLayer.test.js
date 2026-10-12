@@ -1,7 +1,8 @@
+import { StableOrbitCollection } from "../src/services/stableOrbitCollection.js";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { setTimeout as schedule, clearTimeout as cancel } from "node:timers";
-import { Cartesian3, DataSourceCollection, EntityCollection, Event, JulianDate, LabelCollection, PointPrimitiveCollection, Material, Matrix3, Matrix4, Model, SceneTransforms, PolylineCollection, ScreenSpaceEventHandler, ScreenSpaceEventType, Transforms } from "cesium";
+import { Cartesian3, DataSourceCollection, EntityCollection, Event, JulianDate, LabelCollection, PointPrimitiveCollection, Material, Matrix3, Matrix4, Model, SceneTransforms, ScreenSpaceEventHandler, ScreenSpaceEventType, Transforms } from "cesium";
 import { AU_METERS, bodyPositionFixed, bodyPositionInertial } from "../src/data/solarSystemEphemeris.js";
 import { ALL_CELESTIAL_IDS } from "../src/data/celestialBodies.js";
 import { MAX_SOLAR_RANGE, SOLAR_OVERVIEW_IDS, solarSystemScales, rangeToScale } from "../src/services/solarSystemLod.js";
@@ -52,6 +53,47 @@ function harness(context) {
   const symbol = (id, Type = PointPrimitiveCollection) => { const collection = [...primitives].find(item => item instanceof Type); return Array.from({ length: collection.length }, (_, i) => collection.get(i)).find(item => item.id.id === `celestial-${id}`); };
   return { viewer, actions, primitives, models, listeners, timers, start, dispose, symbol, failModels: () => { failModel = true; }, failFlights: () => { failFlight = true; } };
 }
+
+test("paused scene orbit fades request frames until settled in both zoom directions, then return to idle", async context => {
+  const fixture = harness(context);
+  const { viewer, start } = fixture;
+  window.matchMedia = () => ({ matches:false });
+  let now=10000, requests=0;
+  context.mock.method(performance,"now",()=>now);
+  viewer.scene.requestRender = () => { requests++; };
+  const layer = createSolarSystemLayer(viewer);
+  context.after(()=>{layer.destroy();fixture.dispose();});
+  await layer.focus("mars");
+  const scales = solarSystemScales("mars");
+  function zoom(range) { now+=100; layer.setScale(rangeToScale(range,scales.localStart)); }
+  function tick() { now+=50; viewer.scene.preUpdate.raiseEvent(viewer.scene,start); }
+  const orbit = id => [...fixture.primitives].filter(p=>p instanceof StableOrbitCollection).flatMap(p=>p.lines).find(line=>line.id.id===`celestial-orbit-${id}`);
+  zoom(scales.localEnd);
+  for(let i=0;i<100;i++) tick();
+  assert.ok(orbit("phobos").show);
+  zoom(240*AU_METERS);
+  requests=0;
+  const alphas=[];
+  for(let i=0;i<100;i++) { tick(); alphas.push(orbit("mars").material.uniforms.color.w); }
+  assert.ok(requests>0,"uniform-only fade schedules actual frames with a paused clock");
+  assert.ok(alphas.every((alpha,i)=>i===0 || alpha>=alphas[i-1]));
+  assert.ok(Math.abs(orbit("mars").material.uniforms.color.w-.16)<1e-12);
+  assert.equal(orbit("phobos").material.uniforms.color.w,0);
+  assert.equal(orbit("phobos").show,false,"no residual local path remains in overview");
+  requests=0;
+  for(let i=0;i<20;i++) tick();
+  assert.equal(requests,0,"settled fades do not keep the scene rendering");
+  zoom(scales.localStart);
+  requests=0;
+  for(let i=0;i<100;i++) tick();
+  assert.ok(requests>0,"zoom-in retreat is drawn through its complete fade");
+  assert.equal(orbit("mars").material.uniforms.color.w,0);
+  assert.equal(orbit("mars").show,false);
+  requests=0;
+  for(let i=0;i<20;i++) tick();
+  assert.equal(requests,0);
+  assert.equal(JulianDate.equals(viewer.clock.currentTime,start),true,"fading never advances scientific time");
+});
 
 test("wide marker picking prioritizes a planet under an orbit line while Earth keeps its native pick", () => {
   const line = { id: { polyline: {} } }, planet = { id: { properties: { celestialId: "jupiter" } } };
@@ -195,9 +237,10 @@ test("continuous zoom reuses bounded solar paths and markers without loading dis
     assert.equal(fixture.models.length, initialModels, "selecting a marker does not travel");
     assert.deepEqual([...fixture.primitives].filter((item) => item.url), modelSet);
     const points = orbit("mars").polyline.positions.getValue(start);
-    const groups = [...fixture.primitives].filter((item) => item instanceof PolylineCollection);
+    const groups = [...fixture.primitives].filter((item) => item instanceof StableOrbitCollection);
     assert.ok(groups.length <= 2, "only solar and current parent system own path buffers");
     const buffers = groups.flatMap((group) => Array.from({ length: group.length }, (_, i) => group.get(i).positions));
+    const materials = groups.flatMap(group => Array.from({length:group.length},(_,i)=>({ gpu:group.get(i).material, property:group.get(i).id.polyline.material })));
     for (let i = 0; i < 3; i++) {
       zoom(scales.radius * 5.5);
       assert.equal(layer.isWide(), false);
@@ -206,6 +249,11 @@ test("continuous zoom reuses bounded solar paths and markers without loading dis
       assert.equal(orbit("mars").polyline.positions.getValue(start), points, "camera zoom keeps sampled geometry/arrays");
     }
     groups.flatMap((group) => Array.from({ length: group.length }, (_, i) => group.get(i).positions)).forEach((buffer, index) => assert.equal(buffer, buffers[index], "zoom never replaces GPU path vertices"));
+    groups.flatMap(group=>Array.from({length:group.length},(_,i)=>group.get(i))).forEach((line,index)=>{
+      assert.equal(line.material,materials[index].gpu,"fades retain native GPU material");
+      assert.equal(line.id.polyline.material,materials[index].property,"fades retain Entity property/event identity");
+      assert.ok(line.material.uniforms.color.w>=0 && line.material.uniforms.color.w<=.24);
+    });
     assert.deepEqual(viewer.entities.values, entities, "camera movements reuse entities");
     // Solar paths remain stable in the local inertial frame between samples.
     zoom(scales.solarEnd);

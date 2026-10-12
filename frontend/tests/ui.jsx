@@ -14,6 +14,14 @@ import { instrumentMotionPreference } from "./motionPreference.js";
 const sceneMetrics = instrumentScenes();
 const motionPreference = instrumentMotionPreference();
 const realFetch = window.fetch.bind(window);
+const realSatelliteFeed = new URLSearchParams(location.search).get("satellites") === "backend";
+// AuthRoot changes the route to / during handoff. Keep the isolated fixture
+// entry on reload instead of silently loading the production entry/transport.
+const fixtureUrl = location.href;
+const realReplaceState = history.replaceState;
+history.replaceState = function (state, unused, url) {
+  return realReplaceState.call(this, state, unused, url === "/" || url === "/login" ? fixtureUrl : url);
+};
 const apiOrigin = new URL(import.meta.env.VITE_API_BASE_URL || "http://127.0.0.1:8000", location.origin).origin;
 let feed = "online";
 let failModels = false;
@@ -46,7 +54,7 @@ XMLHttpRequest.prototype.open = function (method, url, ...args) {
   const target = new URL(String(url), location.origin);
   return realOpen.call(this, method, failModels && target.pathname.includes("/models/celestial/") ? "/tests/forced-asset-failure.glb" : url, ...args);
 };
-import.meta.hot?.dispose(() => { root.unmount(); motionPreference.dispose(); sceneMetrics.dispose(); window.fetch = realFetch; XMLHttpRequest.prototype.open = realOpen; Camera.prototype.flyToBoundingSphere = realFlight; IonImageryProvider.fromAssetId = realImagery; IonGeocoderService.prototype.geocode = realGeocode; for (const resolve of pendingPlaces) resolve([]); pendingPlaces.clear(); });
+import.meta.hot?.dispose(() => { root.unmount(); motionPreference.dispose(); sceneMetrics.dispose(); window.fetch = realFetch; history.replaceState = realReplaceState; XMLHttpRequest.prototype.open = realOpen; Camera.prototype.flyToBoundingSphere = realFlight; IonImageryProvider.fromAssetId = realImagery; IonGeocoderService.prototype.geocode = realGeocode; for (const resolve of pendingPlaces) resolve([]); pendingPlaces.clear(); });
 const user = { id: "ui-fixture", username: "UI Test", email: "ui-test@example.invalid", created_at: "2026-09-16T00:00:00Z" };
 function sample(id, seconds) { const a = (Date.now() / 1000 + seconds) / 900 + id; return { timestamp: new Date(Date.now() + seconds * 1000).toISOString(), latitude: Math.sin(a) * 50, longitude: ((a * 180 / Math.PI + 180) % 360) - 180, altitude_km: 420 + id % 200 }; }
 function trajectory(id) { return { norad_id: id, positions: Array.from({ length: 61 }, (_, i) => sample(id, i * 5)), orbital_period_minutes: 95, orbital_source: "SYNTHETIC UI FIXTURE" }; }
@@ -68,6 +76,11 @@ window.fetch = (input, options = {}) => {
   if (path === "/api/auth/register") return json({ access_token: "ui-fixture-not-a-real-jwt" }, 201);
   if (path === "/api/auth/me") return json(user);
   if (feed === "offline") return Promise.reject(new TypeError("UI fixture offline"));
+  if (realSatelliteFeed && /^\/api\/satellites\/(trajectories|\d+\/(orbit|position|trajectory))$/.test(path)) {
+    // Only test identity is synthetic. Public orbital samples come from the
+    // unmodified backend propagators/database through the loopback test bridge.
+    return realFetch(`http://127.0.0.1:8001${path}${url.search}`, options);
+  }
   if (path.endsWith("/catalog")) return json({ objects: SPACE_OBJECTS });
   if (path.endsWith("/data-status")) return json({ stale: feed === "stale", missing_supported_objects: 0, age_seconds: feed === "stale" ? 90000 : 120 });
   if (path.endsWith("/trajectories")) return json({ objects: JSON.parse(options.body).norad_ids.map(trajectory), errors: [] });

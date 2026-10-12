@@ -1,5 +1,6 @@
 import { bodyPositionFixed } from "../src/data/solarSystemEphemeris.js";
 import { Cartesian3, Clock, ClockStep, Cesium3DTileset, EncodedCartesian3, JulianDate, Matrix4, LabelCollection, Model, PointPrimitiveCollection, PrimitiveCollection, Scene } from "cesium";
+import { StableOrbitCollection } from "../src/services/stableOrbitCollection.js";
 
 // Development fixture only. Read public scene/primitive APIs; never retain a
 // destroyed scene. Browser heap values are estimates, not GPU measurements.
@@ -22,7 +23,7 @@ export function instrumentScenes() {
     };
   });
   function sampleCelestial(sampleScene, sampleTime) {
-      const bodies = new Map(); let invalid = 0, drift = 0, duplicate = 0, leaders = 0, markers = 0, labels = 0, gpuErrorPixels = 0;
+      const bodies = new Map(), populations = {}, rings = {}, orbits = {}; let invalid = 0, drift = 0, duplicate = 0, leaders = 0, markers = 0, labels = 0, gpuErrorPixels = 0;
       for (const [scene, record] of [[sampleScene, { sceneTime: sampleTime }]]) {
         if (!record.sceneTime) continue;
         const check = (entity, position, kind) => {
@@ -38,6 +39,30 @@ export function instrumentScenes() {
         const visit = (collection) => {
           for (let i = 0; i < collection.length; i++) {
             const primitive = collection.get(i);
+            if (primitive instanceof StableOrbitCollection) {
+              for (const line of primitive.lines) {
+                const id = line.id.id, gpu = line.primitive;
+                orbits[id] = { visible: line.show, ready: gpu?.ready ?? false, uploads:line.geometryRevision,
+                  alpha:line.material.uniforms.color.w, vertices:line.positions.length,
+                  depthTest:gpu?.appearance.renderState.depthTest.enabled ?? true,
+                  writesDepth:gpu?.appearance.renderState.depthMask ?? false,
+                  duplicateEntity:line.id.polyline.show.getValue(record.sceneTime) !== false };
+                if (line.orbitwatchSatellite) {
+                  const { state, track } = line.orbitwatchSatellite;
+                  Object.assign(orbits[id], { noradId:line.id.properties.noradId.getValue(record.sceneTime),
+                    phase:line.material.uniforms.phase, phaseErrorMeters:state.distance,
+                    baseAlpha:line.material.uniforms.baseAlpha, active:line.material.uniforms.current,
+                    stale:track.isStale(record.sceneTime), coverageSeconds:track.remaining(record.sceneTime),
+                    time:JulianDate.toIso8601(record.sceneTime) });
+                }
+              }
+            }
+            if (primitive.orbitwatchPopulation) populations[primitive.orbitwatchPopulation.kind] = { count:primitive.orbitwatchPopulation.count, visible:primitive.show, opacity:primitive.appearance.material.uniforms.tint.w, density:primitive.appearance.material.uniforms.density, pickable:primitive.allowPicking };
+            if (primitive.orbitwatchRings) {
+              const centre = Matrix4.getTranslation(primitive.modelMatrix,new Cartesian3());
+              rings[primitive.orbitwatchRings.id] = { ...primitive.orbitwatchRings, visible:primitive.show, opacity:primitive.appearance.material.uniforms.alpha, pickable:primitive.allowPicking,
+                driftMeters:Cartesian3.distance(centre,bodyPositionFixed(primitive.orbitwatchRings.id,record.sceneTime)) };
+            }
             if (primitive.show === false) continue;
             if (primitive instanceof PrimitiveCollection) visit(primitive);
             if (primitive instanceof Model && primitive.show) check(primitive.id, Cartesian3.fromElements(primitive.modelMatrix[12], primitive.modelMatrix[13], primitive.modelMatrix[14]), "model");
@@ -68,7 +93,7 @@ export function instrumentScenes() {
         }
       }
       for (const counts of bodies.values()) { duplicate += Number(counts.model > 0 && counts.point > 0); markers += counts.point; labels += counts.label; }
-      return JSON.stringify({ driftMeters: Number(drift.toFixed(6)), gpuErrorPixels: Number(gpuErrorPixels.toFixed(6)), earthPhysical: sampleScene.globe?.show ?? false, invalid, duplicate, leaders, markers, labels, bodies: Object.fromEntries(bodies) });
+      return JSON.stringify({ driftMeters: Number(drift.toFixed(6)), gpuErrorPixels: Number(gpuErrorPixels.toFixed(6)), earthPhysical: sampleScene.globe?.show ?? false, invalid, duplicate, leaders, markers, labels, bodies: Object.fromEntries(bodies), populations, rings, orbits, background:sampleScene.skyBox?.orbitwatchBackground });
   }
   const render = Scene.prototype.render, destroy = Scene.prototype.destroy;
   Scene.prototype.render = function (...args) {

@@ -8,7 +8,6 @@ import {
   ClockStep,
   Color,
   DistanceDisplayCondition,
-  ExtrapolationType,
   HeightReference,
   HeadingPitchRange,
   Ion,
@@ -22,7 +21,6 @@ import {
   Matrix4,
   NearFarScalar,
   Rectangle,
-  SampledPositionProperty,
   SceneMode,
   ScreenSpaceEventHandler,
   ScreenSpaceEventType,
@@ -41,6 +39,12 @@ import { fetchSatelliteOrbit, fetchSatelliteTrajectories } from "../services/orb
 import { fetchOpenDisasterEvents } from "../services/eonetApi.js";
 import { getSpaceObject } from "../data/spaceObjects.js";
 import { createSolarSystemLayer, pickSolarSystemObject } from "../services/solarSystemLayer.js";
+import { attachSatelliteOrbit, removeSatelliteOrbit, styleSatelliteOrbit, updateSatelliteOrbit } from "../services/orbitVisuals.js";
+import { createSatelliteOrbitState, createSatelliteTrack, satelliteOrbitRefreshDue, satelliteTrajectoryRefreshDue } from "../services/satelliteOrbitState.js";
+import { createSatelliteRequestQueue } from "../services/satelliteRequestQueue.js";
+import { StableOrbitCollection } from "../services/stableOrbitCollection.js";
+import { createSpaceBackground } from "../services/spaceBackground.js";
+import { populationQuality } from "../data/proceduralPopulations.js";
 import { createSelectedSatelliteDetail } from "../services/selectedSatelliteDetail.js";
 import { applyBaseMap as updateBaseMap } from "../services/baseMap.js";
 import { createPlaceLabelLayer } from "../services/placeLabelLayer.js";
@@ -370,6 +374,7 @@ export default function OrbitGlobe({
   onScaleChange,
   onSceneReady,
   onRefreshComplete,
+  onSatelliteStatus,
   onMapStatus,
   quality = "auto",
   onDetailReady,
@@ -380,12 +385,18 @@ export default function OrbitGlobe({
   const startupCameraCommittedRef = useRef(false);
   const initialModeCameraResetRef = useRef(true);
   const initialCountryRef = useRef(startupCountry);
-  const callbacksRef = useRef({ onSceneReady, onRefreshComplete, onMapStatus, onDetailReady, onScaleChange });
+  const callbacksRef = useRef({ onSceneReady, onRefreshComplete, onMapStatus, onDetailReady, onScaleChange, onSatelliteStatus });
   const applyBaseMap = (...args) => updateBaseMap(...args, RASTER_MAPS, (status) => callbacksRef.current.onMapStatus?.(status));
   const earthActiveRef = useRef(true);
   const lastInteractionRef = useRef(0);
   const qualityRef = useRef(quality);
+  const backgroundQualityRef = useRef(null);
   const [entityRevision, setEntityRevision] = useState(0);
+  const [automaticRefresh, setAutomaticRefresh] = useState(0);
+  const trajectoryRetryRef = useRef(new Map());
+  const trajectoryLoadingRef = useRef(null);
+  const orbitRetryRef = useRef(new Map());
+  const orbitQueueRef = useRef(null);
   const [sceneError, setSceneError] = useState(null);
   const googleTilesRef = useRef(null);
   const googleReadyRef = useRef(false);
@@ -407,6 +418,7 @@ export default function OrbitGlobe({
   const shownOrbitIdsRef = useRef(shownOrbitIds);
   const solarSystemLayerRef = useRef(null);
   const satelliteModelDetailRef = useRef(null);
+  const satelliteOrbitCollectionRef = useRef(null);
   const onCelestialSelectRef = useRef(onCelestialSelect);
 
   useEffect(() => {
@@ -419,9 +431,9 @@ export default function OrbitGlobe({
   sceneModeRef.current = sceneMode;
   shownOrbitIdsRef.current = shownOrbitIds;
   onCelestialSelectRef.current = onCelestialSelect;
-  callbacksRef.current = { onSceneReady, onRefreshComplete, onMapStatus, onDetailReady, onScaleChange };
+  callbacksRef.current = { onSceneReady, onRefreshComplete, onMapStatus, onDetailReady, onScaleChange, onSatelliteStatus };
   qualityRef.current = quality;
-  }, [selectedId, labelsEnabled, onObjectSelect, onViewTelemetry, mapStyle, mode, sceneMode, shownOrbitIds, onCelestialSelect, onSceneReady, onRefreshComplete, onMapStatus, onDetailReady, onScaleChange, quality]);
+  }, [selectedId, labelsEnabled, onObjectSelect, onViewTelemetry, mapStyle, mode, sceneMode, shownOrbitIds, onCelestialSelect, onSceneReady, onRefreshComplete, onMapStatus, onDetailReady, onScaleChange, onSatelliteStatus, quality]);
 
   useImperativeHandle(globeRef, () => ({
     focusSelected() {
@@ -537,6 +549,9 @@ export default function OrbitGlobe({
     });
 
     viewerRef.current = viewer;
+    const orbitRequests = createSatelliteRequestQueue(4);
+    orbitQueueRef.current = orbitRequests;
+    satelliteOrbitCollectionRef.current = viewer.scene.primitives.add(new StableOrbitCollection());
     satelliteModelDetailRef.current = createSelectedSatelliteDetail(viewer, CATEGORY_COLORS);
     // Asset/geometry readiness must not pause live orbital time. Otherwise each
     // refresh can accumulate lag until fresh trajectory samples are out of range.
@@ -568,7 +583,12 @@ export default function OrbitGlobe({
     viewer.scene.screenSpaceCameraController.zoomFactor = 3.0;
     viewer.clock.shouldAnimate = true;
 
-    viewer.scene.skyBox = SkyBox.createEarthSkyBox();
+    const backgroundQuality = populationQuality(qualityRef.current, ORBITWATCH_MEMORY_PROFILE.reportedGb);
+    const originalSky = viewer.scene.skyBox;
+    try { viewer.scene.skyBox = createSpaceBackground(backgroundQuality); }
+    catch { viewer.scene.skyBox = SkyBox.createEarthSkyBox(); }
+    originalSky?.destroy();
+    backgroundQualityRef.current = backgroundQuality;
 
     if (setStartupRegionView(viewer, initialCountryRef.current)) {
       startupCameraCommittedRef.current = true;
@@ -689,6 +709,8 @@ export default function OrbitGlobe({
           isLive: () => modeRef.current === "live" && sceneModeRef.current === "3d",
           onDetailReady: (id) => callbacksRef.current.onDetailReady?.(id),
           onScaleChange: (state) => callbacksRef.current.onScaleChange?.(state),
+          getQuality: () => qualityRef.current,
+          memoryGb: ORBITWATCH_MEMORY_PROFILE.reportedGb,
           setEarthRepresentation: (show) => {
             if (!earthActiveRef.current) return;
             viewer.scene.globe.show = show;
@@ -839,8 +861,29 @@ export default function OrbitGlobe({
       }
     }, ScreenSpaceEventType.MOUSE_MOVE);
 
+    let lastSatelliteStatus = "";
+    // Before Primitive.update copies model matrices into this frame's commands.
+    // preRender would leave orbit transforms one frame behind entity positions.
+    const removeSatelliteUpdate = viewer.scene.preUpdate.addEventListener((_scene, time) => {
+      let stale = 0, staleOrbits = 0;
+      for (const data of entityMap.values()) {
+        updateSatelliteOrbit(data, time);
+        const expired = data.track?.isStale(time) || false;
+        if (expired) stale++;
+        else if (data.orbitState?.stale) staleOrbits++;
+        if (data.track && data.track.stale !== expired) {
+          data.track.stale = expired;
+          data.entity.label.text = `${data.entity.name}${expired ? " · position stale" : ""}`;
+        }
+      }
+      const status = stale ? `${stale} satellite position${stale === 1 ? " is" : "s are"} stale. Showing the last valid samples; retrying automatically.`
+        : staleOrbits ? `${staleOrbits} orbit${staleOrbits === 1 ? " is" : "s are"} awaiting updated propagation. Moving highlights resume when aligned.` : "";
+      if (status !== lastSatelliteStatus) { lastSatelliteStatus = status; callbacksRef.current.onSatelliteStatus?.(status); }
+    });
     const removePreRender = viewer.scene.preRender.addEventListener((_scene, time) => {
       const now = performance.now();
+      const height = viewer.camera.positionCartographic.height;
+      for (const [id, data] of entityMap) styleSatelliteOrbit(data, CATEGORY_COLORS[getSpaceObject(id)?.category] || Color.WHITE, id === selectedIdRef.current, shownOrbitIdsRef.current.size, height);
       placeLabels.update(now, labelsEnabledRef.current && earthActiveRef.current, mapRequestRef.activeMap);
       if (now - lastViewTelemetryAtRef.current > 500) {
         lastViewTelemetryAtRef.current = now;
@@ -891,6 +934,7 @@ export default function OrbitGlobe({
       window.removeEventListener("pointerup", pointerUp);
       viewer.scene.canvas.removeEventListener("wheel", touchCamera);
       removePreRender();
+      removeSatelliteUpdate();
       placeLabels.destroy();
       placeSearchRef.current?.destroy();
       placeSearchRef.current = null;
@@ -902,6 +946,10 @@ export default function OrbitGlobe({
 
       satelliteModelDetailRef.current?.clear();
       satelliteModelDetailRef.current = null;
+      orbitRequests.destroy();
+      orbitQueueRef.current = null;
+      viewer.scene.primitives.remove(satelliteOrbitCollectionRef.current);
+      satelliteOrbitCollectionRef.current = null;
       entityMap.clear();
       disasterEntityIdsRef.current = [];
       googleTilesRef.current = null;
@@ -910,12 +958,24 @@ export default function OrbitGlobe({
 
       viewer.destroy();
       viewerRef.current = null;
+      backgroundQualityRef.current = null;
     };
   }, []);
 
   useEffect(() => {
     const viewer = viewerRef.current;
-    if (viewer && !viewer.isDestroyed()) applyQuality(viewer, googleTilesRef.current, quality);
+    if (viewer && !viewer.isDestroyed()) {
+      applyQuality(viewer, googleTilesRef.current, quality);
+      const backgroundQuality = populationQuality(quality, ORBITWATCH_MEMORY_PROFILE.reportedGb);
+      if (backgroundQualityRef.current !== backgroundQuality) {
+        try {
+          const nextSky = createSpaceBackground(backgroundQuality), previousSky = viewer.scene.skyBox;
+          viewer.scene.skyBox = nextSky; previousSky?.destroy();
+          backgroundQualityRef.current = backgroundQuality;
+        } catch { /* Preserve the existing background if the canvas is unavailable. */ }
+      }
+      viewer.scene.requestRender();
+    }
   }, [quality]);
 
   useEffect(() => {
@@ -938,6 +998,14 @@ export default function OrbitGlobe({
     }
     viewer.scene.requestRender();
   }, [selectedTime, mode]);
+
+  useEffect(() => {
+    if (mode !== "live" || selectedCelestialBody !== "earth") return undefined;
+    // Cheap lifecycle check, not an animation timer. Actual motion uses scene
+    // time; requests occur only near coverage expiry or orbit refresh deadlines.
+    const timer = window.setInterval(() => { if (!trajectoryLoadingRef.current) setAutomaticRefresh(value => value + 1); }, 15000);
+    return () => window.clearInterval(timer);
+  }, [mode, selectedCelestialBody]);
 
   useEffect(() => {
     const viewer = viewerRef.current;
@@ -993,23 +1061,31 @@ export default function OrbitGlobe({
     for (const [noradId, data] of entityMap.entries()) {
       if (!trackedIds.includes(noradId)) {
         viewer.entities.remove(data.entity);
+        removeSatelliteOrbit(data, satelliteOrbitCollectionRef.current);
         if (data.orbitEntity) viewer.entities.remove(data.orbitEntity);
         entityMap.delete(noradId);
+        trajectoryRetryRef.current.delete(noradId);
+        orbitRetryRef.current.delete(noradId);
+        orbitQueueRef.current?.cancel(noradId);
         if (followStateRef.current?.noradId === noradId) {
           releaseViewerCamera(viewer, followStateRef);
         }
       }
     }
 
-    const idsToLoad = trackedIds.filter(
-      (noradId) => refreshAll || !entityMap.has(noradId),
-    );
+    const now = Date.now();
+    const idsToLoad = trackedIds.filter(noradId => refreshAll ||
+      (now >= (trajectoryRetryRef.current.get(noradId) || 0) && satelliteTrajectoryRefreshDue(entityMap.get(noradId), viewer.clock.currentTime, now)));
 
     if (!idsToLoad.length) { callbacksRef.current.onRefreshComplete?.(); return () => controller.abort(); }
 
     async function loadTrackedSatellites() {
+      trajectoryLoadingRef.current = controller;
+      // Bound repeated failed/out-of-window attempts, including simulated jumps.
+      idsToLoad.forEach(id => trajectoryRetryRef.current.set(id, Date.now() + 30000));
       try {
-        const batch = await fetchSatelliteTrajectories(idsToLoad, {
+        for (let offset = 0; offset < idsToLoad.length; offset += 24) {
+        const batch = await fetchSatelliteTrajectories(idsToLoad.slice(offset, offset + 24), {
           stepSeconds: 5,
           durationSeconds: 300,
           signal: controller.signal,
@@ -1029,24 +1105,13 @@ export default function OrbitGlobe({
           if (!Number.isFinite(noradId) || !trajectory?.positions?.length) continue;
 
           const object = getSpaceObject(noradId);
-          const sampled = new SampledPositionProperty();
-          sampled.backwardExtrapolationType = ExtrapolationType.HOLD;
-          sampled.backwardExtrapolationDuration = 30;
-          sampled.forwardExtrapolationType = ExtrapolationType.HOLD;
-          sampled.forwardExtrapolationDuration = 120;
-
-          for (const position of trajectory.positions) {
-            sampled.addSample(
-              JulianDate.fromIso8601(position.timestamp),
-              Cartesian3.fromDegrees(
-                position.longitude,
-                position.latitude,
-                position.altitude_km * 1000,
-              ),
-            );
-          }
-
           const existing = entityMap.get(noradId);
+          let track;
+          try {
+            track = existing?.track || createSatelliteTrack(trajectory);
+            if (existing?.track) track.merge(trajectory);
+          } catch (error) { console.warn(`OrbitWatch: invalid trajectory for ${noradId}`, error); continue; }
+          const sampled = track.position;
           const selected = noradId === selectedIdRef.current;
           const color = CATEGORY_COLORS[object?.category] || Color.WHITE;
           const colorCss = color.toCssColorString();
@@ -1064,6 +1129,7 @@ export default function OrbitGlobe({
             existing.entity.name = object?.name || trajectory.name;
             existing.trajectory = trajectory;
             existing.period = period;
+            existing.track = track;
             continue;
           }
 
@@ -1108,22 +1174,28 @@ export default function OrbitGlobe({
             orbitEntity: null,
             trajectory,
             period,
+            track,
           });
         }
 
         if ((batch?.objects || []).length) {
           setEntityRevision((value) => value + 1);
+          viewer.scene.requestRender();
+        }
         }
       } catch (error) {
         if (error?.name !== "AbortError") {
           console.warn("OrbitWatch: batch satellite load failed", error);
         }
-      } finally { if (!controller.signal.aborted) callbacksRef.current.onRefreshComplete?.(); }
+      } finally {
+        if (trajectoryLoadingRef.current === controller) trajectoryLoadingRef.current = null;
+        if (!controller.signal.aborted) callbacksRef.current.onRefreshComplete?.();
+      }
     }
 
     loadTrackedSatellites();
     return () => controller.abort();
-  }, [trackedIds, refreshNonce]);
+  }, [trackedIds, refreshNonce, automaticRefresh]);
 
   useEffect(() => {
     for (const [noradId, data] of entityMapRef.current.entries()) {
@@ -1139,8 +1211,7 @@ export default function OrbitGlobe({
       if (data.entity.label) data.entity.label.show = selected || hoveredIdRef.current === noradId;
       if (data.orbitEntity?.polyline) {
         const color = CATEGORY_COLORS[getSpaceObject(noradId)?.category] || Color.WHITE;
-        data.orbitEntity.polyline.width = selected ? 2.0 : 1.05;
-        data.orbitEntity.polyline.material = color.withAlpha(selected ? 0.6 : 0.26);
+        styleSatelliteOrbit(data, color, selected, shownOrbitIdsRef.current.size, viewerRef.current?.camera.positionCartographic.height);
       }
     }
   }, [selectedId]);
@@ -1157,12 +1228,15 @@ export default function OrbitGlobe({
     const viewer = viewerRef.current;
     if (!viewer) return undefined;
 
-    const controller = new AbortController();
-    const jobs = [];
+    const queue = orbitQueueRef.current;
+    if (!queue) return undefined;
     for (const [noradId, data] of entityMapRef.current.entries()) {
       const shouldShow = shownOrbitIds.has(noradId);
 
       if (!shouldShow) {
+        queue.cancel(noradId);
+        orbitRetryRef.current.delete(noradId);
+        removeSatelliteOrbit(data, satelliteOrbitCollectionRef.current);
         if (data.orbitEntity) {
           viewer.entities.remove(data.orbitEntity);
           data.orbitEntity = null;
@@ -1170,36 +1244,36 @@ export default function OrbitGlobe({
         continue;
       }
 
-      async function loadOrbit() {
+      // Trajectory overlap does not invalidate the full orbit. Refresh its
+      // true propagated geometry on a bounded deadline or changed TLE epoch.
+      if (queue.has(noradId) || !satelliteOrbitRefreshDue(data) || Date.now() < (orbitRetryRef.current.get(noradId) || 0)) continue;
+
+      async function loadOrbit(signal) {
+        if (signal.aborted) return;
+        const orbitEpoch = data.trajectory?.tle_epoch;
+        orbitRetryRef.current.set(noradId, Date.now() + 30000);
         try {
           const orbit = await fetchSatelliteOrbit(noradId, {
-            samples: 480,
-            signal: controller.signal,
+            // Slow/eccentric periods need denser temporal sampling near perigee.
+            // Same backend SGP4 shape; never substitute a circular frontend path.
+            samples: data.period > 18 * 3600 ? 2000 : data.period > 3 * 3600 ? 960 : 480,
+            signal,
           });
 
           if (
-            controller.signal.aborted ||
+            signal.aborted ||
             viewer.isDestroyed() ||
             !orbit?.positions?.length ||
             !shownOrbitIdsRef.current.has(noradId)
           ) return;
 
-          // The backend already propagated one entire orbital period. Render
-          // those geographic points directly. This is the exact future path
-          // relative to the rotating Earth, so the moving satellite follows
-          // the same line instead of a separately reconstructed frontend orbit.
-          const orbitPositions = orbit.positions.map((position) =>
-            Cartesian3.fromDegrees(
-              position.longitude,
-              position.latitude,
-              position.altitude_km * 1000,
-            ),
-          );
+          const orbitState = createSatelliteOrbitState(orbit);
+          const orbitPositions = orbitState.positions;
 
           const currentData = entityMapRef.current.get(noradId);
           if (
             !currentData ||
-            controller.signal.aborted ||
+            signal.aborted ||
             viewer.isDestroyed() ||
             !shownOrbitIdsRef.current.has(noradId)
           ) return;
@@ -1210,11 +1284,11 @@ export default function OrbitGlobe({
 
           if (currentData.orbitEntity?.polyline) {
             currentData.orbitEntity.polyline.positions = orbitPositions;
-            currentData.orbitEntity.polyline.width = selected ? 2.2 : 1.25;
-            currentData.orbitEntity.polyline.material = color.withAlpha(
-              selected ? 0.66 : 0.32,
-            );
+            attachSatelliteOrbit(currentData, satelliteOrbitCollectionRef.current, orbitPositions, orbitState);
+            currentData.orbitEpoch = orbitEpoch;
+            styleSatelliteOrbit(currentData, color, selected, shownOrbitIdsRef.current.size, viewer.camera.positionCartographic.height);
             currentData.orbitEntity.show = earthActiveRef.current;
+            viewer.scene.requestRender();
             return;
           }
 
@@ -1224,11 +1298,16 @@ export default function OrbitGlobe({
             properties: { noradId },
             polyline: {
               positions: orbitPositions,
-              width: selected ? 2.2 : 1.25,
-              material: color.withAlpha(selected ? 0.66 : 0.32),
+              width: 1.05,
+              material: color.withAlpha(0.19),
               arcType: ArcType.NONE,
             },
           });
+          styleSatelliteOrbit(currentData, color, selected, shownOrbitIdsRef.current.size, viewer.camera.positionCartographic.height);
+          attachSatelliteOrbit(currentData, satelliteOrbitCollectionRef.current, orbitPositions, orbitState);
+          currentData.orbitEpoch = orbitEpoch;
+          styleSatelliteOrbit(currentData, color, selected, shownOrbitIdsRef.current.size, viewer.camera.positionCartographic.height);
+          viewer.scene.requestRender();
         } catch (error) {
           if (error?.name !== "AbortError") {
             console.warn(`OrbitWatch: full orbit load failed for ${noradId}`, error);
@@ -1236,15 +1315,12 @@ export default function OrbitGlobe({
         }
       }
 
-      jobs.push(loadOrbit);
+      queue.enqueue(noradId, loadOrbit);
     }
-    // Bound decoding and request bursts when a large collection is loaded.
-    let next = 0;
-    async function worker() { while (!controller.signal.aborted && next < jobs.length) await jobs[next++](); }
-    for (let index = 0; index < Math.min(4, jobs.length); index += 1) worker();
-
-    return () => controller.abort();
-  }, [shownOrbitIds, entityRevision]);
+    // A trajectory/selection refresh must not cancel queued unrelated paths.
+    // Per-ID controllers are aborted only on hide/unload or Viewer destruction.
+    return undefined;
+  }, [shownOrbitIds, entityRevision, automaticRefresh]);
 
   useEffect(() => {
     const viewer = viewerRef.current;

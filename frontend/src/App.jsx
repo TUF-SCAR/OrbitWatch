@@ -62,6 +62,7 @@ export default function App({ currentUser, onLogout, hudActive = true, onSceneRe
   const [selectedTime, setSelectedTime] = useState(new Date());
   const [mapStyle, setMapStyle] = useState(import.meta.env.VITE_CESIUM_ION_TOKEN ? "google" : "esri");
   const [mapStatus, setMapStatus] = useState(null);
+  const [satelliteStatus, setSatelliteStatus] = useState("");
   const [labelsEnabled, setLabelsEnabled] = useState(true);
   const [sceneMode, setSceneMode] = useState("3d");
   const [cameraFollowing, setCameraFollowing] = useState(false);
@@ -170,11 +171,6 @@ export default function App({ currentUser, onLogout, hudActive = true, onSceneRe
     return () => { controller.abort(); window.clearTimeout(timer); };
   }, [selectedId, mode, refreshNonce]);
 
-  useEffect(() => {
-    if (mode !== "live") return undefined;
-    const timer = window.setInterval(() => { if (!refreshLockRef.current) setRefreshNonce((value) => value + 1); }, 60000);
-    return () => window.clearInterval(timer);
-  }, [mode]);
   useEffect(() => () => { window.clearTimeout(refreshTimerRef.current); window.clearTimeout(refreshDeadlineRef.current); cancelAnimationFrame(focusFrameRef.current); }, []);
 
   function loadObjects(ids) {
@@ -305,7 +301,7 @@ export default function App({ currentUser, onLogout, hudActive = true, onSceneRe
   const hidden = presentation || Boolean(travel) || !hudActive;
   return (
     <main ref={shellRef} className={`orbitwatch-shell mode-${mode} ${atEarth ? "at-earth" : "off-earth"} ${layers.includes("place") ? "has-place-search" : ""} ${travel ? "is-travelling" : ""}`}>
-      <SceneBoundary onReady={onSceneReady} onReset={() => { setSelectedCelestialBody("earth"); setDetailState("ready"); setCameraFollowing(false); setTravel(null); travelLockRef.current = false; setLayers([]); }}><OrbitGlobe trackedIds={mode === "disaster" ? [] : activeTrackedIds} selectedId={selectedId} selectedTime={selectedTime} mode={mode} startupCountry={startupCountry} selectedCelestialBody={selectedCelestialBody} onCelestialSelect={(id, wide) => { if (travelLockRef.current || mode !== "live") return; if (!wide && id === selectedCelestialBody && id !== "earth") openLayer("body"); else { setCelestialMarker(id); openLayer("celestial"); } }} refreshNonce={refreshNonce} mapStyle={mapStyle} labelsEnabled={labelsEnabled} sceneMode={sceneMode} shownOrbitIds={shownOrbitIds} disasterLayers={disasterLayers} onObjectSelect={selectObject} onScaleChange={setSceneScale} onViewTelemetry={setViewTelemetry} globeRef={globeRef} onSceneReady={onSceneReady} onRefreshComplete={() => setRefreshBusy(false)} onMapStatus={setMapStatus} onDetailReady={(id) => { if (id === selectedCelestialBody) setDetailState("ready"); }} quality={settings.quality} /></SceneBoundary>
+      <SceneBoundary onReady={onSceneReady} onReset={() => { setSelectedCelestialBody("earth"); setDetailState("ready"); setCameraFollowing(false); setTravel(null); travelLockRef.current = false; setLayers([]); }}><OrbitGlobe trackedIds={mode === "disaster" ? [] : activeTrackedIds} selectedId={selectedId} selectedTime={selectedTime} mode={mode} startupCountry={startupCountry} selectedCelestialBody={selectedCelestialBody} onCelestialSelect={(id, wide) => { if (travelLockRef.current || mode !== "live") return; if (!wide && id === selectedCelestialBody && id !== "earth") openLayer("body"); else { setCelestialMarker(id); openLayer("celestial"); } }} refreshNonce={refreshNonce} mapStyle={mapStyle} labelsEnabled={labelsEnabled} sceneMode={sceneMode} shownOrbitIds={shownOrbitIds} disasterLayers={disasterLayers} onObjectSelect={selectObject} onScaleChange={setSceneScale} onViewTelemetry={setViewTelemetry} globeRef={globeRef} onSceneReady={onSceneReady} onRefreshComplete={() => setRefreshBusy(false)} onSatelliteStatus={setSatelliteStatus} onMapStatus={setMapStatus} onDetailReady={(id) => { if (id === selectedCelestialBody) setDetailState("ready"); }} quality={settings.quality} /></SceneBoundary>
       <div className="space-vignette" aria-hidden="true" />
       <div className={`live-interface ${hidden ? "is-hidden" : ""}`} inert={hidden}>
         <CinematicStage cycle={hudCycle} active={hudActive} side="top" loaderAnchor="top" zIndex={30}><TopHud mode={mode} bodyId={selectedCelestialBody} apiState={apiState} currentUser={currentUser} onProfileToggle={() => toggleLayer("profile")} /></CinematicStage>
@@ -320,6 +316,7 @@ export default function App({ currentUser, onLogout, hudActive = true, onSceneRe
         <MapSettings open={menu === "map"} mapStyle={mapStyle} onMapStyleChange={setMapStyle} labelsEnabled={labelsEnabled} onLabelsChange={setLabelsEnabled} onClose={() => closeLayer("map")} mapStatus={mapStatus} />
         {mode === "live" && <SystemScaleSlider scale={sceneScale} onChange={(value) => globeRef.current?.setCelestialScale(value)} />}
         {travelError && <div className="scene-notice" role="alert"><span>{travelError}</span><button type="button" onClick={() => setTravelError("")}>Dismiss</button></div>}
+        {atEarth && mode === "live" && !travel && satelliteStatus && <div className="scene-notice" role="status">{satelliteStatus}</div>}
         <ObjectExplorer open={layers.includes("explorer") && atEarth && mode !== "disaster"} onClose={() => closeLayer("explorer")} objects={catalogObjects} trackedIds={activeTrackedIds} selectedId={selectedId} onSelect={selectObject} onLoad={loadObjects} onUnload={unloadObjects} limitMessage={limitMessage} userId={currentUser?.id} searchCycle={searchCycle} />
         <AnimatePresence>{layers.includes("inspector") && atEarth && mode !== "disaster" && <InspectorPanel key={`${selectedId}:${settings.preview3d}`} object={selectedObject} telemetry={telemetry?.norad_id === selectedId ? telemetry : null} telemetryError={telemetryError} cameraFollowing={cameraFollowing} rendered={selectedRendered} orbitVisible={shownOrbitIds.has(selectedId)} onClose={() => closeLayer("inspector")} onFocus={focusSelected} onFollow={followSelected} onReleaseCamera={releaseCamera} onToggleOrbit={toggleSelectedOrbit} preview3d={settings.preview3d} />}</AnimatePresence>
         <AnimatePresence>{layers.includes("body") && !atEarth && <CelestialInspector key="CelestialInspector" bodyId={selectedCelestialBody} sceneTime={mode === "time" ? selectedTime : null} onClose={() => closeLayer("body")} detailState={detailState} />}</AnimatePresence>

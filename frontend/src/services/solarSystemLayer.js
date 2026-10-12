@@ -1,8 +1,13 @@
-import { ArcType, BoundingSphere, CallbackPositionProperty, CallbackProperty, Cartesian2, Cartesian3, Color, CustomDataSource, HeadingPitchRange, JulianDate, Material, Matrix3, Matrix4, Model, PolylineCollection, SceneTransforms, ScreenSpaceEventHandler, ScreenSpaceEventType } from "cesium";
+import { ArcType, BoundingSphere, CallbackPositionProperty, CallbackProperty, Cartesian2, Cartesian3, Color, CustomDataSource, HeadingPitchRange, JulianDate, Matrix3, Matrix4, Model, SceneTransforms, ScreenSpaceEventHandler, ScreenSpaceEventType } from "cesium";
+import { StableOrbitCollection } from "./stableOrbitCollection.js";
 import { ALL_CELESTIAL_IDS, CELESTIAL_BODIES } from "../data/celestialBodies.js";
 import { AU_METERS, bodyLocalTransform, inertialToFixedMatrix, sampleBodyOrbitFixed } from "../data/solarSystemEphemeris.js";
 import { MAX_SOLAR_RANGE, SOLAR_OVERVIEW_IDS, distanceFade, representationWeights, surfaceSymbolicHandoff, rangeToScale, scaleToRange, solarSystemLod, solarSystemScales } from "./solarSystemLod.js";
 import { createCelestialSymbols } from "./celestialSymbols.js";
+import { solarOrbitStyle } from "./orbitVisuals.js";
+import { createOrbitStroke, OrbitStrokeMaterialProperty } from "./orbitStroke.js";
+import { createProceduralPopulationLayer } from "./proceduralPopulationLayer.js";
+import { createPlanetaryRingLayer } from "./planetaryRingLayer.js";
 import { createCanonicalPositions } from "./canonicalCelestialPosition.js";
 import { layoutCelestialLabels } from "./celestialLabelLayout.js";
 import { MOTION } from "../utils/motionTokens.js";
@@ -42,6 +47,19 @@ export function createSolarSystemLayer(viewer, options = {}) {
   const positionOf = (id, time = sceneTime) => canonicalPosition(id, time);
   const scaleMinimum = () => scales.localStart;
   const symbols = createCelestialSymbols(viewer.scene, positionOf);
+  const populations = createProceduralPopulationLayer(viewer.scene, options);
+  const ringPose = new Matrix4(), ringRotation = new Matrix3();
+  const rings = createPlanetaryRingLayer(viewer.scene, { ...options, getCamera:()=>viewer.camera,
+    getPose(id,time) {
+      const model = details.get(id);
+      if (model && !model.isDestroyed()) return model.modelMatrix;
+      if (localView && !travelling) {
+        const rotation = Matrix4.getMatrix3(bodyLocalTransform(localBody,time,localView.basis),ringRotation);
+        Matrix3.multiply(rotation,localView.modelRotations.get(id) || Matrix3.IDENTITY,ringRotation);
+      } else Matrix3.clone(Matrix3.IDENTITY,ringRotation);
+      return Matrix4.fromRotationTranslation(ringRotation,positionOf(id,time),ringPose);
+    },
+  });
   let earthSymbolic = false;
 
   const framingScale = (id) => CELESTIAL_BODIES[id].rings ? Math.max(7, Math.max(...CELESTIAL_BODIES[id].rings) * 3) : 5.5;
@@ -62,6 +80,7 @@ export function createSolarSystemLayer(viewer, options = {}) {
     const model = details.get(id);
     if (model && alive()) viewer.scene.primitives.remove(model);
     details.delete(id);
+    rings.release(id);
     lastLod = 0;
   }
   function setSelected(id) {
@@ -110,11 +129,13 @@ export function createSolarSystemLayer(viewer, options = {}) {
     // Retain the world-space entity/data interface, but render static inertial
     // vertices in parent-centred collections. Updating a group's matrix moves
     // all its paths without rebuilding geometry on ticks or camera gestures.
-    item.entity = viewer.entities.add({ id: `celestial-orbit-${id}`, show: false, polyline: { show: false, positions, arcType: ArcType.NONE, width: 1, material: Color.fromCssColorString(CELESTIAL_BODIES[id].color).withAlpha(0.24) } });
+    item.tint = Color.fromCssColorString(CELESTIAL_BODIES[id].color).withAlpha(0.24);
+    item.material = new OrbitStrokeMaterialProperty({ color: item.tint });
+    item.entity = viewer.entities.add({ id: `celestial-orbit-${id}`, show: false, polyline: { show: false, positions, arcType: ArcType.NONE, width: 1, material: item.material } });
     let group = orbitGroups.get(center);
-    if (!group) { group = viewer.scene.primitives.add(new PolylineCollection()); orbitGroups.set(center, group); }
+    if (!group) { group = viewer.scene.primitives.add(new StableOrbitCollection()); orbitGroups.set(center, group); }
     item.sample(viewer.clock.currentTime);
-    item.line = group.add({ id: item.entity, show: false, positions: item.vectors, width: 1, material: Material.fromType("Color", { color: Color.fromCssColorString(CELESTIAL_BODIES[id].color).withAlpha(0.24) }) });
+    item.line = group.add({ id: item.entity, show: false, positions: item.vectors, width: 1, material: createOrbitStroke(item.tint) });
     orbits.set(id, item);
   }
   function syncLocalEntities() { lastLod = 0; lastLayout = 0; }
@@ -131,7 +152,14 @@ export function createSolarSystemLayer(viewer, options = {}) {
     if (!localView) controller.maximumZoomDistance = live && range >= scales.localStart ? MAX_SOLAR_RANGE : originalBounds[1];
     lod = solarSystemLod(scales, range, reduced, lod.stage);
     if (!live) lod = { local: 0, solar: 0, overview: 0, stage: "close" };
-    const easeAlpha = (from, to, duration) => reduced ? to : from + (to - from) * (1 - Math.exp(-elapsed * 5 / duration));
+    let fading = false;
+    const easeAlpha = (from, to, duration) => {
+      if (reduced) return to;
+      const next = from + (to - from) * (1 - Math.exp(-elapsed * 5 / duration));
+      if (Math.abs(next - to) <= 0.0005) return to;
+      fading = true;
+      return next;
+    };
     if (originalFar) viewer.camera.frustum.far = range < scales.localStart && lod.solar === 0 ? originalFar
       : Math.max(originalFar, range * 2 + (lod.solar > 0 ? Math.max(35 * AU_METERS, scales.solarEnd * 3) : scales.localEnd * 3));
     if (lod.solar > 0) ensureOrbit(scales.parent);
@@ -181,21 +209,33 @@ export function createSolarSystemLayer(viewer, options = {}) {
     for (const [id, item] of orbits) {
       const moon = CELESTIAL_BODIES[id].type === "Moon";
       const selectedSolar = id === scales.parent || id === selectedId && !moon;
-      const target = moon ? (id === selectedId ? 0.24 : lod.local * 0.16) * (1 - lod.solar)
-        : selectedSolar ? lod.solar * 0.32 : SOLAR_OVERVIEW_IDS.includes(id) ? Math.max(0, (lod.overview - 0.25) / 0.75) * 0.10 : 0;
+      const style = solarOrbitStyle({ moon, selected: moon ? id === selectedId : selectedSolar, ...lod });
+      const target = moon || selectedSolar || SOLAR_OVERVIEW_IDS.includes(id) ? style.alpha : 0;
       item.alpha = easeAlpha(item.alpha || 0, target, MOTION.lod);
-      item.entity.show = item.alpha > 0.005 && (live || moon && id === selectedId);
-      const color = Color.fromCssColorString(CELESTIAL_BODIES[id].color).withAlpha(item.alpha);
-      item.entity.polyline.material = color;
+      item.entity.show = item.alpha > 0 && (live || moon && id === selectedId);
+      item.tint.alpha = item.alpha;
+      item.material.color.setValue(item.tint);
       item.line.show = item.entity.show;
-      item.line.material.uniforms.color = color;
+      item.line.width = style.width;
+      const color = item.line.material.uniforms.color;
+      color.x = item.tint.red; color.y = item.tint.green; color.z = item.tint.blue; color.w = item.alpha;
     }
     scaleVisible = live && (scaleVisible ? range > scales.localStart * 1.5 : range > scales.localStart * 2);
+    populations.update(sceneTime, { range, solar:lod.solar, selectedId, live, elapsed, reduced });
+    const ringOwners = new Map([...details.keys()].map(id=>[id,placeholders.get(id).alpha]));
+    ringOwners.set(scales.parent,placeholders.get(scales.parent).alpha);
+    ringOwners.set(selectedId,placeholders.get(selectedId).alpha);
+    rings.update(sceneTime,{ owners:ringOwners, elapsed, reduced, live:live || selectedId !== "earth" });
+    // Uniform mutation does not invalidate requestRenderMode. In paused scenes
+    // a gesture otherwise draws only the beginning of a fade; the next gesture
+    // exposes the accumulated jump. Draw until settled, then return to idle.
+    if (fading) viewer.scene.requestRender();
+    const populationContext = populations.context();
     if (force || now - lastScale > 150) {
       lastScale = now;
       const value = rangeToScale(range, scaleMinimum());
-      if (!publishedScale || publishedScale.visible !== scaleVisible || publishedScale.stage !== lod.stage || Math.abs(publishedScale.value - value) > 0.0005) {
-        publishedScale = { visible: scaleVisible, value, range, stage: lod.stage };
+      if (!publishedScale || publishedScale.visible !== scaleVisible || publishedScale.stage !== lod.stage || publishedScale.populationContext !== populationContext || Math.abs(publishedScale.value - value) > 0.0005) {
+        publishedScale = { visible: scaleVisible, value, range, stage: lod.stage, populationContext };
         options.onScaleChange?.(publishedScale);
       }
     }
@@ -220,6 +260,8 @@ export function createSolarSystemLayer(viewer, options = {}) {
   }
   function renderSymbols(time, force = false) {
     symbols.update(time);
+    populations.render(time);
+    rings.render(time);
     const now = performance.now();
     if (force || now - lastLayout > 100) { lastLayout = now; layoutLabels(); }
     for (const [id, item] of placeholders) item.label.show = Boolean(item.labelWanted) && (!viewer.scene.camera || labelSlots.has(id));
@@ -234,7 +276,9 @@ export function createSolarSystemLayer(viewer, options = {}) {
       try {
         // Cesium owns download, decode and upload: no speculative duplicate fetch.
         if (id === "sun") solarSurface ||= createSolarSurface();
-        model = await Model.fromGltfAsync({ url: `/models/celestial/${id}.glb`, modelMatrix: matrixOf(id), scale: item.radius, show: false, incrementallyLoadTextures: false, allowPicking: true, id: item.entity, customShader: id === "sun" ? solarSurface : undefined });
+        let ringShader;
+        try { if (rings.prepare(id)) ringShader = rings.modelMask(); } catch { /* Retain the baked asset rings if procedural setup fails. */ }
+        model = await Model.fromGltfAsync({ url: `/models/celestial/${id}.glb`, modelMatrix: matrixOf(id), scale: item.radius, show: false, incrementallyLoadTextures: false, allowPicking: true, id: item.entity, customShader: id === "sun" ? solarSurface : ringShader });
         if (!alive() || token !== generation) { model.destroy(); return false; }
         details.set(id, model);
         viewer.scene.primitives.add(model);
@@ -372,7 +416,7 @@ export function createSolarSystemLayer(viewer, options = {}) {
       viewer.camera.setView({ destination, orientation: { direction: Cartesian3.clone(viewer.camera.directionWC), up: Cartesian3.clone(viewer.camera.upWC) } });
     }
     updatePositions(prefersReducedMotion());
-    publishedScale = { visible: scaleVisible, value: rangeToScale(range, scaleMinimum()), range, stage: lod.stage };
+    publishedScale = { visible: scaleVisible, value: rangeToScale(range, scaleMinimum()), range, stage: lod.stage, populationContext:populations.context() };
     options.onScaleChange?.(publishedScale);
     viewer.scene.requestRender(); return true;
   }
@@ -475,6 +519,7 @@ export function createSolarSystemLayer(viewer, options = {}) {
     offTick();
     offRender?.();
     if (alive()) symbols.destroy();
+    if (alive()) populations.destroy();
     if (frameSource && !dataSources.isDestroyed()) dataSources.remove(frameSource, true);
     if (alive()) [controller.minimumZoomDistance, controller.maximumZoomDistance] = originalBounds;
     if (originalFar && alive()) viewer.camera.frustum.far = originalFar;
@@ -486,6 +531,7 @@ export function createSolarSystemLayer(viewer, options = {}) {
     for (const [timer, resolve] of timers) { window.clearTimeout(timer); resolve(false); }
     timers.clear();
     for (const id of details.keys()) removeDetail(id);
+    if (alive()) rings.destroy();
     solarSurface?.destroy();
     for (const item of orbits.values()) if (alive()) viewer.entities.remove(item.entity);
     orbits.clear();

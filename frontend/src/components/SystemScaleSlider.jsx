@@ -10,5 +10,6 @@ export default function SystemScaleSlider({ scale, onChange }) {
     <div className="system-scale__heading"><label htmlFor="system-scale-range">SCENE SCALE</label><output htmlFor="system-scale-range">{distance}</output></div>
     <input id="system-scale-range" type="range" min="0" max="1" step="0.001" value={scale.value} aria-label="System-scale zoom" aria-valuetext={distance} onChange={(event) => onChange(Number(event.target.value))} />
     <div className="system-scale__ends"><span>LOCAL</span><span>SOLAR SYSTEM</span></div>
+    {scale.populationContext && <div className="system-scale__population" title={`Representative distributions: ${scale.populationContext}. These dots are not individually catalogued bodies.`}>Representative procedural population</div>}
   </motion.aside>}</AnimatePresence>;
 }

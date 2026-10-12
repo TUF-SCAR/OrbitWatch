@@ -372,6 +372,7 @@ input[type="checkbox"] { accent-color:#8de8fa; width:16px; height:16px; cursor:p
 .system-scale input { width:100%; margin:13px 0 9px; accent-color:var(--accent); cursor:pointer; }
 .system-scale input:focus-visible { outline:2px solid var(--accent); outline-offset:5px; }
 .system-scale__ends { font-size:8px; }
+.system-scale__population { margin-top:8px; color:#92a8b5; font-size:8px; letter-spacing:.02em; }
 @media(max-width:720px) { .system-scale { width:230px; margin-left:-115px; bottom:calc(var(--ui-bottom-safe,112px) + 8px); } }
 @media(prefers-reduced-motion:reduce) { .system-menu__track,.spatial-surface,.live-interface { transition:none; } .cinematic-stage.is-ready .cinematic-stage__content > * { animation:none; } }
 

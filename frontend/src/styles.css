@@ -34,7 +34,6 @@ button { -webkit-tap-highlight-color: transparent; }
   --mode-accent: #86e8ff;
 }
 .orbitwatch-shell.mode-time { --mode-accent: #b8a7ff; }
-.orbitwatch-shell.mode-disaster { --mode-accent: #ff9d70; }
 
 .orbit-globe,
 .orbit-globe > .cesium-viewer,
@@ -88,8 +87,7 @@ button { -webkit-tap-highlight-color: transparent; }
 .object-row__main,
 .track-toggle,
 .primary-action,
-.secondary-action,
-.disaster-layer-list button {
+.secondary-action{
   transition:
     transform 150ms ease,
     background-color 150ms ease,
@@ -105,8 +103,7 @@ button { -webkit-tap-highlight-color: transparent; }
 .category-strip button:hover,
 .track-toggle:hover,
 .primary-action:hover,
-.secondary-action:hover,
-.disaster-layer-list button:hover {
+.secondary-action:hover{
   transform: translateY(-1px);
 }
 .icon-button:active,
@@ -118,8 +115,7 @@ button { -webkit-tap-highlight-color: transparent; }
 .category-strip button:active,
 .track-toggle:active,
 .primary-action:active,
-.secondary-action:active,
-.disaster-layer-list button:active {
+.secondary-action:active{
   transform: translateY(0) scale(0.97);
 }
 
@@ -464,7 +460,6 @@ button { -webkit-tap-highlight-color: transparent; }
   z-index: 3;
 }
 .mode-time .inspector-panel { --accent: #b8a7ff; --accent-rgb: 184, 167, 255; --accent-soft: rgba(184, 167, 255, 0.11); --accent-line: rgba(184, 167, 255, 0.36); }
-.mode-disaster .inspector-panel { --accent: #ff9d70; --accent-rgb: 255, 157, 112; --accent-soft: rgba(255, 157, 112, 0.1); --accent-line: rgba(255, 157, 112, 0.34); }
 .inspector-panel__head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
 .inspector-panel h1 { font-size: 19px; line-height: 1.15; margin: 5px 0 0; }
 .object-ident { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 9px; }
@@ -540,31 +535,6 @@ button { -webkit-tap-highlight-color: transparent; }
 .time-data-state { height: 36px; max-width: 195px; display: flex; align-items: center; gap: 5px; padding: 0 9px; border-left: 1px solid rgba(184, 167, 255, 0.22); color: #a89acd; font-size: 7px; text-transform: uppercase; letter-spacing: 0.05em; line-height: 1.25; }
 .time-data-state.is-missing { color: #d2a06f; }
 
-.disaster-dock {
-  position: absolute;
-  left: 83px;
-  bottom: 18px;
-  width: 350px;
-  background: #0a0808;
-  border: 1px solid rgba(255, 157, 112, 0.24);
-  padding: 13px;
-  box-shadow: 18px 22px 58px rgba(0, 0, 0, 0.38);
-  z-index: 3;
-  animation: panelLeft 210ms ease-out both;
-}
-.disaster-dock__head { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; }
-.disaster-dock__title { display: flex; align-items: center; gap: 7px; color: #ff9d70; font-size: 9px; letter-spacing: 0.13em; margin-top: 5px; }
-.source-chip { padding: 5px 6px; border: 1px solid rgba(126, 224, 175, 0.23); color: #7ee0af; background: rgba(126, 224, 175, 0.06); font-size: 6px; letter-spacing: 0.11em; }
-.disaster-layer-list { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; margin-top: 11px; }
-.disaster-layer-list button { height: 48px; border: 1px solid rgba(255, 255, 255, 0.08); background: #0c0a0a; display: grid; grid-template-columns: 22px 1fr; grid-template-rows: 1fr 1fr; align-items: center; text-align: left; padding: 7px 8px; color: #866c63; cursor: pointer; }
-.disaster-layer-list button svg { grid-row: 1 / 3; }
-.disaster-layer-list button span { font-size: 8px; }
-.disaster-layer-list button small { font-size: 6px; color: #5c4a44; }
-.disaster-layer-list button:hover { color: #dba58d; border-color: rgba(255, 157, 112, 0.2); }
-.disaster-layer-list button.is-active { color: #ffad86; border-color: rgba(255, 157, 112, 0.38); background: rgba(255, 157, 112, 0.08); box-shadow: inset 0 0 18px rgba(255, 157, 112, 0.03); }
-.disaster-layer-list button.is-active small { color: #a27662; }
-.disaster-dock p { margin: 10px 0 0; color: #755d53; font-size: 7px; line-height: 1.5; border-top: 1px solid rgba(255, 255, 255, 0.06); padding-top: 9px; }
-
 @media (max-width: 1180px) {
   .scene-dock__maps button span, .scene-dock__camera button span { display: none; }
   .scene-dock button { min-width: 32px; padding: 0 6px; }
@@ -593,7 +563,6 @@ button { -webkit-tap-highlight-color: transparent; }
   .object-explorer { left: 61px; right: 9px; top: 171px; bottom: 9px; width: auto; }
   .inspector-panel { left: 61px; right: 9px; top: auto; bottom: 9px; width: auto; max-height: 58vh; overflow: auto; }
   .live-dock, .time-dock { left: 61px; right: 9px; bottom: 9px; transform: none; max-width: none; animation: none; justify-content: center; }
-  .disaster-dock { left: 61px; right: 9px; bottom: 9px; width: auto; }
   .has-explorer .scene-dock { opacity: 0; pointer-events: none; }
   .object-explorer__foot span:last-child { display: none; }
 }
@@ -649,8 +618,7 @@ button { -webkit-tap-highlight-color: transparent; }
 /* Major planes stay opaque enough that glass surfaces never visually stack into mud. */
 .object-explorer,
 .inspector-panel,
-.map-settings,
-.disaster-dock {
+.map-settings{
   backdrop-filter: blur(12px) saturate(115%);
   -webkit-backdrop-filter: blur(12px) saturate(115%);
 }
@@ -659,7 +627,6 @@ button { -webkit-tap-highlight-color: transparent; }
 .map-settings { background: rgba(3, 8, 15, .95); transform-origin: 100% 50%; }
 .mode-rail { transform-origin: 0 22%; }
 .scene-dock { transform-origin: 100% 0; }
-.disaster-dock { transform-origin: 0 100%; }
 
 /* Current Cesium UI: keep credits/legal attribution, remove stock controls. */
 .orbit-globe .cesium-viewer-toolbar,
@@ -750,12 +717,6 @@ button { -webkit-tap-highlight-color: transparent; }
 .orbit-state { align-items: center; }
 .orbit-state span { line-height: 1.45; }
 
-/* Disaster Lab owns the only 3D/2D switch. */
-.lab-view-switch { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; margin-top: 11px; padding: 4px; border: 1px solid rgba(255,157,112,.14); background: #060606; }
-.lab-view-switch button { height: 34px; border: 1px solid transparent; background: transparent; color: #745f57; display: flex; align-items: center; justify-content: center; gap: 6px; font-size: 8px; cursor: pointer; transition: all 160ms ease; }
-.lab-view-switch button:hover { color: #e6ad94; background: rgba(255,157,112,.04); }
-.lab-view-switch button.is-active { color: #ffad86; border-color: rgba(255,157,112,.34); background: rgba(255,157,112,.09); box-shadow: inset 0 0 18px rgba(255,157,112,.035); }
-
 /* Responsive spatial zones: panels never sit behind one another. */
 @media (max-width: 1180px) {
   .map-settings { width: 320px; }
@@ -805,7 +766,6 @@ button { -webkit-tap-highlight-color: transparent; }
 .secondary-action,
 .time-dock__scrub button,
 .return-live,
-.disaster-layer-list button,
 .setting-toggle,
 .setting-toggle small,
 .camera-popover__title {
@@ -933,17 +893,6 @@ a.secondary-action { text-decoration: none; }
 .time-dock__label b { padding: 5px 8px; font-size: 13px; }
 .time-dock input { height: 46px; padding: 0 10px; font-size: 15px; }
 .time-dock__scrub button, .return-live { height: 46px; font-size: 13px; padding: 0 11px; }
-
-/* disaster controls */
-.disaster-dock { left: 92px; bottom: 20px; width: 430px; padding: 17px; }
-.disaster-dock__title { gap: 9px; font-size: 15px; margin-top: 7px; }
-.source-chip { padding: 6px 8px; font-size: 12px; }
-.lab-view-switch { gap: 6px; margin-top: 14px; padding: 5px; }
-.lab-view-switch button { height: 44px; gap: 8px; font-size: 14px; }
-.disaster-layer-list { gap: 7px; margin-top: 13px; }
-.disaster-layer-list button { height: 64px; grid-template-columns: 28px 1fr; padding: 9px 10px; }
-.disaster-layer-list button span { font-size: 14px; }
-.disaster-layer-list button small { font-size: 12px; }
 
 /* map gallery */
 .map-settings { right: 20px; top: 164px; width: min(620px, calc(100vw - 130px)); max-height: calc(100vh - 184px); padding: 20px; overflow: auto; }

@@ -55,7 +55,7 @@ The original asset-failure fixture intercepted only `fetch`, but Cesium uses XHR
 
 - Real backend API is unreachable on `127.0.0.1:8000`. The available bundled Python lacks FastAPI, uvicorn, SQLAlchemy, dotenv, and Skyfield. A working backend runtime/database is needed for real integration verification.
 - Browser access works again; the earlier account-usage approval block is no longer active.
-- Backend auth and database source files remain unchanged. Time Explorer and Disaster Lab retain their existing scope; no new future-mode implementation was started.
+- Backend auth and database source files remain unchanged. Time Explorer retains its existing scope; no new future-mode implementation was started.
 
 ## Change inventory and dependencies
 

@@ -54,6 +54,25 @@ function harness(context) {
   return { viewer, actions, primitives, models, listeners, timers, start, dispose, symbol, failModels: () => { failModel = true; }, failFlights: () => { failFlight = true; } };
 }
 
+test("Time Explorer paused dates survive Earth/Mars/Jupiter/Earth and retain scene-time ephemerides and LOD",async context=>{
+  const fixture=harness(context),{viewer}=fixture;
+  const layer=createSolarSystemLayer(viewer,{isLive:()=>true});
+  context.after(()=>{layer.destroy();fixture.dispose();});
+  for(const date of ["2024-06-01T06:30:00Z","2030-01-01T12:00:00Z"]) {
+    const time=JulianDate.fromIso8601(date);viewer.clock.currentTime=time;viewer.clock.shouldAnimate=false;
+    for(const id of ["mars","jupiter","earth"]) {
+      assert.ok((await layer.focus(id)).handled);
+      assert.ok(JulianDate.equals(viewer.clock.currentTime,time));assert.equal(viewer.clock.shouldAnimate,false);
+      layer.updatePositions();
+      if(id!=="earth") {
+        const center=viewer.entities.getById(`celestial-${id}`).position.getValue(time);
+        assert.ok(Cartesian3.distance(center,bodyPositionFixed(id,time))<.01);
+        assert.ok(layer.setScale(.8));layer.updatePositions();
+      }
+    }
+  }
+});
+
 test("paused scene orbit fades request frames until settled in both zoom directions, then return to idle", async context => {
   const fixture = harness(context);
   const { viewer, start } = fixture;

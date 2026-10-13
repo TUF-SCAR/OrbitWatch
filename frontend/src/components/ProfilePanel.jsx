@@ -31,6 +31,13 @@ export default function ProfilePanel({ open, user, onClose, onLogout, settings, 
       <section className="profile-panel__section profile-settings" aria-labelledby="profile-settings-title" data-depth="4">
         <h3 id="profile-settings-title">Display settings</h3>
         <div className="profile-setting">
+          <label htmlFor="profile-orbit-style">Orbit Style</label>
+          <select id="profile-orbit-style" aria-describedby="profile-orbit-help" value={settings.orbitStyle} onChange={(event)=>onSettingsChange({...settings,orbitStyle:event.target.value})}>
+            <option value="guided">Guided Orbit</option><option value="scientific">Scientific Orbit</option>
+          </select>
+          <p id="profile-orbit-help">Guided is schematic. Eccentric orbits automatically retain their real SGP4 path. Satellite positions remain scientific in both styles.</p>
+        </div>
+        <div className="profile-setting">
           <label htmlFor="profile-quality">Render quality</label>
           <p id="profile-quality-help">Choose the detail level for the globe and celestial scene.</p>
           <select id="profile-quality" aria-describedby="profile-quality-help" value={settings.quality} onChange={(event) => onSettingsChange({ ...settings, quality: event.target.value })}>

@@ -1,10 +1,11 @@
-import { ArcType, Cartesian3, Color, JulianDate, Material, Matrix3, Matrix4, PolylineCollection, Scene } from "cesium";
+import { ArcType, Cartesian3, Color, Entity, JulianDate, Material, Matrix3, Matrix4, PolylineCollection, Scene } from "cesium";
 import { CELESTIAL_BODIES } from "../src/data/celestialBodies.js";
 import { bodyPositionFixed, inertialToFixedMatrix, sampleBodyOrbitFixed } from "../src/data/solarSystemEphemeris.js";
 import { createOrbitStroke } from "../src/services/orbitStroke.js";
 import { StableOrbitCollection } from "../src/services/stableOrbitCollection.js";
+import { attachSatelliteOrbit, setSatelliteOrbitDisplay, styleSatelliteOrbit, updateSatelliteOrbit } from "../src/services/orbitVisuals.js";
 import { createSatelliteOrbitMaterial } from "../src/services/satelliteOrbitMaterial.js";
-import { createSatelliteOrbitState, createSatelliteTrack, satelliteOrbitPhase, satelliteFrame } from "../src/services/satelliteOrbitState.js";
+import { createSatelliteOrbitState, createSatelliteTrack, satelliteFrame } from "../src/services/satelliteOrbitState.js";
 
 const canvas = document.querySelector("canvas"), status = document.querySelector("output"), results = document.querySelector("pre");
 const scene = new Scene({ canvas, scene3DOnly:true, msaaSamples:1, contextOptions:{ webgl:{ antialias:false, preserveDrawingBuffer:true } } });
@@ -131,14 +132,16 @@ document.querySelector("#load").addEventListener("click",async()=>{
   const reports=[];
   try {
     const recorded=await (await fetch("/tests/fixtures/satellite-load-sgp4.json")).json();
-    for(const count of [24,44]) {
+    for(const count of [1,6,12,24,44]) for(const style of ["guided","scientific"]) {
       const group=scene.primitives.add(new StableOrbitCollection());
       const tracks=recorded.objects.slice(0,count).map(({orbit,trajectory,refresh},index)=>{
         const state=createSatelliteOrbitState(orbit), track=createSatelliteTrack(trajectory);
-        const material=createSatelliteOrbitMaterial(new Color(.6,.85,1,index===0?.72:.19*6/count));
-        material.uniforms.baseAlpha=index===0?.2:.075*6/count;
-        const line=group.add({positions:state.positions,material,modelMatrix:state.matrix,pickable:true});
-        return {state,track,refresh,line,position:track.position,noradId:orbit.norad_id,maxDistance:0};
+        const data={trajectory,track,orbitEntity:new Entity({polyline:{positions:state.positions}})};
+        styleSatelliteOrbit(data,new Color(.6,.85,1),index===0,count);
+        attachSatelliteOrbit(data,group,state.positions,state);
+        setSatelliteOrbitDisplay(data,style);
+        const line=data.orbitLine;
+        return {data,state,track,refresh,line,position:track.position,noradId:orbit.norad_id,maxDistance:0};
       });
       // Orbit requests were recorded after the first trajectory batch. Begin
       // inside their shared interval; do not wrap a pre-orbit timestamp into
@@ -148,20 +151,20 @@ document.querySelector("#load").addEventListener("click",async()=>{
       let emptyFrames=0, maxDistance=0, unavailablePositions=0, emptyRefreshFrames=0;
       uploads=0;
       try {
-        for(let frame=0;frame<180;frame++) {
-          status.textContent=`${count} satellites / frame ${frame+1}/180`;
-          const time=JulianDate.addSeconds(start,frame*1.25,new JulianDate());
+        for(let frame=0;frame<90;frame++) {
+          status.textContent=`${count} satellites / ${style} / frame ${frame+1}/90`;
+          const time=JulianDate.addSeconds(start,frame*2.5,new JulianDate());
           for(const row of tracks) {
-            const {state,track,refresh,line,position}=row;
-            if(frame===75) {
+            const {data,state,track,refresh,line,position}=row;
+            if(frame===45) {
               track.merge(refresh);
               if(track.position!==position) throw new Error("Refresh replaced position property");
-              line.positions=state.positions.map(p=>Cartesian3.clone(p));
+              if(style === "scientific" || data.orbitGuide.eccentric) line.positions=state.positions.map(p=>Cartesian3.clone(p));
             }
             satelliteFrame(time,state.matrix);
             const point=track.inertialAt(time);
             if(!point || track.isStale(time)) unavailablePositions++;
-            line.material.uniforms.phase=satelliteOrbitPhase(state,point,time);
+            updateSatelliteOrbit(data,time);
             maxDistance=Math.max(maxDistance,state.distance);
             row.maxDistance=Math.max(row.maxDistance,state.distance);
           }
@@ -172,20 +175,20 @@ document.querySelector("#load").addEventListener("click",async()=>{
           scene.initializeFrame();scene.render(time);
           gl.readPixels(0,0,canvas.width,canvas.height,gl.RGBA,gl.UNSIGNED_BYTE,pixels);
           let sum=0;for(let p=0;p<pixels.length;p+=4) sum+=pixels[p]+pixels[p+1]+pixels[p+2];
-          if(!sum) { emptyFrames++;if(frame>=74 && frame<=76) emptyRefreshFrames++; }
+          if(!sum) { emptyFrames++;if(frame>=44 && frame<=46) emptyRefreshFrames++; }
           if(group.length!==count || tracks.some(({line})=>!line.primitive.ready)) throw new Error("Missing resident path");
           await new Promise(resolve=>requestAnimationFrame(resolve));
         }
-        const report={count,frames:180,emptyFrames,emptyRefreshFrames,unavailablePositions,maxPhaseDistanceMeters:maxDistance,bufferUploads:uploads,
-          geometryRevisions:tracks.map(({line})=>line.geometryRevision),phaseDistances:tracks.map(({noradId,maxDistance})=>({noradId,maxDistance})),selectedAlpha:tracks[0].line.material.uniforms.color.w,contextAlpha:tracks[1].line.material.uniforms.color.w};
-        if(emptyFrames || unavailablePositions || maxDistance>10000 || report.geometryRevisions.some(n=>n!==2)) throw new Error(`Concurrent regression failed: ${JSON.stringify(report)}`);
+        const report={count,style,frames:90,emptyFrames,emptyRefreshFrames,unavailablePositions,maxPhaseDistanceMeters:maxDistance,bufferUploads:uploads,
+          geometryRevisions:tracks.map(({line})=>line.geometryRevision),phaseDistances:tracks.map(({noradId,maxDistance})=>({noradId,maxDistance})),selectedAlpha:tracks[0].line.material.uniforms.color.w,contextAlpha:tracks[1]?.line.material.uniforms.color.w ?? null};
+        if(emptyFrames || unavailablePositions || maxDistance>10000 || tracks.some(({line,data})=>line.geometryRevision!==(style==="guided" && !data.orbitGuide.eccentric ? 1 : 2))) throw new Error(`Concurrent regression failed: ${JSON.stringify(report)}`);
         reports.push(report);results.textContent=JSON.stringify(reports,null,2);
       } finally {
         scene.primitives.remove(group);
       }
       if(!group.isDestroyed() || group.length!==0) throw new Error("Resident path cleanup failed");
     }
-    status.textContent="24/44 real satellite load regression passed";
+    status.textContent="1/6/12/24/44 Guided/Scientific real satellite GPU regression passed";
   } catch(error) { status.textContent=`FAILED: ${error.message}`;console.error(error); }
   finally {document.querySelectorAll("button").forEach(button=>button.disabled=false);}
 });

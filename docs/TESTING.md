@@ -19,7 +19,7 @@ The fixture's JavaScript motion preference selector exercises runtime preference
 
 `preview clears` counts WebGL clear calls from the auth and inspector previews during each 1.5-second diagnostic interval. A settled reduced-motion preview should report zero; loading, resizing and camera input should cause redraws. Full-motion preview rotation should continue producing clears. This is a redraw check, not a GPU timing measurement, and background-tab throttling affects counts. Fixture disposal restores all patched prototypes.
 
-`frontend/tests/ui.html` is a development-only synthetic UI fixture. Serve the frontend on `127.0.0.1:5174` and open `/tests/ui.html`. Use `ui-test` / `orbitwatch-test`. The bottom strip can force feed, model, camera, and Bing metadata failures. Its fake session is isolated from port 5173 and it is not part of the production entry/build.
+`frontend/tests/ui.html` is a development-only synthetic UI fixture. Serve the frontend on `127.0.0.1:5174` and open `/tests/ui.html`. Use `ui-test` / `orbitwatch-test`. The bottom strip can force feed, model, camera, Bing metadata and Google authorization failures. Its fake session is isolated from port 5173 and it is not part of the production entry/build.
 
 The spacecraft-model selector supports `online`, HTTP-failing `offline`, and abortable `stalled` requests. With the optional 3D preview enabled, open Hubble after selecting a failure mode: it should fall back to the credited photograph and remove its extra canvas, within ten seconds for a stalled load. Closing the inspector during a stall must also release the canvas without a delayed error. Switch back to `online` and reopen to verify recovery. The disposal regression separately checks shared textures, geometry, materials and decoded image ownership.
 
@@ -39,7 +39,7 @@ Create a virtual environment under the ignored backup directory with a Windows C
 
 ```powershell
 python -m venv .orbitwatch-backups/api-venv
-.orbitwatch-backups/api-venv/Scripts/python.exe -m pip install fastapi uvicorn sqlalchemy python-dotenv PyJWT 'pwdlib[argon2]' skyfield httpx
+.orbitwatch-backups/api-venv/Scripts/python.exe -m pip install fastapi uvicorn sqlalchemy python-dotenv PyJWT 'pwdlib[argon 2]' skyfield httpx
 .orbitwatch-backups/api-venv/Scripts/python.exe tests/check_backend_contract.py
 ```
 
@@ -55,3 +55,57 @@ npm run dev --prefix frontend -- --host 127.0.0.1 --port 5175 --strictPort
 Open `http://127.0.0.1:5175/` and log in with `integration_test` / `OrbitWatch-test-2026`. This uses real backend authentication and propagation with six synthetic orbital fixtures. STALE is expected because the remaining catalog objects have no orbital records. The test process allows only the separate test frontend origin. Stop both test processes when done; temporary database storage is cleaned on normal exit (an interrupted process may leave its test-only directory under the ignored backups).
 
 
+
+## Two-mode maps, Time and orbit styles (12 October 2026)
+
+The product contains only Live and Time Explorer. Live System retains 47
+named destinations and Catalog; Time System has only the reused Sun/eight-planet
+Orbit Map. Check keyboard/panel guards, off-Earth mode rail, recentering, LOD
+slider and selected timestamp across Earth→Mars→Jupiter→Earth. Time retains
+tracked selections but renders no current satellite positions or telemetry;
+Inspector explains unavailable coverage and disables Focus/Follow/orbit actions.
+
+Profile Orbit Style defaults to Guided and persists through reload. Check an
+immediate switch to Scientific without camera/Viewer reset; real marker remains
+unchanged. Native `tests/orbit-render.html` load button now tests both styles at
+1/6/12/24/44 objects over 900 total frames using recorded real SGP4 samples.
+Guided circles have one resident geometry revision; eccentric/Scientific paths
+refresh to two without blank frames. Node tests cover real LEO/polar/GEO/navigation
+and eccentric cases, hysteresis, ideal highlight/marker coincidence and ownership.
+The native probe validates GPU paths, not a normal authenticated 44-object API
+network session; the UI fixture's satellite data is explicitly synthetic unless
+its documented read-only bridge is selected.
+
+`tests/maps.html` runs the real NASA metadata parser and loads root JPEGs for
+an archived date, an advertised gap and a future reference. In the application
+verify actual observation-day text, daily/cloud-gap notice, historical imagery,
+future fixed provider identity and missing/offline reference disclosure. Rapid
+changes/hours should not accumulate layers/listeners; repeated off-Earth trips
+must restore imagery even for an unchanged cache key. Paused ICRF readiness
+changes must invalidate canonical centers rather than retain fallback-frame
+positions; regression covers all 47 bodies.
+
+Live gallery tests: Google, Bing/Labels/Road, Esri, OSM, NASA Reference. Missing
+CARTO key must show UNCONFIGURED, not available; real-key authorization remains
+manual until configured. For a deliberate Google403, enable Fail Google access,
+travel away/return to create a fresh root, verify Esri fallback and unavailable
+Google status, disable the flag and select Google to retry. For Bing failure,
+enable Fail Bing metadata before selecting a Bing map, verify actual Esri active
+tick, then disable and retry. First-tile403, cancellation, bounded timeout,
+empty-layer restoration and pending Google handoff also have automated tests.
+
+Do not edit fixture sources mid-travel. Vite HMR can remount the entry/scene;
+reload the development fixture after source changes before final acceptance.
+Record fresh-console failures separately from injected faults/HMR artifacts.
+Provider IDs/error-listener counts in diagnostics contain no URL/token and are
+not a claim about browser-wide/GPU memory. See [imagery configuration](EARTH_IMAGERY.md).
+
+Final checks12 October2026:80 frontend tests, ESLint, production build and the
+isolated 39-request backend contract suite pass. The bundled Python runtime
+(asset dependencies include Pillow) also validates all 47 GLBs/textures. The
+ordinary/backend test Python environments did not have Pillow; this was a tool
+dependency issue, resolved with the existing bundled runtime, not an asset failure.
+The existing 1204.74 kB main-chunk warning remains. Browser injected403/metadata
+failures recovered; old HMR/root artifacts were separated from the fresh session.
+A short-view height bug demonstrated in the934×644 fixture was corrected using
+one combined Explorer scroll surface, preserving selectable rows and fixed footer.

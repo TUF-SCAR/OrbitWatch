@@ -2,6 +2,7 @@ import { Cartesian3, Color } from "cesium";
 import { createOrbitStroke, OrbitStrokeMaterialProperty } from "./orbitStroke.js";
 import { createSatelliteOrbitMaterial } from "./satelliteOrbitMaterial.js";
 import { satelliteFrame, satelliteOrbitPhase, satelliteOrbitRefreshDue } from "./satelliteOrbitState.js";
+import { fitGuidedOrbit, guidedOrbitPhase, updateGuidedFrame } from "./guidedOrbit.js";
 
 // Temporal emphasis and density hierarchy; scientific positions live separately.
 export function satelliteOrbitStyle(selected, count, height = 27000000, radius = 0) {
@@ -45,11 +46,22 @@ export function attachSatelliteOrbit(data, collection, positions, state) {
   else data.orbitLine = collection.add({ id: data.orbitEntity, positions,
     material: state ? createSatelliteOrbitMaterial(data.orbitVisual.tint) : createOrbitStroke(data.orbitVisual.tint), show: data.orbitEntity.show, pickable:true });
   if (state) {
+    state.positions ||= positions;
     data.orbitState = state;
-    data.orbitLine.modelMatrix = state.matrix;
+    data.orbitGuide = fitGuidedOrbit(state,data.orbitGuide || data.guideClassification);
+    data.guideClassification={eccentric:data.orbitGuide.eccentric};
+    setSatelliteOrbitDisplay(data,data.orbitStyle || "scientific");
     data.orbitLine.orbitwatchSatellite = { state, track:data.track };
     data.orbitEpoch = data.trajectory?.tle_epoch;
   }
+}
+
+export function setSatelliteOrbitDisplay(data, style) {
+  data.orbitStyle = style === "scientific" ? "scientific" : "guided";
+  if(!data.orbitState || !data.orbitLine) return;
+  const guided=data.orbitStyle === "guided" && !data.orbitGuide.eccentric;
+  data.orbitLine.positions=guided ? data.orbitGuide.positions : data.orbitState.positions;
+  data.orbitLine.modelMatrix=guided ? data.orbitGuide.matrix : data.orbitState.matrix;
 }
 
 export function satelliteOrbitNeedsRefresh(data) {
@@ -61,6 +73,7 @@ export function removeSatelliteOrbit(data, collection) {
   data.orbitLine = null;
   data.orbitVisual = null;
   data.orbitState = null;
+  data.orbitGuide = null;
 }
 
 const satellitePoint = new Cartesian3();
@@ -71,6 +84,10 @@ export function updateSatelliteOrbit(data, time) {
   satelliteFrame(effective, state.matrix);
   const uniforms = data.orbitLine.material.uniforms;
   uniforms.phase = satelliteOrbitPhase(state, track.inertialAt(effective, satellitePoint), effective);
+  if(data.orbitStyle === "guided" && !data.orbitGuide.eccentric) {
+    updateGuidedFrame(data.orbitGuide,state.matrix,satellitePoint,state);
+    uniforms.phase=guidedOrbitPhase(data.orbitGuide,satellitePoint);
+  }
   state.stale = data.orbitEpoch !== data.trajectory?.tle_epoch || state.distance > Math.max(1500, state.radius * .00015);
   uniforms.current = track.isStale(time) || state.stale ? 0 : 1;
 }

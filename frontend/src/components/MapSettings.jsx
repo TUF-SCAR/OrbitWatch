@@ -19,11 +19,12 @@ export default function MapSettings({ open, mapStyle, onMapStyleChange, labelsEn
       </div>
 
       <div className="hud-panel__body map-settings__body">
-      {mapStatus && <p role="status" className="inline-warning">{mapStatus}</p>}
+      {mapStatus?.message && <p role="status" className="inline-warning">{mapStatus.message}</p>}
 
       <div className="map-gallery" data-depth="4">
         {MAP_OPTIONS.map((map) => {
-          const active = mapStyle === map.id;
+          const active = mapStatus?.activeMap === map.id;
+          const failed=mapStatus?.providers?.[map.id]==="unavailable";
           const unavailable = (map.requiresCartoKey && !hasCartoKey) || (["google", "bing", "bing-labels", "bing-road"].includes(map.id) && !import.meta.env.VITE_CESIUM_ION_TOKEN);
           return (
             <button
@@ -32,10 +33,10 @@ export default function MapSettings({ open, mapStyle, onMapStyleChange, labelsEn
               onClick={() => !unavailable && onMapStyleChange(map.id)}
               aria-pressed={active}
               disabled={unavailable}
-              title={unavailable ? "Provider key unavailable" : map.name}
+              title={unavailable ? "Unconfigured: provider key required" : failed ? "Provider unavailable. Select to retry." : map.name}
             >
               <span className="map-card__preview"><img src={map.preview} alt="" width="320" height="180" /></span>
-              <span className="map-card__copy"><strong>{map.name}</strong>{unavailable && <small><KeyRound size={13} /> KEY</small>}</span>
+              <span className="map-card__copy"><strong>{map.name}</strong>{unavailable ? <small><KeyRound size={13} /> UNCONFIGURED</small> : failed ? <small>UNAVAILABLE · RETRY</small> : mapStyle===map.id && !active ? <small>REQUESTED</small> : null}</span>
               {active && <span className="map-card__check"><Check size={15} /></span>}
             </button>
           );

@@ -5,6 +5,7 @@ export const MAP_OPTIONS = [
   { id: "bing-road", name: "Bing Road", preview: "/map-previews/bing-road.svg" },
   { id: "esri", name: "Esri", preview: "/map-previews/esri.svg" },
   { id: "osm", name: "OpenStreetMap", preview: "/map-previews/osm.svg" },
+  { id: "nasa-reference", name: "NASA Reference", preview: "/textures/planets/earth.jpg" },
   { id: "carto-dark", name: "CARTO Dark", preview: "/map-previews/carto-dark.svg", requiresCartoKey: true },
   { id: "carto-voyager", name: "CARTO Voyager", preview: "/map-previews/carto-voyager.svg", requiresCartoKey: true },
 ];

@@ -309,11 +309,10 @@ input[type="checkbox"] { accent-color:#8de8fa; width:16px; height:16px; cursor:p
 .profile-preview-toggle { display:flex; align-items:center; justify-content:space-between; gap:var(--section-gap); min-height:var(--control-height); }
 .profile-panel__footer { display:flex; justify-content:space-between; align-items:center; gap:var(--control-gap); font-size:10px; color:#9ab3c6; }
 .profile-panel__footer button { display:flex; align-items:center; gap:var(--control-gap); min-height:var(--control-height); padding:0 12px; border:1px solid #ff8c7350; background:#ff8c7310; color:#ffae99; cursor:pointer; }
-.disaster-dock { left:var(--ui-content-left); bottom:var(--ui-edge); padding:var(--panel-padding); }
 .live-dock,.time-dock { bottom:var(--ui-edge); }
 .time-dock { gap:var(--control-gap); }
-/* On wide screens the Disaster dock occupies a separate left column. */
-@media(min-width:1100px) { .orbitwatch-shell.mode-disaster { --ui-bottom-safe:var(--ui-bottom-min); } }
+
+@media(min-width:1100px) { }
 @media(max-width:1100px) { .hud-context { display:none; } .top-hud { grid-template-columns:1fr auto; gap:var(--ui-safe-gap); } }
 @media(max-height:780px) { .inspector-preview { height:160px; } }
 @media(max-width:720px) {
@@ -340,12 +339,11 @@ input[type="checkbox"] { accent-color:#8de8fa; width:16px; height:16px; cursor:p
   .time-dock__scrub { flex:1; gap:4px; }
   .time-dock__scrub button { flex:1; height:var(--control-height); padding:0 6px; font-size:11px; }
   .time-dock .return-live { height:var(--control-height); padding:0 8px; font-size:11px; }
-  .disaster-dock { left:var(--ui-content-left); right:var(--ui-edge); width:auto; }
-  .disaster-dock__title { font-size:12px; }
 }
 
-@media(max-width:720px) and (max-height:760px) {
-  /* A short phone scrolls controls and results together; never nest two bars. */
+@media(max-height:760px) {
+  /* Short viewports scroll controls/results together so dock disclosures
+     cannot squeeze the selectable list to zero height. Never nest two bars. */
   .explorer-body { display:flex; flex-direction:column; gap:var(--section-gap); }
   .explorer-body > * { flex-shrink:0; }
   .explorer-body .object-list { flex:none; overflow:visible; }
@@ -387,3 +385,9 @@ input[type="checkbox"] { accent-color:#8de8fa; width:16px; height:16px; cursor:p
 .subsystem-map .system-orbit { z-index:5; }
 .system-map .system-planet span { pointer-events:none; }
 .system-map .system-planet::before { inset:calc(-2px * var(--diagram-scale)); }
+.orbit-disclosure { max-width:240px; font-size:10px; line-height:1.4; color:var(--text-muted,#8da5b9); }
+.time-coverage { flex-basis:100%; margin:0; max-width:850px; color:#a6bdcd; font-size:11px; line-height:1.4; }
+.live-telemetry-dock { flex-wrap:wrap; }
+.live-telemetry-dock .orbit-disclosure { flex:0 0 100%; max-width:none; text-align:center; }
+.time-dock { flex-wrap:wrap; justify-content:center; width:min(900px,calc(100vw - 130px)); }
+.time-coverage { order:1; }

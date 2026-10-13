@@ -7,6 +7,7 @@ import { StableOrbitCollection } from "../src/services/stableOrbitCollection.js"
 export function instrumentScenes() {
   const records = new Map();
   const visualCollections = new Set();
+  const providerIds=new WeakMap();let nextProviderId=1;
   const collectionTypes = [PointPrimitiveCollection, LabelCollection];
   const originalAdds = collectionTypes.map((Type) => Type.prototype.add);
   collectionTypes.forEach((Type, index) => { Type.prototype.add = function (...args) { visualCollections.add(this); return originalAdds[index].apply(this, args); }; });
@@ -93,7 +94,13 @@ export function instrumentScenes() {
         }
       }
       for (const counts of bodies.values()) { duplicate += Number(counts.model > 0 && counts.point > 0); markers += counts.point; labels += counts.label; }
-      return JSON.stringify({ driftMeters: Number(drift.toFixed(6)), gpuErrorPixels: Number(gpuErrorPixels.toFixed(6)), earthPhysical: sampleScene.globe?.show ?? false, invalid, duplicate, leaders, markers, labels, bodies: Object.fromEntries(bodies), populations, rings, orbits, background:sampleScene.skyBox?.orbitwatchBackground });
+      const imagery=[];
+      for(let i=0;i<sampleScene.imageryLayers.length;i++) {
+        const provider=sampleScene.imageryLayers.get(i).imageryProvider;
+        if(!providerIds.has(provider)) providerIds.set(provider,nextProviderId++);
+        imagery.push({id:providerIds.get(provider),errorListeners:provider.errorEvent?.numberOfListeners ?? 0});
+      }
+      return JSON.stringify({ driftMeters: Number(drift.toFixed(6)), gpuErrorPixels: Number(gpuErrorPixels.toFixed(6)), earthPhysical: sampleScene.globe?.show ?? false, invalid, duplicate, leaders, markers, labels, bodies: Object.fromEntries(bodies), populations, rings, orbits, imagery, background:sampleScene.skyBox?.orbitwatchBackground });
   }
   const render = Scene.prototype.render, destroy = Scene.prototype.destroy;
   Scene.prototype.render = function (...args) {

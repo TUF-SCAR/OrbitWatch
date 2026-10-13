@@ -4,7 +4,7 @@ import { layoutCelestialLabels } from "../src/services/celestialLabelLayout.js";
 import { createCanonicalPositions } from "../src/services/canonicalCelestialPosition.js";
 import { ALL_CELESTIAL_IDS } from "../src/data/celestialBodies.js";
 import { bodyPositionFixed } from "../src/data/solarSystemEphemeris.js";
-import { Cartesian3, EncodedCartesian3, JulianDate } from "cesium";
+import { Cartesian3, EncodedCartesian3, JulianDate, Matrix3, Transforms } from "cesium";
 import { relativeCelestialCenter } from "../src/services/celestialSymbols.js";
 import { solarSystemScales } from "../src/services/solarSystemLod.js";
 
@@ -58,4 +58,17 @@ test("canonical centers resolve once per timestamp for every body and copy witho
       assert.ok([actual.x, actual.y, actual.z].every(Number.isFinite));
     }
   }
+});
+
+test("paused canonical centers invalidate when asynchronous ICRF becomes available", context => {
+  let ready = false;
+  context.mock.method(Transforms, "computeIcrfToFixedMatrix", (_time,result) => ready ? Matrix3.fromRotationZ(.8,result) : undefined);
+  const center = createCanonicalPositions(), time = JulianDate.fromIso8601("2040-01-01T06:30:00Z");
+  const old = Cartesian3.clone(center("jupiter",time));
+  ready = true;
+  for (const id of ALL_CELESTIAL_IDS) {
+    assert.deepEqual(center(id,time),bodyPositionFixed(id,time),id);
+    assert.deepEqual(center(id,time,new Cartesian3()),bodyPositionFixed(id,time),id);
+  }
+  assert.ok(Cartesian3.distance(old,center("jupiter",time))>1e9);
 });

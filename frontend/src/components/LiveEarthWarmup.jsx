@@ -17,9 +17,7 @@ export default function LiveEarthWarmup() {
         refreshNonce={0}
         mapStyle="google"
         labelsEnabled={true}
-        sceneMode="3d"
         shownOrbitIds={emptySet}
-        disasterLayers={[]}
         onObjectSelect={() => {}}
         onViewTelemetry={() => {}}
         globeRef={globeRef}

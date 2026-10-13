@@ -1,5 +1,5 @@
 import { motion, stagger } from "motion/react";
-import { Activity, Clock3, Sparkles, X } from "lucide-react";
+import { Activity, Clock3, X } from "lucide-react";
 import LiquidGlass from "./LiquidGlass.jsx";
 
 const MODES = [
@@ -13,16 +13,9 @@ const MODES = [
   {
     id: "time",
     label: "Time Explorer",
-    description: "Historical positions and future orbital exploration",
+    description: "Date-aware Earth imagery and calculated celestial positions",
     available: false,
     icon: Clock3,
-  },
-  {
-    id: "lab",
-    label: "Disaster Lab",
-    description: "Earth-disaster simulation and response planning",
-    available: false,
-    icon: Sparkles,
   },
 ];
 

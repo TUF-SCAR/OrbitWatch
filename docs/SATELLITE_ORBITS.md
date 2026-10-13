@@ -1,15 +1,17 @@
 # Earth satellite orbit rendering
 
 The backend remains unchanged. Skyfield/SGP4 supplies timestamped WGS84 latitude,
-longitude and altitude for each trajectory and complete orbit. No frontend
-circle/ellipse replaces those samples.
+longitude and altitude for each trajectory and complete orbit. Real marker
+positions always use these samples. Scientific Orbit renders the full sampled
+path; Guided Orbit deliberately presents a disclosed schematic circle for
+near-circular spacecraft.
 
 Each sample is converted to Cartesian Earth-fixed coordinates, then rotated by
 the transpose of Cesium's `computeTemeToPseudoFixedMatrix` **at that sample's
 timestamp**. The satellite and path both apply one shared forward rotation at
 the effective scene timestamp. The origin remains Earth's centre. GEO therefore
 has a complete inertial orbit even though its Earth-relative satellite position
-is almost stationary. Cesium's pseudo-fixed conversion equates UTC and UT1;
+is almost stationary. Cesium's pseudo-fixed conversion equates UTC and UT 1;
 this is a documented visualization approximation, not an EOP-calibrated TEME
 state vector or a replacement propagator. It avoids asynchronous ICRF fallback
 changes and duplicate Earth rotation.
@@ -42,6 +44,34 @@ anti-flicker fix. No independent animation timer, overlapping coincident strokes
 per-frame geometry, extra Viewer or React phase state is used. Category colors
 remain intact; selection and orbit count control the hierarchy. High-apogee
 paths fade according to their own scale rather than a LEO-only camera threshold.
+
+## Orbit Style (12 October 2026)
+
+Profile settings persist **Guided** by default and **Scientific** as an explicit
+choice. Switching changes resident path geometry/matrix immediately, preserving
+the Viewer, camera, selection, position Property and material; no API request is
+made solely for a style change. Both use the same lead/trail shader and category
+colors. Hide/show/unload/refresh retain the existing ownership rules.
+
+Guided fits a plane and initial mean radius from real recovered inertial samples.
+At each effective scene timestamp its matrix uses the actual marker's geocentric
+radius and a plane through that position and the interpolated central tangent of
+the real sampled path. A retained angular basis prevents arbitrary phase spins.
+An immutable shared481-point unit circle is scaled/oriented by the matrix;
+no per-frame geometry upload or independently animated position is introduced.
+The ideal phase peak meets the unchanged scientific marker (tested <1e-6m);
+the polygonal approximation is subpixel at normal scale. This is still a
+schematic instantaneous circular guide, not a scientifically exact full orbit.
+Using a constant mean radius missed one navigation marker by~150 km, which is why
+the current radius is used. Rounded sample noise is reduced by wide central
+chords and interpolation; true slow orbital evolution is retained.
+
+Approximate eccentricity is `(rmax-rmin)/(rmax+rmin)` from the full SGP4 path.
+Enter real geometry at e>=.03; remain there until e<.025. This bounds circular
+schematic radial error to about 3% while retaining stable hysteresis. Chandra,
+XMM-Newton and TESS keep real geometry. Scene and inspector explicitly disclose
+schematic circles and eccentric auto-fallback. Scientific geometry/propagation,
+including inclination, eccentricity and precession, remains unchanged.
 
 ## Cesium 1.144 alternatives reviewed
 
@@ -85,17 +115,18 @@ is partially verified; see the Astra checkpoint for the remaining scenarios.
 The resumed native browser reproduced a shader compile failure because `active`
 is a reserved GLSL word; the local variable is now `phaseWeight`. The existing
 `tests/orbit-render.html` probe's **Run satellite shader regression** compiles
-the actual material on WebGL2 and checks six recorded real SGP4 paths over 540
+the actual material on WebGL 2 and checks six recorded real SGP4 paths over 540
 frames with phase wrap, camera/zoom changes and resident buffer replacement.
 All six cases passed without an empty frame. Node Material construction does
 not compile GLSL and must not be treated as evidence of GPU compatibility.
 
-The **Run 24/44 real satellite load regression** button uses 44 distinct real
-catalog objects from `tests/fixtures/satellite-load-sgp4.json`. Each concurrent
-case advances 180 rendered frames with camera/range changes, actual Earth-frame
+The **Run 24/44 real satellite load regression** button now tests 1/6/12/24/44
+simultaneous satellites in both styles using 44 distinct real
+catalog objects from `tests/fixtures/satellite-load-sgp4.json`. Each of 10 cases
+advances 90 rendered frames (900 total) with camera/range changes, actual Earth-frame
 rotation, a recorded overlapping trajectory merge and resident buffer replacement.
-It asserts no empty frames, valid position coverage, phase alignment, two geometry
-revisions per path and collection disposal. Start inside the shared orbit/track
+It asserts no empty frames, valid position coverage, phase alignment, one geometry revision for circles and two for refreshed Scientific/eccentric
+paths and collection disposal. Start inside the shared orbit/track
 coverage interval; a timestamp before an orbit's recording start wraps into the
 next period and can include a real SGP4 precession offset.
 
@@ -109,3 +140,12 @@ Focus/Follow, Earth↔Mars and logout. Browser-to-8001 fetches were intermittent
 unavailable at higher loads although standalone API checks passed; the recorded
 GPU probe does **not** establish a normal authenticated Live 44-object network
 session. No production transport/auth changes were made to bypass that limitation.
+
+On 2026-10-12 the final dual-style native probe passed all 10 cases with zero empty,
+refresh-gap or unavailable-position frames. Both shaders compile with real
+recorded trajectories/Earth-frame rotation; the probe draws orbit paths, while
+marker/phase coincidence is independently checked mathematically. The app UI
+fixture validates marker selection/camera/style persistence and actual provider
+maps, using clearly labeled synthetic satellite input. These checks do not
+claim a normal authenticated 44-object production network session. Evidence is
+saved in the ignored Astra backup checkpoint directory.

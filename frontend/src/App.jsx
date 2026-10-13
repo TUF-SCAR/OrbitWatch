@@ -8,7 +8,6 @@ import ObjectExplorer from "./components/ObjectExplorer.jsx";
 import InspectorPanel from "./components/InspectorPanel.jsx";
 import LiveDock from "./components/LiveDock.jsx";
 import TimeDock from "./components/TimeDock.jsx";
-import DisasterDock from "./components/DisasterDock.jsx";
 import SceneDock from "./components/SceneDock.jsx";
 import CameraMenu from "./components/CameraMenu.jsx";
 import MapSettings from "./components/MapSettings.jsx";
@@ -23,7 +22,7 @@ import PlaceSearch from "./components/PlaceSearch.jsx";
 import SceneBoundary from "./components/SceneBoundary.jsx";
 import { fetchSatelliteCatalog, fetchSatelliteDataStatus, fetchSatellitePosition } from "./services/orbitwatchApi.js";
 import { SPACE_OBJECTS } from "./data/spaceObjects.js";
-import { navigationVisibility } from "./utils/navigationVisibility.js";
+import { navigationVisibility, PRODUCT_MODES, celestialDestinationAllowed } from "./utils/navigationVisibility.js";
 
 const DEFAULT_MAJOR_OBJECTS = [25544, 20580, 48274, 39084, 58990, 26407];
 const TIME_DEFAULT_OBJECTS = [25544, 20580, 48274, 39084];
@@ -32,8 +31,8 @@ const TIME_OBJECT_LIMIT = 15;
 function readSettings() {
   try {
     const saved = JSON.parse(localStorage.getItem("orbitwatch_settings") || "{}");
-    return { quality: ["auto", "performance", "balanced", "quality"].includes(saved.quality) ? saved.quality : "auto", preview3d: saved.preview3d === true };
-  } catch { return { quality: "auto", preview3d: false }; }
+    return { quality: ["auto", "performance", "balanced", "quality"].includes(saved.quality) ? saved.quality : "auto", preview3d: saved.preview3d === true, orbitStyle: saved.orbitStyle === "scientific" ? "scientific" : "guided" };
+  } catch { return { quality: "auto", preview3d: false, orbitStyle: "guided" }; }
 }
 
 export default function App({ currentUser, onLogout, hudActive = true, onSceneReady, hudCycle = 0, startupCountry = null }) {
@@ -62,11 +61,11 @@ export default function App({ currentUser, onLogout, hudActive = true, onSceneRe
   const [selectedTime, setSelectedTime] = useState(new Date());
   const [mapStyle, setMapStyle] = useState(import.meta.env.VITE_CESIUM_ION_TOKEN ? "google" : "esri");
   const [mapStatus, setMapStatus] = useState(null);
+  const [mapRetryNonce, setMapRetryNonce] = useState(0);
   const [satelliteStatus, setSatelliteStatus] = useState("");
+  const [orbitInfo, setOrbitInfo] = useState({});
   const [labelsEnabled, setLabelsEnabled] = useState(true);
-  const [sceneMode, setSceneMode] = useState("3d");
   const [cameraFollowing, setCameraFollowing] = useState(false);
-  const [disasterLayers, setDisasterLayers] = useState(["wildfires", "severeStorms"]);
   const [catalogObjects, setCatalogObjects] = useState(SPACE_OBJECTS);
   const [viewTelemetry, setViewTelemetry] = useState({});
   const [settings, setSettings] = useState(readSettings);
@@ -84,7 +83,7 @@ export default function App({ currentUser, onLogout, hudActive = true, onSceneRe
   const shownOrbitIds = mode === "time" ? timeShownOrbitIds : liveShownOrbitIds;
   const setShownOrbitIds = mode === "time" ? setTimeShownOrbitIds : setLiveShownOrbitIds;
   const selectedObject = catalogObjects.find((item) => item.noradId === selectedId) || null;
-  const selectedRendered = Boolean(selectedId && activeTrackedIds.includes(selectedId));
+  const selectedRendered = mode === "live" && Boolean(selectedId && activeTrackedIds.includes(selectedId));
   const atEarth = selectedCelestialBody === "earth";
   const navigation = navigationVisibility(mode, atEarth);
   const menu = layers.find((item) => ["map", "camera", "system"].includes(item) && navigation[item]);
@@ -154,7 +153,7 @@ export default function App({ currentUser, onLogout, hudActive = true, onSceneRe
   }, [refreshNonce]);
 
   useEffect(() => {
-    if (!selectedId || mode === "disaster") return undefined;
+    if (!selectedId || mode !== "live") return undefined;
     const controller = new AbortController();
     let timer;
     async function update() {
@@ -215,18 +214,15 @@ export default function App({ currentUser, onLogout, hudActive = true, onSceneRe
     try { localStorage.setItem("orbitwatch_settings", JSON.stringify(next)); } catch { /* Settings still work for this session. */ }
   }
   function changeMode(next) {
-    if (travelLockRef.current || !navigation.modeRail) return;
+    if (travelLockRef.current || !navigation.modeRail || !PRODUCT_MODES.includes(next)) return;
     releaseCamera();
     setLayers([]);
     setSelectedCelestialBody("earth");
     setMode(next);
     setLimitMessage("");
-    setSelectedTime(new Date());
-    if (next === "time") { setTimeTrackedIds(TIME_DEFAULT_OBJECTS); setTimeShownOrbitIds(new Set(TIME_DEFAULT_OBJECTS)); }
-    if (next === "disaster") setSceneMode("3d");
   }
   async function selectCelestialBody(id, reframe = false) {
-    if (travelLockRef.current || !navigation.system) return false;
+    if (travelLockRef.current || !navigation.system || !celestialDestinationAllowed(mode,id)) return false;
     if (id === selectedCelestialBody && !reframe) { closeLayer("system"); closeLayer("celestial"); return true; }
     travelLockRef.current = true;
     setTravelError("");
@@ -261,7 +257,7 @@ export default function App({ currentUser, onLogout, hudActive = true, onSceneRe
   // One shared clearance keeps every floating panel above its changing height.
   useEffect(() => {
     const shell = shellRef.current;
-    const dock = shell?.querySelector(".live-dock, .time-dock, .disaster-dock");
+    const dock = shell?.querySelector(".live-dock, .time-dock");
     if (!shell || !dock) return undefined;
     const measure = () => shell.style.setProperty("--hud-dock-height", `${dock.offsetHeight}px`);
     const observer = typeof ResizeObserver === "function" ? new ResizeObserver(measure) : null;
@@ -301,31 +297,30 @@ export default function App({ currentUser, onLogout, hudActive = true, onSceneRe
   const hidden = presentation || Boolean(travel) || !hudActive;
   return (
     <main ref={shellRef} className={`orbitwatch-shell mode-${mode} ${atEarth ? "at-earth" : "off-earth"} ${layers.includes("place") ? "has-place-search" : ""} ${travel ? "is-travelling" : ""}`}>
-      <SceneBoundary onReady={onSceneReady} onReset={() => { setSelectedCelestialBody("earth"); setDetailState("ready"); setCameraFollowing(false); setTravel(null); travelLockRef.current = false; setLayers([]); }}><OrbitGlobe trackedIds={mode === "disaster" ? [] : activeTrackedIds} selectedId={selectedId} selectedTime={selectedTime} mode={mode} startupCountry={startupCountry} selectedCelestialBody={selectedCelestialBody} onCelestialSelect={(id, wide) => { if (travelLockRef.current || mode !== "live") return; if (!wide && id === selectedCelestialBody && id !== "earth") openLayer("body"); else { setCelestialMarker(id); openLayer("celestial"); } }} refreshNonce={refreshNonce} mapStyle={mapStyle} labelsEnabled={labelsEnabled} sceneMode={sceneMode} shownOrbitIds={shownOrbitIds} disasterLayers={disasterLayers} onObjectSelect={selectObject} onScaleChange={setSceneScale} onViewTelemetry={setViewTelemetry} globeRef={globeRef} onSceneReady={onSceneReady} onRefreshComplete={() => setRefreshBusy(false)} onSatelliteStatus={setSatelliteStatus} onMapStatus={setMapStatus} onDetailReady={(id) => { if (id === selectedCelestialBody) setDetailState("ready"); }} quality={settings.quality} /></SceneBoundary>
+      <SceneBoundary onReady={onSceneReady} onReset={() => { setSelectedCelestialBody("earth"); setDetailState("ready"); setCameraFollowing(false); setTravel(null); travelLockRef.current = false; setLayers([]); }}><OrbitGlobe trackedIds={activeTrackedIds} selectedId={selectedId} selectedTime={selectedTime} mode={mode} startupCountry={startupCountry} selectedCelestialBody={selectedCelestialBody} onCelestialSelect={(id, wide) => { if (travelLockRef.current || !celestialDestinationAllowed(mode,id)) return; if (!wide && id === selectedCelestialBody && id !== "earth") openLayer("body"); else { setCelestialMarker(id); openLayer("celestial"); } }} refreshNonce={refreshNonce} mapStyle={mapStyle} mapRetryNonce={mapRetryNonce} labelsEnabled={labelsEnabled} shownOrbitIds={shownOrbitIds} onObjectSelect={selectObject} onScaleChange={setSceneScale} onViewTelemetry={setViewTelemetry} globeRef={globeRef} onSceneReady={onSceneReady} onRefreshComplete={() => setRefreshBusy(false)} onSatelliteStatus={setSatelliteStatus} onMapStatus={setMapStatus} onDetailReady={(id) => { if (id === selectedCelestialBody) setDetailState("ready"); }} quality={settings.quality} orbitStyle={settings.orbitStyle} onOrbitInfo={setOrbitInfo} /></SceneBoundary>
       <div className="space-vignette" aria-hidden="true" />
       <div className={`live-interface ${hidden ? "is-hidden" : ""}`} inert={hidden}>
-        <CinematicStage cycle={hudCycle} active={hudActive} side="top" loaderAnchor="top" zIndex={30}><TopHud mode={mode} bodyId={selectedCelestialBody} apiState={apiState} currentUser={currentUser} onProfileToggle={() => toggleLayer("profile")} /></CinematicStage>
+        <CinematicStage cycle={hudCycle} active={hudActive} side="top" loaderAnchor="top" zIndex={30}><TopHud sceneTime={selectedTime} mode={mode} bodyId={selectedCelestialBody} apiState={apiState} currentUser={currentUser} onProfileToggle={() => toggleLayer("profile")} /></CinematicStage>
         {navigation.modeRail && <CinematicStage cycle={hudCycle} active={hudActive} side="left" loaderAnchor="left-rail" zIndex={31}><ModeRail mode={mode} onChange={changeMode} /></CinematicStage>}
         {navigation.explorer && !layers.includes("explorer") && <CinematicStage cycle={hudCycle} active={hudActive} side="left" loaderAnchor="left-upper" zIndex={32}><SpatialSurface as="button" type="button" side="left" className="explorer-trigger" onClick={() => openLayer("explorer")} title="Object search (/)" aria-label="Open object explorer"><Aperture size={18} /><span>OBJECTS</span><b>{catalogObjects.length}</b></SpatialSurface></CinematicStage>}
         {(navigation.map || navigation.camera || navigation.system) && <CinematicStage cycle={hudCycle} active={hudActive} side="right" loaderAnchor="right-upper" zIndex={31}><SceneDock controls={navigation} mapOpen={menu === "map"} cameraOpen={menu === "camera"} systemOpen={menu === "system"} onToggleMap={() => toggleLayer("map")} onToggleCamera={() => toggleLayer("camera")} onToggleSystem={() => toggleLayer("system")} /></CinematicStage>}
         {atEarth && <PlaceSearch open={layers.includes("place")} onOpen={() => openLayer("place")} onClose={() => closeLayer("place")} onVisit={(destination) => { releaseCamera(); globeRef.current?.flyToPlace(destination); }} globeRef={globeRef} />}
         <ProfilePanel open={layers.includes("profile")} user={currentUser} onClose={() => closeLayer("profile")} onLogout={onLogout} settings={settings} onSettingsChange={changeSettings} />
         <CameraMenu open={menu === "camera"} hasSelected={selectedRendered} onPreset={(preset) => { globeRef.current?.setCameraPreset(preset); setCameraFollowing(false); closeLayer("camera"); }} onClose={() => closeLayer("camera")} />
-        <AnimatePresence>{layers.includes("celestial") && mode === "live" && <CelestialTravelCard key="CelestialTravelCard" bodyId={celestialMarker} destinationId={selectedCelestialBody} onClose={() => closeLayer("celestial")} onTravel={(id) => selectCelestialBody(id, true)} onInspect={() => { closeLayer("celestial"); if (!atEarth) openLayer("body"); }} />}</AnimatePresence>
-        <SystemMenu open={menu === "system"} activeBodyId={selectedCelestialBody} onSelectBody={selectCelestialBody} onClose={() => closeLayer("system")} />
-        <MapSettings open={menu === "map"} mapStyle={mapStyle} onMapStyleChange={setMapStyle} labelsEnabled={labelsEnabled} onLabelsChange={setLabelsEnabled} onClose={() => closeLayer("map")} mapStatus={mapStatus} />
-        {mode === "live" && <SystemScaleSlider scale={sceneScale} onChange={(value) => globeRef.current?.setCelestialScale(value)} />}
+        <AnimatePresence>{layers.includes("celestial") && <CelestialTravelCard key="CelestialTravelCard" bodyId={celestialMarker} destinationId={selectedCelestialBody} onClose={() => closeLayer("celestial")} onTravel={(id) => selectCelestialBody(id, true)} onInspect={() => { closeLayer("celestial"); if (!atEarth) openLayer("body"); }} />}</AnimatePresence>
+        <SystemMenu mode={mode} open={menu === "system"} activeBodyId={selectedCelestialBody} onSelectBody={(id)=>selectCelestialBody(id,mode === "time")} onClose={() => closeLayer("system")} />
+        <MapSettings open={menu === "map"} mapStyle={mapStyle} onMapStyleChange={(id)=>{setMapStyle(id);setMapRetryNonce(value=>value+1);}} labelsEnabled={labelsEnabled} onLabelsChange={setLabelsEnabled} onClose={() => closeLayer("map")} mapStatus={mapStatus} />
+        {<SystemScaleSlider scale={sceneScale} onChange={(value) => globeRef.current?.setCelestialScale(value)} />}
         {travelError && <div className="scene-notice" role="alert"><span>{travelError}</span><button type="button" onClick={() => setTravelError("")}>Dismiss</button></div>}
         {atEarth && mode === "live" && !travel && satelliteStatus && <div className="scene-notice" role="status">{satelliteStatus}</div>}
-        <ObjectExplorer open={layers.includes("explorer") && atEarth && mode !== "disaster"} onClose={() => closeLayer("explorer")} objects={catalogObjects} trackedIds={activeTrackedIds} selectedId={selectedId} onSelect={selectObject} onLoad={loadObjects} onUnload={unloadObjects} limitMessage={limitMessage} userId={currentUser?.id} searchCycle={searchCycle} />
-        <AnimatePresence>{layers.includes("inspector") && atEarth && mode !== "disaster" && <InspectorPanel key={`${selectedId}:${settings.preview3d}`} object={selectedObject} telemetry={telemetry?.norad_id === selectedId ? telemetry : null} telemetryError={telemetryError} cameraFollowing={cameraFollowing} rendered={selectedRendered} orbitVisible={shownOrbitIds.has(selectedId)} onClose={() => closeLayer("inspector")} onFocus={focusSelected} onFollow={followSelected} onReleaseCamera={releaseCamera} onToggleOrbit={toggleSelectedOrbit} preview3d={settings.preview3d} />}</AnimatePresence>
+        <ObjectExplorer open={layers.includes("explorer") && atEarth} onClose={() => closeLayer("explorer")} objects={catalogObjects} trackedIds={activeTrackedIds} selectedId={selectedId} onSelect={selectObject} onLoad={loadObjects} onUnload={unloadObjects} limitMessage={limitMessage} userId={currentUser?.id} searchCycle={searchCycle} coverageUnavailable={mode === "time"} />
+        <AnimatePresence>{layers.includes("inspector") && atEarth && <InspectorPanel key={`${selectedId}:${settings.preview3d}`} object={selectedObject} telemetry={mode === "live" && telemetry?.norad_id === selectedId ? telemetry : null} telemetryError={mode === "live" && telemetryError} cameraFollowing={cameraFollowing} rendered={selectedRendered} orbitVisible={shownOrbitIds.has(selectedId)} onClose={() => closeLayer("inspector")} onFocus={focusSelected} onFollow={followSelected} onReleaseCamera={releaseCamera} onToggleOrbit={toggleSelectedOrbit} preview3d={settings.preview3d} orbitDescription={orbitInfo.selectedDescription} coverageUnavailable={mode === "time"} />}</AnimatePresence>
         <AnimatePresence>{layers.includes("body") && !atEarth && <CelestialInspector key="CelestialInspector" bodyId={selectedCelestialBody} sceneTime={mode === "time" ? selectedTime : null} onClose={() => closeLayer("body")} detailState={detailState} />}</AnimatePresence>
-        {mode === "time" && <TimeDock selectedTime={selectedTime} onTimeChange={setSelectedTime} onReturnLive={() => setSelectedTime(new Date())} trackedCount={timeTrackedIds.length} maxTracked={TIME_OBJECT_LIMIT} />}
-        {mode === "disaster" && <DisasterDock activeLayers={disasterLayers} onLayersChange={setDisasterLayers} sceneMode={sceneMode} onSceneModeChange={setSceneMode} />}
+        {mode === "time" && <TimeDock selectedTime={selectedTime} onTimeChange={setSelectedTime} onReturnLive={() => setSelectedTime(new Date())} trackedCount={timeTrackedIds.length} maxTracked={TIME_OBJECT_LIMIT} imageryStatus={atEarth ? mapStatus : null} />}
         <button type="button" className="presentation-toggle" title="Presentation mode (P)" onClick={() => setPresentation(true)}><Maximize2 size={15} /> CLEAN VIEW</button>
         {atEarth && mode === "live" && <button type="button" className={`manual-refresh ${cooldown || refreshBusy ? "is-cooling" : ""}`} disabled={cooldown || refreshBusy} onClick={refresh} title="Refresh satellite positions · 20 second cooldown" aria-label="Refresh satellite positions" aria-busy={refreshBusy}><RefreshCcw size={20} /><span>{refreshBusy ? "SYNCING" : cooldown ? "COOLDOWN" : "SYNC"}</span></button>}
       </div>
-      {mode === "live" && !presentation && <CinematicStage cycle={hudCycle} active={hudActive} side="bottom" loaderAnchor="bottom" zIndex={32}><LiveDock bodyId={selectedCelestialBody} travel={travel} detailState={detailState} selectedObject={selectedObject} viewTelemetry={viewTelemetry} trackedCount={activeTrackedIds.length} allOrbitsVisible={allOrbitsVisible} onToggleAllOrbits={() => setShownOrbitIds(allOrbitsVisible ? new Set() : new Set(activeTrackedIds))} feedAge={feedAge} onOpenBody={() => openLayer("body")} /></CinematicStage>}
+      {mode === "live" && !presentation && <CinematicStage cycle={hudCycle} active={hudActive} side="bottom" loaderAnchor="bottom" zIndex={32}><LiveDock bodyId={selectedCelestialBody} travel={travel} detailState={detailState} selectedObject={selectedObject} viewTelemetry={viewTelemetry} trackedCount={activeTrackedIds.length} allOrbitsVisible={allOrbitsVisible} onToggleAllOrbits={() => setShownOrbitIds(allOrbitsVisible ? new Set() : new Set(activeTrackedIds))} feedAge={feedAge} orbitDescription={orbitInfo.description} onOpenBody={() => openLayer("body")} /></CinematicStage>}
       {travel && <span className="travel-mark">ORBITWATCH</span>}
       {presentation && <button type="button" className="restore-interface" onClick={() => setPresentation(false)}>RESTORE INTERFACE · P / ESC</button>}
     </main>

@@ -8,7 +8,7 @@ button.addEventListener('click',async()=>{
     reports.http=response.status;const xml=await response.text();reports.bytes=xml.length;
     const metadata=parseGibsCapabilities(xml);reports.metadata=metadata;result.textContent=JSON.stringify(reports,null,2);
     const service=createNasaImageryService({fetchMetadata:async()=>metadata});
-    for(const date of ['2024-06-01','2025-08-09','2030-01-01']) {
+    for(const date of ['2000-06-01','2010-06-01','2020-06-01','2024-06-01','2025-08-09','2030-01-01']) {
       output.textContent=`Checking ${date}`;
       const {provider,details}=await service.create(new Date(date),new AbortController().signal);
       const image=await provider.requestImage(0,0,0);

@@ -1,4 +1,5 @@
 import httpx
+from services.providers.budget import budget, ProviderAuthorizationError
 from os import getenv
 from pathlib import Path
 from dotenv import load_dotenv
@@ -25,32 +26,31 @@ def create_spacetrack_client() -> httpx.Client:
     client = httpx.Client(
         base_url=BASE_URL,
         timeout=30,
-        follow_redirects=True,
+        follow_redirects=False,
     )
-
-    response = client.post(
-        "/ajaxauth/login",
-        data={
-            "identity": SPACETRACK_USERNAME,
-            "password": SPACETRACK_PASSWORD,
-        },
-    )
-
-    response.raise_for_status()
 
     try:
-        result = response.json()
-
-        if isinstance(result, dict) and result.get("Login") == "Failed":
-            client.close()
-            raise RuntimeError("Space-Track login failed")
-    except ValueError:
-        pass
-
-    return client
+        response = client.post("/ajaxauth/login",data={"identity":SPACETRACK_USERNAME,"password":SPACETRACK_PASSWORD})
+        response.raise_for_status()
+        try:
+            result=response.json()
+        except ValueError:
+            result=None
+        if isinstance(result,dict) and result.get("Login")=="Failed":
+            raise ProviderAuthorizationError("Space-Track login rejected; verify account configuration")
+        return client
+    except Exception:
+        client.close()
+        raise
 
 
 def get_latest_gp(norad_ids: list[int]):
+    if not norad_ids: return []
+    with budget.attempt("spacetrack",3600,2):
+        return _get_latest_gp(norad_ids)
+
+
+def _get_latest_gp(norad_ids: list[int]):
     if not norad_ids:
         return []
 

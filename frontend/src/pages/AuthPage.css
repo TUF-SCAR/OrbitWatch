@@ -68,16 +68,16 @@
 }
 
 .auth-brand strong {
-  font-family: "Space Grotesk", system-ui, sans-serif;
-  font-size: 18px;
-  font-weight: 700;
+  font-family: var(--ui-font-secondary);
+  font-size: var(--ui-type-18);
+  font-weight: var(--ui-weight-bold);
   letter-spacing: 0.22em;
 }
 
 .auth-brand small {
   margin-top: 5px;
   color: #6f8699;
-  font-size: 10px;
+  font-size: var(--ui-type-10);
   letter-spacing: 0.16em;
 }
 
@@ -94,8 +94,8 @@
   border: 1px solid var(--line);
   color: #76dbae;
   background: rgba(3, 8, 14, 0.92);
-  font-size: 10px;
-  font-weight: 600;
+  font-size: var(--ui-type-10);
+  font-weight: var(--ui-weight-semibold);
   letter-spacing: 0.11em;
   transform-origin: 100% 50%;
   transition:
@@ -125,9 +125,9 @@
   cursor: pointer;
   backdrop-filter: blur(8px);
   transition:
-    color 150ms ease,
-    background 150ms ease,
-    border-color 150ms ease;
+    color var(--motion-feedback) ease,
+    background var(--motion-feedback) ease,
+    border-color var(--motion-feedback) ease;
 }
 
 .auth-preview-toggle:hover,
@@ -147,13 +147,13 @@
 
 .auth-preview-toggle span {
   color: #6d8798;
-  font-size: 8px;
+  font-size: var(--ui-type-8);
   letter-spacing: 0.10em;
 }
 
 .auth-preview-toggle strong {
-  font-family: "Space Grotesk", system-ui, sans-serif;
-  font-size: 9px;
+  font-family: var(--ui-font-secondary);
+  font-size: var(--ui-type-9);
   letter-spacing: 0.15em;
 }
 
@@ -214,7 +214,7 @@
   border-bottom: 1px solid var(--line);
   color: #60778a;
   background: #030910;
-  font-size: 9px;
+  font-size: var(--ui-type-9);
   letter-spacing: .15em;
 }
 
@@ -242,8 +242,8 @@
 .auth-heading small {
   display: block;
   color: #678093;
-  font-size: 9px;
-  font-weight: 700;
+  font-size: var(--ui-type-9);
+  font-weight: var(--ui-weight-bold);
   letter-spacing: 0.18em;
   text-transform: uppercase;
 }
@@ -251,9 +251,9 @@
 .auth-heading h1 {
   margin: 4px 0 0;
   color: #edf8ff;
-  font-family: "Space Grotesk", system-ui, sans-serif;
-  font-size: 30px;
-  font-weight: 600;
+  font-family: var(--ui-font-secondary);
+  font-size: var(--ui-type-30);
+  font-weight: var(--ui-weight-semibold);
   line-height: 1.05;
 }
 
@@ -261,7 +261,7 @@
   margin: 6px 0 0;
   max-width: 315px;
   color: #8199ab;
-  font-size: 11px;
+  font-size: var(--ui-type-11);
   line-height: 1.5;
 }
 
@@ -297,8 +297,8 @@
 .auth-field > span {
   margin-left: 1px;
   color: #6a8395;
-  font-size: 9px;
-  font-weight: 600;
+  font-size: var(--ui-type-9);
+  font-weight: var(--ui-weight-semibold);
   letter-spacing: .13em;
 }
 
@@ -314,9 +314,9 @@
   color: #7c97aa;
   background: #030910;
   transition:
-    border-color 150ms ease,
-    background-color 150ms ease,
-    box-shadow 150ms ease;
+    border-color var(--motion-feedback) ease,
+    background-color var(--motion-feedback) ease,
+    box-shadow var(--motion-feedback) ease;
 }
 
 .auth-field > div:focus-within {
@@ -334,7 +334,7 @@
   color: #e9f8ff;
   background: transparent;
   font: inherit;
-  font-size: 12px;
+  font-size: var(--ui-type-12);
 }
 
 .auth-field input::placeholder {
@@ -351,9 +351,9 @@
   background: transparent;
   cursor: pointer;
   transition:
-    color 150ms ease,
-    border-color 150ms ease,
-    background 150ms ease;
+    color var(--motion-feedback) ease,
+    border-color var(--motion-feedback) ease,
+    background var(--motion-feedback) ease;
 }
 
 .auth-field button:hover {
@@ -368,7 +368,7 @@
   border-left: 2px solid #ff9a86;
   color: #ffb09e;
   background: rgba(255, 129, 108, .07);
-  font-size: 10px;
+  font-size: var(--ui-type-10);
   line-height: 1.45;
 }
 
@@ -381,15 +381,15 @@
   color: var(--accent);
   background: var(--accent-soft);
   box-shadow: inset 0 0 18px rgba(var(--accent-rgb), .035);
-  font-size: 10px;
+  font-size: var(--ui-type-10);
   font-weight: 750;
   letter-spacing: .14em;
   cursor: pointer;
   transition:
-    transform 150ms ease,
-    color 150ms ease,
-    background 150ms ease,
-    box-shadow 150ms ease;
+    transform var(--motion-feedback) ease,
+    color var(--motion-feedback) ease,
+    background var(--motion-feedback) ease,
+    box-shadow var(--motion-feedback) ease;
 }
 
 .auth-submit-button:hover:not(:disabled) {
@@ -431,7 +431,7 @@
   margin: 0;
   color: #637b8d;
   text-align: center;
-  font-size: 9px;
+  font-size: var(--ui-type-9);
   letter-spacing: .08em;
 }
 
@@ -442,7 +442,7 @@
   color: var(--accent);
   background: transparent;
   font: inherit;
-  font-weight: 700;
+  font-weight: var(--ui-weight-bold);
   letter-spacing: .08em;
   cursor: pointer;
 }
@@ -466,7 +466,7 @@
   border-top: 1px solid var(--line);
   color: #5f798b;
   background: #030910;
-  font-size: 8px;
+  font-size: var(--ui-type-8);
   letter-spacing: .11em;
 }
 
@@ -540,7 +540,7 @@
   }
 
   .auth-heading h1 {
-    font-size: 25px;
+    font-size: var(--ui-type-25);
   }
 
   .auth-heading p {
@@ -678,8 +678,8 @@
 .auth-panel { max-height:calc(100dvh - 100px); overflow:auto; }
 .auth-preview-toggle { width:180px; height:66px; right:18px; padding:12px; gap:6px; border:1px solid var(--accent-line); }
 .auth-preview-toggle span, .auth-preview-toggle strong { writing-mode:horizontal-tb; transform:none; }
-.auth-preview-toggle span { font-size:10px; }
-.auth-preview-toggle strong { font-size:12px; }
+.auth-preview-toggle span { font-size: var(--ui-type-10); }
+.auth-preview-toggle strong { font-size: var(--ui-type-12); }
 .auth-extraction-arm { position:absolute; z-index:40; width:650px; height:260px; left:calc(50% + 180px); top:calc(50% - 135px); transform-origin:100% 80%; animation:arm-reach 1600ms cubic-bezier(.22,.7,.3,1) both; pointer-events:none; filter:drop-shadow(0 10px 14px #0009); }
 .auth-page__content.is-extracting .auth-panel { animation:panel-carry 1600ms cubic-bezier(.22,.7,.3,1) both; pointer-events:none; }
 .auth-extraction-arm .arm-grip { transform-origin:100px 90px; animation:grip-close 1600ms ease both; }

@@ -37,6 +37,13 @@ test("unavailable fallback leaves existing imagery visible", async () => {
   assert.deepEqual(f.layers, ["previous map"]);
   assert.match(f.statuses.at(-1).message, /Map imagery unavailable/);
 });
+
+test('fixed NASA reference failure never substitutes current Esri imagery',async()=>{
+  const f=fixture(),reference={};let esri=0;
+  await f.apply('nasa-reference',{'nasa-reference':()=>{throw new Error('offline');},'local-reference':()=>reference,esri:()=>{esri++;return {};}});
+  assert.equal(esri,0);assert.deepEqual(f.layers,[reference]);assert.equal(f.statuses.at(-1).observationDate,null);
+  assert.match(f.statuses.at(-1).message,/fixed reference/i);
+});
 test("stalled metadata has a bounded fallback and stale tile errors are detached", async () => {
   const f = fixture(), fallback = { errorEvent: new Event() };
   await f.apply("bing", { bing: () => new Promise(() => {}), esri: () => fallback }, 5);

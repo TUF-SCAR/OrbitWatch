@@ -32,3 +32,25 @@ test("NASA service caches verified metadata, cancels stale transitions, and neve
   const fallback=await offline.create(new Date('2024-01-01'),new AbortController().signal);
   assert.equal(fallback.details.kind,'reference');assert.equal(fallback.details.observationDate,null);
 });
+
+test('NASA concurrent metadata is deduplicated and offline date changes respect backoff',async()=>{
+  let calls=0,resolve;
+  const service=createNasaImageryService({now:()=>now,fetchMetadata:()=>{calls++;return new Promise(r=>resolve=r);},history:()=>({}),reference:()=>({})});
+  const signal=new AbortController().signal;
+  const a=service.create(new Date('2020-06-01'),signal),b=service.create(new Date('2024-06-01'),signal);
+  resolve(metadata);await Promise.all([a,b]);assert.equal(calls,1);
+  calls=0;
+  const offline=createNasaImageryService({now:()=>now,fetchMetadata:async()=>{calls++;throw Object.assign(new Error('429'),{retryAfter:600});},reference:()=>({})});
+  for(const date of ['2000-06-01','2010-06-01','2020-06-01','2024-06-01']) assert.equal((await offline.create(new Date(date),signal)).details.kind,'reference');
+  assert.equal(calls,1,'changing date must not retry a failed metadata request repeatedly');
+});
+
+test('cancelled dates do not restart shared capabilities, while Viewer disposal aborts metadata',async()=>{
+  let calls=0,finish,sharedSignal;
+  const service=createNasaImageryService({now:()=>now,fetchMetadata:signal=>{calls++;sharedSignal=signal;return new Promise(resolve=>finish=resolve);},history:()=>({}),reference:()=>({})});
+  const old=new AbortController(),newer=new AbortController();
+  const a=service.create(new Date('2020-06-01'),old.signal);old.abort();
+  const b=service.create(new Date('2024-06-01'),newer.signal);finish(metadata);
+  await assert.rejects(a,{name:'AbortError'});await b;assert.equal(calls,1);assert.equal(sharedSignal.aborted,false);
+  service.destroy();assert.equal(sharedSignal.aborted,true);await assert.rejects(service.create(new Date('2020-06-01'),newer.signal),{name:'AbortError'});
+});

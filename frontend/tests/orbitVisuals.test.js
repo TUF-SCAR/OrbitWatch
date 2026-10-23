@@ -12,9 +12,10 @@ test("satellite styling keeps color/path/material identity with selected dominan
   for (const count of [1, 6, 24, 143]) for (const height of [100000, 27000000, 60000000, 100000000]) {
     const normal = satelliteOrbitStyle(false, count, height), selected = satelliteOrbitStyle(true, count, height);
     assert.ok(selected.width > normal.width && selected.alpha >= normal.alpha);
-    assert.ok(normal.width * normal.glow <= 1.1 && selected.width * selected.glow <= 1.8, "padded raster quad retains a thin visible core");
-    assert.ok(normal.alpha >= 0 && normal.alpha <= 0.2);
-    assert.ok(normal.alpha * count <= 1.14 + 1e-8,"context opacity budget remains bounded for overlapping paths");
+    assert.ok(normal.width <= .8 && selected.width <= 1.5, "padded raster quad retains a thin visible core");
+    assert.ok(normal.alpha >= 0 && normal.alpha <= .28);
+    assert.ok(normal.base * count <= 25,"dense thread budget remains bounded within the catalog");
+    assert.equal(normal.alpha,normal.base,"context is a complete, steady thread");
     styleSatelliteOrbit(data, Color.CYAN, true, count, height);
     assert.equal(data.orbitEntity.polyline.material, material);
     assert.equal(data.orbitEntity.polyline.positions, path);
@@ -22,7 +23,7 @@ test("satellite styling keeps color/path/material identity with selected dominan
     assert.equal(color.red, Color.CYAN.red); assert.equal(color.blue, Color.CYAN.blue);
   }
   assert.ok(satelliteOrbitStyle(false, 143).alpha < satelliteOrbitStyle(false, 6).alpha);
-  assert.equal(satelliteOrbitStyle(true, 6, 100000000).alpha, 0);
+  assert.equal(satelliteOrbitStyle(true, 6, 1e11).alpha, 0);
 });
 
 test("solar orbit hierarchy stays restrained and returns local paths on zoom-in", () => {

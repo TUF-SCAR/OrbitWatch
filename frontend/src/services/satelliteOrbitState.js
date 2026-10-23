@@ -1,4 +1,4 @@
-import { CallbackPositionProperty, Cartesian3, JulianDate, Matrix3, Matrix4, SampledPositionProperty, Transforms } from "cesium";
+import { CallbackPositionProperty, Cartesian3, HermitePolynomialApproximation, JulianDate, Matrix3, Matrix4, SampledPositionProperty, Transforms } from "cesium";
 
 // Backend geographic samples are already WGS84 Earth-fixed. Recover a stable
 // TEME-like frame at EACH sample time, then apply only the scene-time rotation.
@@ -6,8 +6,12 @@ import { CallbackPositionProperty, Cartesian3, JulianDate, Matrix3, Matrix4, Sam
 // or asynchronous ICRF/fallback switch). This is a visualization approximation,
 // not a replacement propagator; all radii and positions still come from SGP4.
 const rotation = new Matrix3(), inverse = new Matrix3();
-export function satelliteFrame(time, result = new Matrix4()) {
-  return Matrix4.fromRotationTranslation(Transforms.computeTemeToPseudoFixedMatrix(time, rotation), Cartesian3.ZERO, result);
+const ut1Time = new JulianDate();
+export function satelliteFrame(time, result = new Matrix4(), dut1 = 0) {
+  // Cesium evaluates GMST using UTC; shifting by supplied UT1-UTC evaluates it
+  // at UT1. No downloaded EOP or asynchronous ICRF switch is introduced.
+  const earthTime = dut1 ? JulianDate.addSeconds(time,dut1,ut1Time) : time;
+  return Matrix4.fromRotationTranslation(Transforms.computeTemeToPseudoFixedMatrix(earthTime, rotation), Cartesian3.ZERO, result);
 }
 
 export function readSatelliteSamples(payload) {
@@ -20,9 +24,16 @@ export function readSatelliteSamples(payload) {
     const time = JulianDate.fromIso8601(sample.timestamp);
     if (previous && JulianDate.lessThanOrEquals(time, previous)) throw new Error("Satellite timestamps must increase");
     previous = time;
+    if(sample.teme_position_km) {
+      if(payload.reference_frame !== "TEME" || payload.position_unit !== "km" || payload.velocity_unit !== "km/s") throw new Error("Unsupported satellite frame/units");
+      const vectors=[sample.teme_position_km,sample.teme_velocity_km_s,sample.itrs_position_km];
+      if(vectors.some(v=>!Array.isArray(v) || v.length!==3 || !v.every(Number.isFinite)) || !Number.isFinite(sample.ut1_minus_utc_seconds) || Math.abs(sample.ut1_minus_utc_seconds)>2) throw new Error("Invalid Cartesian satellite state");
+      const cartesian=v=>Cartesian3.multiplyByScalar(Cartesian3.fromElements(...v),1000,new Cartesian3());
+      return {time,fixed:cartesian(sample.itrs_position_km),inertial:cartesian(sample.teme_position_km),velocity:cartesian(sample.teme_velocity_km_s),dut1:sample.ut1_minus_utc_seconds};
+    }
     const fixed = Cartesian3.fromDegrees(sample.longitude, sample.latitude, sample.altitude_km * 1000);
     Matrix3.transpose(Transforms.computeTemeToPseudoFixedMatrix(time, rotation), inverse);
-    return { time, fixed, inertial: Matrix3.multiplyByVector(inverse, fixed, new Cartesian3()) };
+    return { time, fixed, inertial: Matrix3.multiplyByVector(inverse, fixed, new Cartesian3()),dut1:0 };
   });
 }
 
@@ -39,8 +50,10 @@ export function createSatelliteTrack(payload) {
     // coordinates between two propagators; the new valid interval takes over.
     track.samples = [...history, ...incoming].slice(-361);
     track.epoch = next.tle_epoch;
-    track.sampled = new SampledPositionProperty();
-    for (const sample of track.samples) track.sampled.addSample(sample.time, sample.inertial);
+    const derivatives=track.samples.every(sample=>sample.velocity) ? 1 : 0;
+    track.sampled = new SampledPositionProperty(undefined,derivatives);
+    if(derivatives) track.sampled.setInterpolationOptions({interpolationAlgorithm:HermitePolynomialApproximation,interpolationDegree:3});
+    for (const sample of track.samples) track.sampled.addSample(sample.time, sample.inertial, derivatives ? [sample.velocity] : undefined);
     track.start = track.samples[0].time;
     track.stop = track.samples.at(-1).time;
   };
@@ -48,7 +61,23 @@ export function createSatelliteTrack(payload) {
   track.isStale = time => JulianDate.lessThan(time, track.start) || JulianDate.greaterThan(time, track.stop);
   track.remaining = time => JulianDate.secondsDifference(track.stop, time);
   track.inertialAt = (time, result = new Cartesian3()) => track.sampled.getValue(track.effectiveTime(time), result);
-  track.fixedAt = (time, result = new Cartesian3()) => Matrix4.multiplyByPoint(satelliteFrame(track.effectiveTime(time), matrix), track.inertialAt(time, point), result);
+  track.velocityAt = (time,result=new Cartesian3()) => {
+    const effective=track.effectiveTime(time);let i=0;
+    while(i<track.samples.length-2 && JulianDate.greaterThan(effective,track.samples[i+1].time)) i++;
+    const a=track.samples[i],b=track.samples[i+1];
+    if(!a.velocity || !b.velocity) return undefined;
+    const f=JulianDate.secondsDifference(effective,a.time)/JulianDate.secondsDifference(b.time,a.time);
+    return Cartesian3.lerp(a.velocity,b.velocity,Math.max(0,Math.min(1,f)),result);
+  };
+  track.frameAt = (time,result=new Matrix4()) => {
+    const effective=track.effectiveTime(time);
+    // DUT1 evolves slowly. Use the nearest received sample; accuracy is bounded
+    // by the installed server timescale, not a claim of observed ephemerides.
+    let low=0,high=track.samples.length-1;
+    while(low<high) {const mid=Math.ceil((low+high)/2);if(JulianDate.lessThanOrEquals(track.samples[mid].time,effective)) low=mid;else high=mid-1;}
+    return satelliteFrame(effective,result,track.samples[low].dut1);
+  };
+  track.fixedAt = (time, result = new Cartesian3()) => Matrix4.multiplyByPoint(track.frameAt(time, matrix), track.inertialAt(time, point), result);
   track.position = new CallbackPositionProperty((time, result) => track.fixedAt(time, result), false);
   track.merge(payload);
   return track;
@@ -58,14 +87,14 @@ export function createSatelliteOrbitState(payload) {
   const samples = readSatelliteSamples(payload);
   if (samples.length > 2000) throw new Error("Orbit sampling exceeds endpoint bound");
   const start = samples[0].time, duration = JulianDate.secondsDifference(samples.at(-1).time, start);
-  const backendPeriod = Number(payload.orbital_period_minutes) * 60;
+  const backendPeriod = Number(payload.orbital_period_seconds) || Number(payload.orbital_period_minutes) * 60;
   const period = Number.isFinite(backendPeriod) && backendPeriod > 0 ? backendPeriod : duration;
   if (duration <= 0 || Math.abs(duration / period - 1) > .05) throw new Error("Orbit must span one propagated period");
   // Texture s is vertex index; require uniform temporal sampling for phase.
   samples.forEach((sample, i) => { if (Math.abs(JulianDate.secondsDifference(sample.time, start) - duration * i / (samples.length - 1)) > .1) throw new Error("Orbit timestamps must be uniformly sampled"); });
   return { samples, positions: samples.map(sample => sample.inertial), start, period, duration,
     radius: Math.max(...samples.map(sample => Cartesian3.magnitude(sample.inertial))),
-    fetchedAt: Date.now(), matrix: new Matrix4(), phase: 0, distance: 0 };
+    metadata:payload,epoch:payload.tle_epoch,fetchedAt: Date.now(), matrix: new Matrix4(), phase: 0, distance: 0 };
 }
 
 const delta = new Cartesian3(), edge = new Cartesian3(), nearest = new Cartesian3();
@@ -92,21 +121,10 @@ export function satelliteOrbitPhase(state, point, time) {
 export function satelliteOrbitRefreshDue(data, now = Date.now()) {
   if (!data.orbitState) return true;
   const lifetime = Math.min(300, Math.max(60, data.orbitState.period / 12));
-  return now - data.orbitState.fetchedAt >= lifetime * 1000 || data.trajectory?.tle_epoch !== data.orbitEpoch;
+  return data.orbitState.needsRefresh || now - data.orbitState.fetchedAt >= lifetime * 1000 || data.trajectory?.tle_epoch !== data.orbitEpoch;
 }
 
 export function satelliteTrajectoryRefreshDue(data, time, now = Date.now()) {
   if (now < (data?.trajectoryRetryAt || 0)) return false;
   return !data?.track || data.track.remaining(time) < 90 || JulianDate.lessThan(time, data.track.start);
-}
-
-// Continuous periodic asymmetric envelope, with zero slope at both the seam
-// and peak. Time fractions stay meaningful for LEO/GEO/eccentric paths.
-export function satelliteHighlightWeight(offset) {
-  const distance = ((offset + .5) % 1 + 1) % 1 - .5;
-  const width = distance >= 0 ? .065 : .17;
-  const gaussian = Math.exp(-.5 * (distance / width) ** 2);
-  const tail = distance >= 0 ? 1 : .3 + .7 * Math.exp(-((distance / .035) ** 2));
-  const u = Math.max(0, Math.min(1, (Math.abs(distance) - .35) / .15));
-  return gaussian * tail * (1 - u * u * (3 - 2 * u));
 }

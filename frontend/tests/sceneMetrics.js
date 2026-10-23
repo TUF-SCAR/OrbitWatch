@@ -145,6 +145,12 @@ export function instrumentScenes() {
       const record = [...records.values()].at(-1);
       return record?.celestial || JSON.stringify({ driftMeters:0, invalid:0, duplicate:0, leaders:0, markers:0, labels:0, bodies:{} });
     },
+    cameraRead() {
+      const scene=[...records.keys()].at(-1);
+      return JSON.stringify(scene?{time:performance.now(),longitude:scene.camera.positionCartographic.longitude,
+        latitude:scene.camera.positionCartographic.latitude,height:scene.camera.positionCartographic.height,
+        position:[scene.camera.positionWC.x,scene.camera.positionWC.y,scene.camera.positionWC.z]}:null);
+    },
     advance(seconds) { for (const clock of clocks) { clock.shouldAnimate = false; clock.clockStep = ClockStep.TICK_DEPENDENT; clock.currentTime = JulianDate.addSeconds(clock.currentTime, seconds, new JulianDate()); } },
     resume() { for (const clock of clocks) { clock.clockStep = ClockStep.SYSTEM_CLOCK; clock.shouldAnimate = true; } },
     zoom(factor) {

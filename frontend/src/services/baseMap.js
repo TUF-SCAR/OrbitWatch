@@ -68,7 +68,7 @@ export async function applyBaseMap(viewer, googleTiles, googleReady, effectiveMa
   if(!prepared) {
     // Historical failures must not substitute current satellite imagery for a
     // dated observation. NASA reference, then credited local Earth reference.
-    const fallbacks=effectiveMap==="nasa-time" ? ["nasa-reference","local-reference"] : ["esri","local-reference"];
+    const fallbacks=effectiveMap==="nasa-time" ? ["nasa-reference","local-reference"] : effectiveMap==="nasa-reference" ? ["local-reference"] : ["esri","local-reference"];
     for(const map of fallbacks) {
       try {prepared=await bounded(map);prepared.fallbackMap=map;break;} catch { /* Try the next explicit reference. */ }
       if(!current()) return;
@@ -85,7 +85,7 @@ export async function applyBaseMap(viewer, googleTiles, googleReady, effectiveMa
   if(googleTiles && !googleTiles.show) googleTiles.trimLoadedTiles?.();
   request.activeKey=failed ? null : key;
   const googleFallback=effectiveMap==="google";
-  if(failed && effectiveMap==="nasa-time") details={kind:"reference",observationDate:null,message:"NASA historical imagery unavailable · fixed reference imagery (not the selected observation date)."};
+  if(failed && ["nasa-time","nasa-reference"].includes(effectiveMap)) details={kind:"reference",observationDate:null,message:"NASA imagery unavailable · fixed reference imagery (not the selected observation date)."};
   const message=failed ? `${failure?.unconfigured ? "Selected provider is unconfigured" : providerErrorSummary(failure)}. ${request.activeMap==="local-reference" ? "Static NASA/JPL/USGS Earth reference" : effectiveMap==="nasa-time" ? "Fixed NASA reference imagery" : "Esri satellite fallback"} is active.${details.message ? ` ${details.message}` : ""}`
     : googleFallback ? `Esri satellite is active while Google detail is unavailable${request.googleError ? ` (${request.googleError})` : " / loading"}.` : details.message || null;
   status(failed ? failure?.unconfigured ? "unconfigured" : "unavailable" : googleFallback ? request.googleError ? "unavailable" : "loading" : "available",message,details);

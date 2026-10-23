@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { readFileSync } from "node:fs";
 import { Cartesian3, Color, Entity, JulianDate, Matrix4, Primitive } from "cesium";
-import { createSatelliteOrbitState, createSatelliteTrack, readSatelliteSamples, satelliteFrame, satelliteHighlightWeight, satelliteOrbitPhase, satelliteOrbitRefreshDue, satelliteTrajectoryRefreshDue } from "../src/services/satelliteOrbitState.js";
+import { createSatelliteOrbitState, createSatelliteTrack, readSatelliteSamples, satelliteFrame, satelliteOrbitPhase, satelliteOrbitRefreshDue, satelliteTrajectoryRefreshDue } from "../src/services/satelliteOrbitState.js";
 import { attachSatelliteOrbit, removeSatelliteOrbit, satelliteOrbitStyle, styleSatelliteOrbit, updateSatelliteOrbit } from "../src/services/orbitVisuals.js";
 import { StableOrbitCollection } from "../src/services/stableOrbitCollection.js";
 
@@ -69,10 +69,6 @@ test("highlight follows actual sampled phase for a whole propagated period inclu
       assert.ok(Math.abs(phase - i / (state.samples.length-1)) < 1e-8);
     }
   }
-  assert.equal(satelliteHighlightWeight(0), 1);
-  assert.ok(satelliteHighlightWeight(.04) > satelliteHighlightWeight(-.04), "leading region is brighter");
-  assert.ok(satelliteHighlightWeight(-.2) > satelliteHighlightWeight(.2), "soft trail is longer");
-  assert.ok(Math.abs(satelliteHighlightWeight(.5 - 1e-6) - satelliteHighlightWeight(-.5 + 1e-6)) < 1e-9, "wrap is smooth, not a bright/dark seam");
 });
 
 test("overlapping refresh retains property/history without gaps; expiry freezes an explicit last valid representation", () => {
@@ -115,7 +111,7 @@ test("1/6/12/24/44 satellites keep distinct phase/color/matrices and resident bu
       collection.update({});
       assert.equal(data.orbitLine.primitive,gpu); assert.equal(data.orbitLine.geometryRevision,1);
       assert.ok(Math.abs(data.orbitLine.material.uniforms.phase-data.orbitState.phase)<1e-12);
-      assert.equal(data.orbitLine.material.uniforms.color.x,color.red);
+      assert.equal(data.orbitLine.material.uniforms.color.x,.48*.8+color.red*.2);
       assert.equal(data.orbitEntity.polyline.show.getValue(),false);
     }
     assert.equal(collection.length,count);

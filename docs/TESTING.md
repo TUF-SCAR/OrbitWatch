@@ -65,16 +65,17 @@ slider and selected timestamp across Earth→Mars→Jupiter→Earth. Time retain
 tracked selections but renders no current satellite positions or telemetry;
 Inspector explains unavailable coverage and disables Focus/Follow/orbit actions.
 
-Profile Orbit Style defaults to Guided and persists through reload. Check an
-immediate switch to Scientific without camera/Viewer reset; real marker remains
-unchanged. Native `tests/orbit-render.html` load button now tests both styles at
-1/6/12/24/44 objects over 900 total frames using recorded real SGP4 samples.
-Guided circles have one resident geometry revision; eccentric/Scientific paths
-refresh to two without blank frames. Node tests cover real LEO/polar/GEO/navigation
-and eccentric cases, hysteresis, ideal highlight/marker coincidence and ownership.
-The native probe validates GPU paths, not a normal authenticated 44-object API
-network session; the UI fixture's satellite data is explicitly synthetic unless
-its documented read-only bridge is selected.
+Orbit Trace is the only satellite geometry display; Profile has no style switch.
+An old stored `orbitStyle` key is removed without resetting other settings.
+Native `tests/orbit-render.html` tests 1/6/12/24/44 real paths over 450 frames,
+plus seven precise categories in both selection states over 420 frames and an
+Earth-depth check. Selection never changes vertices or source epochs; actual
+refresh replaces geometry without a blank frame. Node tests cover selection
+origin/reveal, refresh continuity, reduced motion and unchanged real endpoints.
+Use `tests/orbit-trace.html` for actual before/after visual review; see
+[Orbit Trace](ORBIT_TRACE.md). The native probe does not certify a 44-object
+authenticated production network session; the app fixture uses synthetic
+satellite input unless its documented read-only bridge is selected.
 
 `tests/maps.html` runs the real NASA metadata parser and loads root JPEGs for
 an archived date, an advertised gap and a future reference. In the application
@@ -109,3 +110,39 @@ The existing 1204.74 kB main-chunk warning remains. Browser injected403/metadata
 failures recovered; old HMR/root artifacts were separated from the fresh session.
 A short-view height bug demonstrated in the934×644 fixture was corrected using
 one combined Explorer scroll surface, preserving selectable rows and fixed footer.
+
+## 13 October precise orbit/effect/provider validation
+
+Run `node --test tests/satelliteCartesian.test.js` from frontend for explicit
+TEME/ITRS/UT1 and independent midpoints. The real seven-case fixture was generated
+read-only by `frontend/tests/satellite-cartesian-check.py`; it requires actual
+record reads and never starts ingestion. The native effect button in
+`tests/orbit-render.html` measures pixel contrast and draws the real moving marker
+using production path/material/update code. It excludes provider imagery from
+pixel analysis. Existing concurrent1/6/12/24/44 and old legacy regressions remain.
+
+Use `tests/check_provider_budgets.py` for mocked HTTP, persistent/concurrent/four-
+process reservations, Retry-After/circuit tests; no real provider HTTP. Run the
+isolated backend contract harness with `--workload` for ten simulated minutes,
+actual authenticated local routes (66 workload requests), and mocked same-host
+lifespan scheduler election. Provider stress never touches production accounts,
+records, schema or quota. Tests use temporary local SQLite, not Supabase.
+
+Fixture Fail NASA metadata injects503 only for GIBS capabilities. Enable before
+first Time entry, verify fullscreen→disclosed reference and retry after backoff;
+no repeated metadata request per date/hour. Test rapid edits and same-day layer
+identity, reference toggle, future/gap selection and off-Earth date/travel. Do not
+edit sources mid-test: development HMR can reset/remount the fixture; begin clean
+runtime acceptance after a reload. Time preparation uses real matching renders/
+visible-tile readiness, bounded waits and cancellation, not a cosmetic timer.
+
+Final results: 86 frontend tests, lint and production build pass; 105 isolated
+backend requests and provider concurrency/circuit/scheduler checks pass. Native
+real-category contrast/motion probe passes 840 frames, concurrent load probe
+passes 900 frames, and the far-side ISS depth test leaves zero visible stroke
+pixels after Earth occludes it. Real application Chandra/XMM eccentric fallbacks,
+signed before/after TLE epoch disclosure, Focus/Follow, short-track refresh and
+Time Earth/Mars/Jupiter/date/return were checked. Clean final runtime has no
+warnings/errors; the normal authenticated 44-object network session remains a
+separate qualification. See the ignored checkpoint/evidence and
+[investigation](ORBIT_INVESTIGATION.md) for measurement limits.

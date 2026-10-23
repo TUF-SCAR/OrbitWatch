@@ -55,7 +55,7 @@ export class StableOrbitCollection {
       primitive.show = true;
       Matrix4.multiplyByUniformScale(line.modelMatrix || this.modelMatrix, line.scale, primitive.modelMatrix);
       // Keep the padded quad immutable. Selection/LOD affect uniforms only.
-      line.material.uniforms.glowPower = (line.width + 0.5) * (line.core ?? 0.45) / (RASTER_WIDTH + 0.5);
+      line.material.uniforms.glowPower = (line.strokePixels ?? (line.width + 0.5) * (line.core ?? 0.45)) / (RASTER_WIDTH + 0.5);
       primitive.update(frameState);
     }
   }

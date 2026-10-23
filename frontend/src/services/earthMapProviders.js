@@ -15,7 +15,7 @@ export function createEarthMapFactories({ionToken,cartoKey,nasa,selectedTime}) {
     osm:()=>new UrlTemplateImageryProvider({url:'https://tile.openstreetmap.org/{z}/{x}/{y}.png',credit:'© OpenStreetMap contributors',maximumLevel:19}),
     'carto-dark':labels=>carto(labels ? 'dark_all' : 'dark_nolabels'),
     'carto-voyager':labels=>carto(`rastertiles/${labels ? 'voyager' : 'voyager_nolabels'}`),
-    'nasa-reference':()=>({provider:nasaReferenceProvider(),details:{kind:'reference',observationDate:null,message:'NASA Blue Marble · fixed reference composite; not live weather or current photography.'}}),
+    'nasa-reference':()=>({provider:nasaReferenceProvider(),details:{kind:'reference',observationDate:null,message:'NASA Blue Marble · fixed nonhistorical reference composite; not selected-date observations, live weather or current photography.'}}),
     'local-reference':()=>localEarthReferenceProvider(),
     'nasa-time':(_labels,{signal})=>nasa.create(selectedTime(),signal),
   };

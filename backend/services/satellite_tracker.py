@@ -1,7 +1,9 @@
 import time
-from math import sqrt, pi
+from math import sqrt, pi, degrees, isfinite
 from datetime import datetime, timedelta, timezone
 from skyfield.api import EarthSatellite, load, wgs84
+from skyfield.sgp4lib import TEME
+from skyfield.framelib import itrs
 
 from repositories.satellite_orbital_data import (
     get_all_orbital_records,
@@ -135,78 +137,67 @@ def get_satellite_cache_details(norad_id: int) -> dict:
     }
 
 
+def propagate_samples(satellite: EarthSatellite, dates: list[datetime]) -> list[dict]:
+    """Additive precise vectors. satellite.at() is GCRS; explicitly convert to TEME.
+
+    Vectorized Skyfield evaluation keeps 2000-sample requests bounded. UT1-UTC
+    comes from the installed timescale; no external EOP/provider requests occur.
+    ITRS truth is included to verify the consumer's fixed-frame conversion.
+    """
+    times = timescale.from_datetimes(dates)
+    position = satellite.at(times)
+    if any(position.message):
+        raise ValueError("SGP4 propagation unavailable for requested interval")
+    location = wgs84.geographic_position_of(position)
+    xyz, velocity = position.frame_xyz_and_velocity(TEME)
+    fixed = position.frame_xyz(itrs).km
+    samples = []
+    for i, date in enumerate(dates):
+        r, v, f = xyz.km[:, i].tolist(), velocity.km_per_s[:, i].tolist(), fixed[:, i].tolist()
+        if not all(isfinite(value) for value in r + v + f):
+            raise ValueError("Non-finite SGP4 state")
+        samples.append({"timestamp": date.isoformat(),
+            "latitude": round(float(location.latitude.degrees[i]), 4),
+            "longitude": round(float(location.longitude.degrees[i]), 4),
+            "altitude_km": round(float(location.elevation.km[i]), 2),
+            "teme_position_km": r, "teme_velocity_km_s": v,
+            "itrs_position_km": f, "ut1_minus_utc_seconds": float(times.dut1[i])})
+    return samples
+
+
+def scientific_metadata(satellite, dates, samples):
+    return {"sample_schema": 2, "reference_frame": "TEME", "fixed_reference_frame": "ITRS",
+        "position_unit": "km", "velocity_unit": "km/s", "time_system": "UTC",
+        "tle_epoch": satellite.epoch.utc_iso(places=6),
+        "tle_age_seconds": (dates[0] - satellite.epoch.utc_datetime()).total_seconds(),
+        "inclination_degrees": degrees(satellite.model.inclo),
+        "eccentricity": satellite.model.ecco,
+        "orbital_period_seconds": (2 * pi) / satellite.model.no_kozai * 60,
+        "altitude_range_km": [min(p["altitude_km"] for p in samples), max(p["altitude_km"] for p in samples)],
+        "propagation_timestamp": dates[0].isoformat(),
+        "precision_note": "SGP4 prediction, not an observed fix. TEME vectors avoid geographic rounding; UT1 uses installed Skyfield timescale; polar motion unavailable."}
+
+
 def get_satellite_position(norad_id: int) -> dict:
     satellite = get_satellite_propagator(norad_id)
-
-    t = timescale.now()
-    current_position = satellite.at(t)
-    location = wgs84.geographic_position_of(current_position)
-    latitude = float(location.latitude.degrees)
-    longitude = float(location.longitude.degrees)
-    altitude = float(location.elevation.km)
-    cache_details = get_satellite_cache_details(norad_id)
-
-    return {
-        "name": satellite.name.strip(),
-        "norad_id": norad_id,
-        "timestamp": t.utc_iso(),
-        "tle_epoch": satellite.epoch.utc_iso(),
-        "latitude": round(latitude, 4),
-        "longitude": round(longitude, 4),
-        "altitude_km": round(altitude, 2),
-        **cache_details,
-    }
+    dates = [datetime.now(timezone.utc)]
+    samples = propagate_samples(satellite, dates)
+    return {"name": satellite.name.strip(), "norad_id": norad_id, **samples[0],
+        **scientific_metadata(satellite, dates, samples), **get_satellite_cache_details(norad_id)}
 
 
-def get_satellite_trajectory(
-    norad_id: int, step_skip: int = 5, prediction_duration: int = 120
-) -> dict:
-    if step_skip <= 0:
-        raise ValueError("step_seconds must be greater than 0")
-
-    if prediction_duration <= 0:
-        raise ValueError("duration_seconds must be greater than 0")
-
+def get_satellite_trajectory(norad_id: int, step_skip: int = 5, prediction_duration: int = 120) -> dict:
+    if step_skip <= 0 or prediction_duration <= 0:
+        raise ValueError("Sampling interval and duration must be greater than 0")
     satellite = get_satellite_propagator(norad_id)
-    initial_time = datetime.now(timezone.utc)
-    positions = []
-
-    initial_satellite_time = timescale.from_datetime(initial_time)
-    initial_satellite_position = satellite.at(initial_satellite_time)
-
-    velocity = initial_satellite_position.velocity.km_per_s
-    velocity_km_s = sqrt(velocity[0] ** 2 + velocity[1] ** 2 + velocity[2] ** 2)
-    orbital_period_minutes = (2 * pi) / satellite.model.no_kozai
-
-    for i in range(0, prediction_duration + step_skip, step_skip):
-        future_time = initial_time + timedelta(seconds=i)
-        satellite_time = timescale.from_datetime(future_time)
-        satellite_position = satellite.at(satellite_time)
-        location = wgs84.geographic_position_of(satellite_position)
-        latitude = float(location.latitude.degrees)
-        longitude = float(location.longitude.degrees)
-        altitude = float(location.elevation.km)
-        positions.append(
-            {
-                "timestamp": future_time.isoformat(),
-                "latitude": round(latitude, 4),
-                "longitude": round(longitude, 4),
-                "altitude_km": round(altitude, 2),
-            }
-        )
-
-    cache_details = get_satellite_cache_details(norad_id)
-
-    return {
-        "name": satellite.name.strip(),
-        "norad_id": norad_id,
-        "tle_epoch": satellite.epoch.utc_iso(),
-        "step_seconds": step_skip,
-        "velocity_km_s": round(velocity_km_s, 2),
-        "orbital_period_minutes": round(orbital_period_minutes, 2),
-        "positions": positions,
-        **cache_details,
-    }
+    initial = datetime.now(timezone.utc)
+    dates = [initial + timedelta(seconds=i) for i in range(0, prediction_duration + step_skip, step_skip)]
+    samples = propagate_samples(satellite, dates)
+    v = samples[0]["teme_velocity_km_s"]
+    return {"name": satellite.name.strip(), "norad_id": norad_id, "step_seconds": step_skip,
+        "velocity_km_s": round(sqrt(sum(a*a for a in v)), 2),
+        "orbital_period_minutes": round((2*pi)/satellite.model.no_kozai, 2), "positions": samples,
+        **scientific_metadata(satellite, dates, samples), **get_satellite_cache_details(norad_id)}
 
 
 def get_satellite_trajectories(
@@ -249,49 +240,20 @@ def get_satellite_trajectories(
 
 
 def get_satellite_orbit(norad_id: int, samples: int = 480) -> dict:
-    if samples < 2:
-        raise ValueError("Orbit requires at least 2 samples")
+    if not 2 <= samples <= 2000:
+        raise ValueError("Orbit requires 2–2000 samples")
+    satellite = get_satellite_propagator(norad_id)
+    period = (2*pi)/satellite.model.no_kozai*60
+    initial = datetime.now(timezone.utc)
+    step = period/(samples-1)
+    dates = [initial + timedelta(seconds=i*step) for i in range(samples)]
+    positions = propagate_samples(satellite, dates)
+    return {"name": satellite.name.strip(), "norad_id": norad_id,
+        "start_timestamp": dates[0].isoformat(), "end_timestamp": dates[-1].isoformat(),
+        "orbital_period_minutes": round(period/60,2), "step_seconds": round(step,3),
+        "samples": samples, "positions": positions,
+        **scientific_metadata(satellite, dates, positions), **get_satellite_cache_details(norad_id)}
 
-    satellite = get_satellite_propagator(norad_id=norad_id)
-    orbital_period_minutes = (2 * pi) / satellite.model.no_kozai
-    orbital_period_seconds = orbital_period_minutes * 60
-    initial_time = datetime.now(timezone.utc)
-    step_seconds = orbital_period_seconds / (samples - 1)
-    positions = []
-
-    for i in range(samples):
-        future_time = initial_time + timedelta(seconds=i * step_seconds)
-        satellite_time = timescale.from_datetime(future_time)
-        satellite_position = satellite.at(satellite_time)
-        location = wgs84.geographic_position_of(satellite_position)
-        latitude = float(location.latitude.degrees)
-        longitude = float(location.longitude.degrees)
-        altitude = float(location.elevation.km)
-
-        positions.append(
-            {
-                "timestamp": future_time.isoformat(),
-                "latitude": round(latitude, 4),
-                "longitude": round(longitude, 4),
-                "altitude_km": round(altitude, 2),
-            }
-        )
-
-    cache_details = get_satellite_cache_details(norad_id)
-
-    return {
-        "name": satellite.name.strip(),
-        "norad_id": norad_id,
-        "start_timestamp": initial_time.isoformat(),
-        "end_timestamp": (
-            initial_time + timedelta(seconds=orbital_period_seconds)
-        ).isoformat(),
-        "orbital_period_minutes": round(orbital_period_minutes, 2),
-        "step_seconds": round(step_seconds, 3),
-        "samples": samples,
-        "positions": positions,
-        **cache_details,
-    }
 
 if __name__ == "__main__":
     satellite = get_satellite_trajectories(

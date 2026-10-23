@@ -1,9 +1,9 @@
-import { ArcType, Cartesian3, Color, Entity, JulianDate, Material, Matrix3, Matrix4, PolylineCollection, Scene } from "cesium";
+import { ArcType, Cartesian3, Color, Entity, JulianDate, Material, Matrix3, Matrix4, PolylineCollection, Scene, SceneTransforms, PointPrimitiveCollection, Primitive, GeometryInstance, EllipsoidGeometry, PerInstanceColorAppearance, ColorGeometryInstanceAttribute } from "cesium";
 import { CELESTIAL_BODIES } from "../src/data/celestialBodies.js";
 import { bodyPositionFixed, inertialToFixedMatrix, sampleBodyOrbitFixed } from "../src/data/solarSystemEphemeris.js";
 import { createOrbitStroke } from "../src/services/orbitStroke.js";
 import { StableOrbitCollection } from "../src/services/stableOrbitCollection.js";
-import { attachSatelliteOrbit, setSatelliteOrbitDisplay, styleSatelliteOrbit, updateSatelliteOrbit } from "../src/services/orbitVisuals.js";
+import { attachSatelliteOrbit, styleSatelliteOrbit, updateSatelliteOrbit } from "../src/services/orbitVisuals.js";
 import { createSatelliteOrbitMaterial } from "../src/services/satelliteOrbitMaterial.js";
 import { createSatelliteOrbitState, createSatelliteTrack, satelliteFrame } from "../src/services/satelliteOrbitState.js";
 
@@ -132,14 +132,14 @@ document.querySelector("#load").addEventListener("click",async()=>{
   const reports=[];
   try {
     const recorded=await (await fetch("/tests/fixtures/satellite-load-sgp4.json")).json();
-    for(const count of [1,6,12,24,44]) for(const style of ["guided","scientific"]) {
+    for(const count of [1,6,12,24,44]) for(const style of ["trace"]) {
       const group=scene.primitives.add(new StableOrbitCollection());
       const tracks=recorded.objects.slice(0,count).map(({orbit,trajectory,refresh},index)=>{
         const state=createSatelliteOrbitState(orbit), track=createSatelliteTrack(trajectory);
         const data={trajectory,track,orbitEntity:new Entity({polyline:{positions:state.positions}})};
         styleSatelliteOrbit(data,new Color(.6,.85,1),index===0,count);
         attachSatelliteOrbit(data,group,state.positions,state);
-        setSatelliteOrbitDisplay(data,style);
+        styleSatelliteOrbit(data,new Color(.6,.85,1),index===0,count,27000000,{reduced:true});
         const line=data.orbitLine;
         return {data,state,track,refresh,line,position:track.position,noradId:orbit.norad_id,maxDistance:0};
       });
@@ -159,7 +159,7 @@ document.querySelector("#load").addEventListener("click",async()=>{
             if(frame===45) {
               track.merge(refresh);
               if(track.position!==position) throw new Error("Refresh replaced position property");
-              if(style === "scientific" || data.orbitGuide.eccentric) line.positions=state.positions.map(p=>Cartesian3.clone(p));
+              line.positions=state.positions.map(p=>Cartesian3.clone(p));
             }
             satelliteFrame(time,state.matrix);
             const point=track.inertialAt(time);
@@ -181,14 +181,92 @@ document.querySelector("#load").addEventListener("click",async()=>{
         }
         const report={count,style,frames:90,emptyFrames,emptyRefreshFrames,unavailablePositions,maxPhaseDistanceMeters:maxDistance,bufferUploads:uploads,
           geometryRevisions:tracks.map(({line})=>line.geometryRevision),phaseDistances:tracks.map(({noradId,maxDistance})=>({noradId,maxDistance})),selectedAlpha:tracks[0].line.material.uniforms.color.w,contextAlpha:tracks[1]?.line.material.uniforms.color.w ?? null};
-        if(emptyFrames || unavailablePositions || maxDistance>10000 || tracks.some(({line,data})=>line.geometryRevision!==(style==="guided" && !data.orbitGuide.eccentric ? 1 : 2))) throw new Error(`Concurrent regression failed: ${JSON.stringify(report)}`);
+        if(emptyFrames || unavailablePositions || maxDistance>10000 || tracks.some(({line})=>line.geometryRevision!==2)) throw new Error(`Concurrent regression failed: ${JSON.stringify(report)}`);
         reports.push(report);results.textContent=JSON.stringify(reports,null,2);
       } finally {
         scene.primitives.remove(group);
       }
       if(!group.isDestroyed() || group.length!==0) throw new Error("Resident path cleanup failed");
     }
-    status.textContent="1/6/12/24/44 Guided/Scientific real satellite GPU regression passed";
+    status.textContent="1/6/12/24/44 Orbit Trace real satellite GPU regression passed";
   } catch(error) { status.textContent=`FAILED: ${error.message}`;console.error(error); }
   finally {document.querySelectorAll("button").forEach(button=>button.disabled=false);}
+});
+
+// Pixel evidence for actual production uniforms (not just shader math). No map
+// provider content is analyzed: isolated black background and recorded SGP4.
+document.querySelector('#effects').addEventListener('click',async()=>{
+ document.querySelectorAll('button').forEach(b=>b.disabled=true);const reports=[];
+ try {
+  const rows=(await (await fetch('/tests/fixtures/satellite-cartesian.json')).json()).objects;
+  for(const row of rows) for(const style of ['trace']) for(const selected of [false,true]) {
+   const state=createSatelliteOrbitState(row.orbit),track=createSatelliteTrack(row.trajectory);
+   const data={trajectory:row.trajectory,track,orbitEntity:new Entity({polyline:{positions:state.positions}})};
+   const group=scene.primitives.add(new StableOrbitCollection()),dots=scene.primitives.add(new PointPrimitiveCollection());
+   const marker=dots.add({position:Cartesian3.ZERO,pixelSize:5,color:Color.WHITE});
+   try {
+    styleSatelliteOrbit(data,Color.CYAN,selected,6,27000000);attachSatelliteOrbit(data,group,state.positions,state);styleSatelliteOrbit(data,Color.CYAN,selected,6,27000000,{reduced:true});
+    let head=0,trail=0,quiet=0,peakError=0;const phases=[];
+    for(let frame=0;frame<30;frame++) {
+     const time=JulianDate.addSeconds(track.start,frame*5,new JulianDate());updateSatelliteOrbit(data,time);
+     const line=data.orbitLine;marker.position=track.fixedAt(time);
+     const normal=Cartesian3.normalize(Cartesian3.cross(state.positions[0],state.positions[Math.floor(state.positions.length/4)],new Cartesian3()),new Cartesian3()),axis=Cartesian3.normalize(state.positions[0],new Cartesian3());
+     const eye=Matrix4.multiplyByPoint(state.matrix,Cartesian3.multiplyByScalar(normal,state.radius*(2.6+.03*Math.sin(frame)),new Cartesian3()),new Cartesian3());
+     scene.camera.setView({destination:eye,orientation:{direction:Cartesian3.normalize(Cartesian3.negate(eye,new Cartesian3()),new Cartesian3()),up:Matrix4.multiplyByPointAsVector(state.matrix,axis,new Cartesian3())}});
+     scene.camera.frustum.far=state.radius*15;
+     scene.initializeFrame();scene.render(time);gl.readPixels(0,0,canvas.width,canvas.height,gl.RGBA,gl.UNSIGNED_BYTE,pixels);
+     function pointAt(phase) {
+      const ps=line.positions,idx=((phase%1+1)%1)*(ps.length-1),i=Math.min(ps.length-2,Math.floor(idx));
+      return Matrix4.multiplyByPoint(line.modelMatrix,Cartesian3.lerp(ps[i],ps[i+1],idx-i,new Cartesian3()),new Cartesian3());
+     }
+     function energy(offset) {
+      const screen=SceneTransforms.worldToWindowCoordinates(scene,pointAt(line.material.uniforms.phase+offset));
+      if(!screen) return 0;let sum=0;
+      const x=Math.round(screen.x),y=canvas.height-Math.round(screen.y);
+      for(let dy=-3;dy<=3;dy++) for(let dx=-3;dx<=3;dx++) {const px=x+dx,py=y+dy;if(px>=0 && py>=0 && px<canvas.width && py<canvas.height) {const i=(py*canvas.width+px)*4;sum+=pixels[i]+pixels[i+1]+pixels[i+2];}}
+      return sum;
+     }
+     head+=energy(.03);trail+=energy(-.12);quiet+=energy(.4);
+     peakError=Math.max(peakError,Cartesian3.distance(pointAt(line.material.uniforms.phase),marker.position));phases.push(line.material.uniforms.phase);
+     if(frame===29) {const screenshot=canvas.toDataURL();document.querySelector('#scene').setAttribute('data-final-frame',screenshot);}
+     status.textContent=`Real ${row.orbit.norad_id} ${style} ${selected?'selected':'context'} ${frame+1}/30`;
+     await new Promise(resolve=>requestAnimationFrame(resolve));
+    }
+    const report={noradId:row.orbit.norad_id,style,selected,frames:30,headEnergy:head,trailEnergy:trail,quietEnergy:quiet,headQuietRatio:head/Math.max(quiet,1),trailQuietRatio:trail/Math.max(quiet,1),phaseStart:phases[0],phaseEnd:phases.at(-1),peakToMarkerMeters:peakError,active:data.orbitLine.material.uniforms.current,geometryRevisions:data.orbitLine.geometryRevision};
+    reports.push(report);results.textContent=JSON.stringify(reports,null,2);
+    if(!head || !trail || !quiet || report.headQuietRatio<.65 || report.trailQuietRatio<.65 || report.active!==1) throw new Error(`Rendered contrast/motion failed: ${JSON.stringify(report)}`);
+   } finally {scene.primitives.remove(group);scene.primitives.remove(dots);}
+  }
+  status.textContent='Continuous Orbit Trace and synchronized moving marker probe passed';
+ } catch(error) {status.textContent=`FAILED: ${error.message}`;console.error(error);}
+ finally {document.querySelectorAll('button').forEach(b=>b.disabled=false);}
+});
+
+// A controlled opaque Earth-sized occluder verifies depth in actual WebGL.
+// It uses no downloaded imagery or provider content.
+document.querySelector('#occlusion').addEventListener('click',async()=>{
+ document.querySelectorAll('button').forEach(b=>b.disabled=true);
+ let group,dots,sphere;
+ try {
+  const row=(await (await fetch('/tests/fixtures/satellite-cartesian.json')).json()).objects[0];
+  const state=createSatelliteOrbitState(row.orbit),track=createSatelliteTrack(row.trajectory);
+  const data={trajectory:row.trajectory,track,orbitEntity:new Entity({polyline:{positions:state.positions}})};
+  group=scene.primitives.add(new StableOrbitCollection());dots=scene.primitives.add(new PointPrimitiveCollection());
+  styleSatelliteOrbit(data,Color.CYAN,true,6,27000000);attachSatelliteOrbit(data,group,state.positions,state);styleSatelliteOrbit(data,Color.CYAN,true,6,27000000,{reduced:true});updateSatelliteOrbit(data,track.start);
+  // Isolate the actual far-side arc. A full orbit also has a legitimate
+  // foreground intersection along this viewing axis, which must stay visible.
+  data.orbitLine.positions=state.positions.slice(0,12);
+  const point=track.fixedAt(track.start);dots.add({position:point,pixelSize:7,color:Color.WHITE});
+  const destination=Cartesian3.multiplyByScalar(point,-2.4,new Cartesian3());
+  scene.camera.setView({destination,orientation:{direction:Cartesian3.normalize(point,new Cartesian3()),up:Cartesian3.UNIT_Z}});scene.camera.frustum.far=1e8;
+  function measure() {scene.initializeFrame();scene.render(track.start);gl.readPixels(0,0,canvas.width,canvas.height,gl.RGBA,gl.UNSIGNED_BYTE,pixels);let energy=0;for(let y=canvas.height/2-8;y<canvas.height/2+8;y++) for(let x=canvas.width/2-8;x<canvas.width/2+8;x++){const i=(y*canvas.width+x)*4;energy+=pixels[i+1]+pixels[i+2];}return energy;}
+  const before=measure();
+  sphere=scene.primitives.add(new Primitive({geometryInstances:new GeometryInstance({geometry:new EllipsoidGeometry({radii:new Cartesian3(6378137,6378137,6356752),vertexFormat:PerInstanceColorAppearance.VERTEX_FORMAT}),attributes:{color:ColorGeometryInstanceAttribute.fromColor(Color.RED)}}),appearance:new PerInstanceColorAppearance({flat:true,translucent:false}),asynchronous:false}));
+  const after=measure();
+  const report={noradId:row.orbit.norad_id,beforeGreenBlue:before,behindEarthGreenBlue:after,depthEnabled:data.orbitLine.primitive.appearance.renderState.depthTest.enabled};
+  results.textContent=JSON.stringify(report,null,2);
+  if(before===0 || after!==0) throw new Error('Orbit/marker incorrectly rendered through opaque Earth');
+  status.textContent='Real orbit and marker are correctly occluded by Earth';
+ } catch(error) {status.textContent=`FAILED: ${error.message}`;console.error(error);}
+ finally {if(sphere) scene.primitives.remove(sphere);if(group) scene.primitives.remove(group);if(dots) scene.primitives.remove(dots);document.querySelectorAll('button').forEach(b=>b.disabled=false);}
 });

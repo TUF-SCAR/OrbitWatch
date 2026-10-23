@@ -106,6 +106,9 @@ def check_contract(engine):
         assert len(trajectory["objects"]) == 1 and len(trajectory["objects"][0]["positions"]) == 61
         assert trajectory["errors"][0]["norad_id"] == 43013
         orbit = expect("GET", "/api/satellites/25544/orbit?samples=480", headers=headers)
+        assert orbit["reference_frame"] == "TEME" and orbit["position_unit"] == "km"
+        assert len(orbit["positions"][0]["teme_position_km"]) == 3
+        assert len(orbit["positions"][0]["teme_velocity_km_s"]) == 3
         assert len(orbit["positions"]) == 480 and 80 < orbit["orbital_period_minutes"] < 110
         expect("GET", "/api/satellites/999999/position", 404, headers=headers)
         expect("GET", "/api/satellites/43013/position", 503, headers=headers)
@@ -124,6 +127,51 @@ def check_contract(engine):
         for result in results:
             if "access_token" in result:
                 expect("GET", "/api/auth/me", headers={"Authorization": f"Bearer {result['access_token']}"})
+        if "--workload" in sys.argv:
+            # Fast-forward ten minutes while exercising actual authenticated
+            # routes/SGP4 under temporary storage, never external providers.
+            from unittest.mock import patch as mock
+            import json
+            from services import satellite_tracker as tracker
+            origin=datetime.now(timezone.utc)
+            clock=[origin]
+            class SimulatedDateTime(datetime):
+                @classmethod
+                def now(cls,tz=None): return clock[0]
+            counts={"catalog":0,"status":0,"telemetry":0,"trajectoryBatches":0,"fullOrbits":0,"realExternalProviderRequests":0}
+            with mock.object(tracker,"datetime",SimulatedDateTime):
+                expect("GET","/api/satellites/catalog",headers=headers);counts["catalog"]+=1
+                stop=-1;next_orbit=0
+                for second in range(0,600,15):
+                    clock[0]=origin+timedelta(seconds=second)
+                    expect("GET","/api/satellites/25544/position",headers=headers);counts["telemetry"]+=1
+                    if second%60==0:
+                        expect("GET","/api/satellites/data-status",headers=headers);counts["status"]+=1
+                    if stop-second<90:
+                        expect("POST","/api/satellites/trajectories",headers=headers,json={"norad_ids":ids,"step_seconds":5,"duration_seconds":300})
+                        counts["trajectoryBatches"]+=1;stop=second+300
+                    if second>=next_orbit:
+                        for ident in ids: expect("GET",f"/api/satellites/{ident}/orbit?samples=480",headers=headers);counts["fullOrbits"]+=1
+                        next_orbit=second+300
+            counts["localApiRequests"]=sum(v for k,v in counts.items() if k!="realExternalProviderRequests")
+            (ROOT/".orbitwatch-backups/local-api-workload.json").write_text(json.dumps(counts,indent=2))
+            print("10-minute isolated workload:",counts)
+        if "--workload" in sys.argv:
+            import asyncio, tempfile
+            import main as application
+            from services.providers import budget as budget_module
+            calls={"startup":0,"worker":0}
+            def startup():calls["startup"]+=1;return {"reason":"isolated scheduler test"}
+            async def worker():calls["worker"]+=1;await asyncio.Event().wait()
+            async def lifecycle():
+                with tempfile.TemporaryDirectory(dir=ROOT/".orbitwatch-backups") as tmp, \
+                     mock.object(budget_module,"ROOT",Path(tmp)),mock.object(application,"refresh_orbital_data",startup),mock.object(application,"run_satellite_refresh_worker",worker):
+                    async with application.lifespan(app):
+                        async with application.lifespan(app):
+                            await asyncio.sleep(.01)
+                            assert calls=={"startup":1,"worker":1},calls
+            asyncio.run(lifecycle())
+            print("PASS: same-host lifespan scheduler election and cleanup",calls)
         client.close()
         print(f"PASS: {checks} real API requests; isolated auth/JWT/catalog/SGP4/error contracts.")
 

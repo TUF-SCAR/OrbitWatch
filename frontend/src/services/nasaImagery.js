@@ -52,23 +52,39 @@ export function localEarthReferenceProvider() {
 
 export function createNasaImageryService({fetchMetadata=async signal=>{
   const response=await fetch(GIBS_CAPABILITIES,{signal:AbortSignal.any([signal,AbortSignal.timeout(10000)])});
-  if(!response.ok) throw new Error("NASA metadata unavailable");
+  if(!response.ok) {
+    const header=response.headers.get('Retry-After'),seconds=Number(header);
+    const retryAfter=Number.isFinite(seconds) ? seconds : Math.max(0,(Date.parse(header)-Date.now())/1000) || 0;
+    throw Object.assign(new Error("NASA metadata unavailable"),{statusCode:response.status,retryAfter});
+  }
   return parseGibsCapabilities(await response.text());
 },now=()=>new Date(),reference=nasaReferenceProvider,history=metadata=>new UrlTemplateImageryProvider({
   url:`${GIBS_ROOT}/${metadata.identifier}/default/${metadata.observationDate}/${metadata.matrix}/{z}/{y}/{x}.jpeg`,
   maximumLevel:metadata.maximumLevel,tilingScheme:new WebMercatorTilingScheme(),credit:NASA_CREDIT,
-})}={}) {
-  let metadata,checkedAt=0;
+}),jitter=()=>Math.random()*15000}={}) {
+  let metadata,checkedAt=0,retryAt=0,failures=0,pending,closed=false;
+  const metadataController=new AbortController();
   return {
     async create(selectedTime,signal) {
+      if(signal.aborted || closed) throw new DOMException("Cancelled","AbortError");
       const current=now();
-      if(new Date(selectedTime)<=current && (!metadata || current.getTime()-checkedAt>3600000)) {
-        try {metadata=await fetchMetadata(signal);checkedAt=current.getTime();}
+      if(new Date(selectedTime)<=current && current.getTime()>=retryAt && (!metadata || current.getTime()-checkedAt>3600000)) {
+        if(!pending) {
+          const request={};
+          // Capabilities do not depend on the chosen date. A date cancellation
+          // releases that caller but must not restart this large shared fetch.
+          request.promise=fetchMetadata(metadataController.signal).then(value=>{if(!closed) {metadata=value;checkedAt=current.getTime();failures=0;}})
+            .catch(error=>{if(!closed) {failures++;retryAt=current.getTime()+Math.max(error.retryAfter*1000 || 0,Math.min(900000,60000*2**Math.min(failures-1,4)))+jitter();}throw error;})
+            .finally(()=>{if(pending===request) pending=null;});
+          pending=request;
+        }
+        try {await pending.promise;}
         catch(error) {if(signal.aborted) throw error;}
       }
-      if(signal.aborted) throw new DOMException("Cancelled","AbortError");
+      if(signal.aborted || closed) throw new DOMException("Cancelled","AbortError");
       const plan=nasaImageryPlan(selectedTime,metadata,current);
       return {provider:plan.kind==="historical" ? history({...metadata,...plan}) : reference(),details:plan};
     },
+    destroy() {closed=true;metadataController.abort();},
   };
 }

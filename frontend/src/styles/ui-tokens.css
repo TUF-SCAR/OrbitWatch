@@ -1,0 +1,110 @@
+/* Central UI configuration. Edit --ui-font-scale to resize all UI typography.
+   Layout dimensions remain independent; JS motion reads this file via uiConfig.
+   Scientific rendering and API configuration do not belong here. */
+:root {
+  /* Typography */
+  --ui-font-scale: 1.08;
+  --ui-font-main: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --ui-font-secondary: "Space Grotesk", system-ui, sans-serif;
+  --ui-font-xs: calc(10px * var(--ui-font-scale));
+  --ui-font-sm: calc(12px * var(--ui-font-scale));
+  --ui-font-regular: calc(14px * var(--ui-font-scale));
+  --ui-font-medium: calc(16px * var(--ui-font-scale));
+  --ui-font-large: calc(18px * var(--ui-font-scale));
+  --ui-font-title: calc(22px * var(--ui-font-scale));
+  --ui-weight-regular: 400;
+  --ui-weight-medium: 500;
+  --ui-weight-semibold: 600;
+  --ui-weight-bold: 700;
+  --ui-line-tight: 1.2;
+  --ui-line-normal: 1.45;
+  --ui-line-reading: 1.6;
+  --ui-tracking-label: .08em;
+  --ui-tracking-heading: .14em;
+  /* Colors */
+  --ui-accent: #86e8ff;
+  --ui-accent-secondary: #b8a7ff;
+  --ui-text: #f7fcff;
+  --ui-text-muted: #a9bfce;
+  --ui-background: #01040a;
+  --ui-panel: rgba(4, 9, 16, .97);
+  --ui-panel-raised: rgba(7, 14, 23, .98);
+  --ui-border: rgba(218, 241, 255, .22);
+  --ui-border-strong: rgba(218, 241, 255, .38);
+  --ui-hover: color-mix(in srgb, var(--ui-accent) 8%, var(--ui-panel));
+  --ui-selected: color-mix(in srgb, var(--ui-accent) 11%, transparent);
+  --ui-success: #90dec0;
+  --ui-warning: #ffd19c;
+  --ui-danger: #ffae99;
+  /* Layout */
+  --ui-panel-spacing: 16px;
+  --ui-control-gap: 8px;
+  --ui-button-height: 38px;
+  --ui-hud-edge: 20px;
+  --ui-panel-padding: 18px;
+  --ui-row-padding: 10px;
+  --ui-border-width: 1px;
+  --ui-radius: 3px;
+  --ui-icon-size: 18px;
+  --ui-dock-padding: 8px;
+  --ui-dock-gap: 16px;
+  --ui-mobile-edge: 12px;
+  --ui-mobile-padding: 14px;
+  /* Milliseconds. Typical assembly: loader + 7 intervals + morph ~= 2s. */
+  --ui-motion-loader: 240;
+  --ui-motion-reveal-interval: 175;
+  --ui-motion-morph: 520;
+  --ui-motion-panel: 280;
+  --ui-motion-feedback: 160;
+  --ui-motion-travel: 650;
+  --ui-motion-spinner: 800;
+  --ui-motion-ease: cubic-bezier(.22, 1, .36, 1);
+  /* Decorative camera radians/second; separate from scientific clocks. */
+  --ui-idle-earth-speed: .00204; /* .0012 × 1.7 */
+  --ui-preview-orbit-speed: .012;
+  --ui-preview-spin-speed: .045;
+  /* Compatibility aliases */
+  --accent: var(--ui-accent);
+  --accent-rgb: 134, 232, 255;
+  --accent-soft: var(--ui-selected);
+  --accent-line: color-mix(in srgb, var(--ui-accent) 38%, transparent);
+  --panel: var(--ui-panel);
+  --panel-2: var(--ui-panel-raised);
+  --line: var(--ui-border);
+  --line-strong: var(--ui-border-strong);
+  --muted: var(--ui-text-muted);
+  --text-muted: var(--ui-text-muted);
+  --text: var(--ui-text);
+  --danger: var(--ui-danger);
+  --cyan: var(--ui-accent);
+  --motion-feedback: calc(var(--ui-motion-feedback) * 1ms);
+  --motion-panel: calc(var(--ui-motion-panel) * 1ms);
+  --motion-travel: calc(var(--ui-motion-travel) * 1ms);
+  --motion-ease: var(--ui-motion-ease);
+}
+
+/* Original type hierarchy variants: all use the one scale, including overrides. */
+:root {
+  --ui-type-5_5: calc(6.5px * var(--ui-font-scale));
+  --ui-type-6: calc(7px * var(--ui-font-scale));
+  --ui-type-7: calc(8px * var(--ui-font-scale));
+  --ui-type-8: calc(9px * var(--ui-font-scale));
+  --ui-type-9: var(--ui-font-xs);
+  --ui-type-10: calc(11px * var(--ui-font-scale));
+  --ui-type-11: var(--ui-font-sm);
+  --ui-type-12: calc(13px * var(--ui-font-scale));
+  --ui-type-13: var(--ui-font-regular);
+  --ui-type-14: calc(15px * var(--ui-font-scale));
+  --ui-type-15: var(--ui-font-medium);
+  --ui-type-16: calc(16px * var(--ui-font-scale));
+  --ui-type-18: var(--ui-font-large);
+  --ui-type-19: calc(19px * var(--ui-font-scale));
+  --ui-type-20: calc(20px * var(--ui-font-scale));
+  --ui-type-21: calc(21px * var(--ui-font-scale));
+  --ui-type-22: var(--ui-font-title);
+  --ui-type-23: calc(23px * var(--ui-font-scale));
+  --ui-type-25: calc(25px * var(--ui-font-scale));
+  --ui-type-26: calc(26px * var(--ui-font-scale));
+  --ui-type-28: calc(28px * var(--ui-font-scale));
+  --ui-type-30: calc(30px * var(--ui-font-scale));
+}

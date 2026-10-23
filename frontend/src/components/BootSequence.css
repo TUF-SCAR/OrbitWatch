@@ -64,14 +64,14 @@
 }
 
 .boot-sequence__copy strong {
-  font-family: "Space Grotesk", system-ui, sans-serif;
-  font-size: 18px;
+  font-family: var(--ui-font-secondary);
+  font-size: var(--ui-type-18);
   letter-spacing: 0.24em;
 }
 
 .boot-sequence__copy span {
   color: #6f879a;
-  font-size: 9px;
+  font-size: var(--ui-type-9);
   letter-spacing: 0.15em;
 }
 
@@ -87,7 +87,7 @@
   align-items: center;
   gap: 8px;
   color: #6b8395;
-  font-size: 8px;
+  font-size: var(--ui-type-8);
   letter-spacing: 0.11em;
 }
 

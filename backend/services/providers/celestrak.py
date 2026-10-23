@@ -1,4 +1,5 @@
 import httpx
+from services.providers.budget import budget
 from datetime import datetime, timedelta, timezone
 
 BASE_URL = "https://celestrak.org"
@@ -25,6 +26,12 @@ def parse_tle_epoch(tle_line1: str) -> str:
 
 
 def get_latest_gp(norad_ids: list[int]):
+    if not norad_ids: return []
+    with budget.attempt("celestrak",7200,1):
+        return _get_latest_gp(norad_ids)
+
+
+def _get_latest_gp(norad_ids: list[int]):
     if not norad_ids:
         return []
 
@@ -37,10 +44,11 @@ def get_latest_gp(norad_ids: list[int]):
             "FORMAT": "TLE",
         },
         timeout=45,
-        follow_redirects=True,
+        follow_redirects=False,
     )
 
     response.raise_for_status()
+    if response.status_code != 200: raise httpx.HTTPStatusError("CelesTrak response is not HTTP 200",request=response.request,response=response)
 
     response_lines = response.text.strip().splitlines()
     records = []

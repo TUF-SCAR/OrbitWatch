@@ -14,6 +14,7 @@ from routes.auth import router as auth_router
 from routes.satellites import router as satellite_router
 from services.orbital_data_service import refresh_orbital_data
 from workers.satellite_refresh import run_satellite_refresh_worker
+from services.providers.budget import refresh_owner
 
 allowed_origins = [
     "http://localhost:5173",
@@ -25,22 +26,26 @@ allowed_origins = [
 async def lifespan(app: FastAPI):
     DatabaseBase.metadata.create_all(bind=database_engine)
 
-    try:
-        result = await asyncio.to_thread(refresh_orbital_data)
-        print(f"Startup orbital data check: {result.get('reason')}")
-    except Exception as error:
-        print(f"Startup orbital data check failed: {error}")
-
-    refresh_task = asyncio.create_task(run_satellite_refresh_worker())
-
-    yield
-
-    refresh_task.cancel()
-
-    try:
-        await refresh_task
-    except asyncio.CancelledError:
-        pass
+    # A same-host scheduler lease stays owned through the lifespan. Other API
+    # workers serve requests without duplicating startup/scheduled ingestion.
+    with refresh_owner('scheduler-owner.lock') as owner:
+        refresh_task = None
+        if owner:
+            try:
+                result = await asyncio.to_thread(refresh_orbital_data)
+                print(f"Startup orbital data check: {result.get('reason')}")
+            except Exception as error:
+                print(f"Startup orbital data check failed: {type(error).__name__}")
+            refresh_task = asyncio.create_task(run_satellite_refresh_worker())
+        try:
+            yield
+        finally:
+            if refresh_task:
+                refresh_task.cancel()
+                try:
+                    await refresh_task
+                except asyncio.CancelledError:
+                    pass
 
 
 app = FastAPI(lifespan=lifespan)

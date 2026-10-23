@@ -48,7 +48,10 @@ export default function SystemMenu({ open, activeBodyId, onSelectBody, onClose, 
     if (!map || !open) return;
     const count = Object.values(CELESTIAL_BODIES).filter(body => body.type === "Moon" && body.parent === systemId).length;
     const radius = systemId ? 75 + Math.max(0, count - 1) * 12 : 169;
-    const fit = () => map.style.setProperty("--diagram-scale", Math.max(0.1, Math.min(1, (map.clientWidth - 100) / (radius * 2), (map.clientHeight - 26) / (radius * 2))));
+    const fit = () => {
+      map.dataset.compact=String(map.clientHeight<190);
+      map.style.setProperty("--diagram-scale", Math.max(0.1, Math.min(1, (map.clientWidth - 100) / (radius * 2), (map.clientHeight - 26) / (radius * 2))));
+    };
     const observer = new ResizeObserver(fit); observer.observe(map); fit();
     return () => observer.disconnect();
   }, [open, systemId, page]);

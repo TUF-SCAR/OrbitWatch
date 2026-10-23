@@ -1,22 +1,23 @@
 # Earth satellite orbit rendering
 
-The backend remains unchanged. Skyfield/SGP4 supplies timestamped WGS84 latitude,
-longitude and altitude for each trajectory and complete orbit. Real marker
-positions always use these samples. Scientific Orbit renders the full sampled
-path; Guided Orbit deliberately presents a disclosed schematic circle for
-near-circular spacecraft.
+As of 14 October 2026, additive backend responses export precise TEME position
+(km), velocity (km/s), DUT1 and ITRS verification samples through vectorized
+Skyfield/SGP4. Existing geographic fields/endpoints/auth remain compatible.
+Orbit Trace uses only the real predicted samples. See [visual design](ORBIT_TRACE.md),
+[investigation/sources](ORBIT_INVESTIGATION.md)
+and [provider safeguards](API_USAGE.md) for measured evidence and limits.
 
-Each sample is converted to Cartesian Earth-fixed coordinates, then rotated by
-the transpose of Cesium's `computeTemeToPseudoFixedMatrix` **at that sample's
-timestamp**. The satellite and path both apply one shared forward rotation at
-the effective scene timestamp. The origin remains Earth's centre. GEO therefore
-has a complete inertial orbit even though its Earth-relative satellite position
-is almost stationary. Cesium's pseudo-fixed conversion equates UTC and UT 1;
-this is a documented visualization approximation, not an EOP-calibrated TEME
-state vector or a replacement propagator. It avoids asynchronous ICRF fallback
-changes and duplicate Earth rotation.
+Skyfield `at(t)` is GCRS, so the server explicitly converts through the public
+TEME frame API before labeling its vectors. The consumer applies one shared
+TEME-to-fixed rotation at effective scene time, evaluating Cesium GMST at UT1
+using received DUT1. Polar motion is not loaded. Legacy geographic responses
+still recover a TEME-like visualization frame per sample timestamp (UTC≈UT1).
+Both pipelines preserve physical radii and the unchanged scientific marker.
+No independently animated coordinate or asynchronous ICRF fallback is introduced.
+Numerical agreement with a propagator is not an observed tracking accuracy claim.
 
-Trajectory positions interpolate the recovered samples. Overlapping refreshes
+Precise short tracks use velocity-aware cubic Hermite interpolation; legacy
+tracks retain linear interpolation. Overlapping refreshes
 keep the same position Property and bounded history (361 samples). A request is
 due with less than 90 seconds of coverage remaining; lifecycle checks run every
 15 seconds in Earth Live Mode. Batches contain at most 24 IDs, failed attempts
@@ -34,44 +35,14 @@ changes only on successful orbital refresh. Synchronous resident replacement
 keeps one renderer/material per orbit; minor refresh changes are never combined
 with fake coordinate interpolation or a blank remove/re-add frame.
 
-One normalized, resident PolylineGeometry draws both the quiet complete shape
-and brighter active region in one pass. Vertex texture s represents uniform
-backend sample time. The phase follows the same current satellite position,
-using time to predict the segment and projection to refine it. A short brighter
-lead and long soft tail use a periodic continuous envelope, with a nonzero base
-everywhere. Core coverage uses analytic pixel overlap to retain the prior
-anti-flicker fix. No independent animation timer, overlapping coincident strokes,
-per-frame geometry, extra Viewer or React phase state is used. Category colors
-remain intact; selection and orbit count control the hierarchy. High-apogee
-paths fade according to their own scale rather than a LEO-only camera threshold.
-
-## Orbit Style (12 October 2026)
-
-Profile settings persist **Guided** by default and **Scientific** as an explicit
-choice. Switching changes resident path geometry/matrix immediately, preserving
-the Viewer, camera, selection, position Property and material; no API request is
-made solely for a style change. Both use the same lead/trail shader and category
-colors. Hide/show/unload/refresh retain the existing ownership rules.
-
-Guided fits a plane and initial mean radius from real recovered inertial samples.
-At each effective scene timestamp its matrix uses the actual marker's geocentric
-radius and a plane through that position and the interpolated central tangent of
-the real sampled path. A retained angular basis prevents arbitrary phase spins.
-An immutable shared481-point unit circle is scaled/oriented by the matrix;
-no per-frame geometry upload or independently animated position is introduced.
-The ideal phase peak meets the unchanged scientific marker (tested <1e-6m);
-the polygonal approximation is subpixel at normal scale. This is still a
-schematic instantaneous circular guide, not a scientifically exact full orbit.
-Using a constant mean radius missed one navigation marker by~150 km, which is why
-the current radius is used. Rounded sample noise is reduced by wide central
-chords and interpolation; true slow orbital evolution is retained.
-
-Approximate eccentricity is `(rmax-rmin)/(rmax+rmin)` from the full SGP4 path.
-Enter real geometry at e>=.03; remain there until e<.025. This bounds circular
-schematic radial error to about 3% while retaining stable hysteresis. Chandra,
-XMM-Newton and TESS keep real geometry. Scene and inspector explicitly disclose
-schematic circles and eccentric auto-fallback. Scientific geometry/propagation,
-including inclination, eccentricity and precession, remains unchanged.
+One normalized resident PolylineGeometry draws a complete thread and its narrow
+contrast edge in one depth-tested pass. Pixel-integrated analytic coverage
+retains stable subpixel brightness. Unselected category-tinted threads give way
+to a continuous silver-white selected path. Selection illuminates outward once
+from the real phase, then settles; only a subtle real-phase sheen continues.
+No independent orbital animation, duplicate strokes or per-frame geometry is
+used. Relative angular-size fading keeps high-apogee paths readable at their
+own scale. See [Orbit Trace](ORBIT_TRACE.md) for widths, timing and screenshots.
 
 ## Cesium 1.144 alternatives reviewed
 
@@ -92,7 +63,7 @@ depth/picking/cleanup policy; celestial rendering is otherwise unchanged.
 `frontend/tests/fixtures/satellite-sgp4.json` records the unchanged backend's
 real ISS, Hubble, Landsat 8, GPS, INSAT-3DS and eccentric Chandra calculations.
 Regressions cover exact frame round trips, short-trajectory alignment, a full
-period, phase wrap/lead/trail, overlap/expiry, distinct 1/6/12/24/44 paths, global
+period, phase wrap/selection reveal, overlap/expiry, distinct 1/6/12/24/44 paths, global
 143-request caps and cancellation/resource ownership. They do not establish
 native GPU appearance or replace browser testing.
 
@@ -110,42 +81,30 @@ not the old synthetic sample generator. Production auth remains untouched. The
 rendered diagnostic output exposes phase, path distance, sample coverage, stale
 state, upload count and resource ownership. Test 1/6/12/24/40+ simultaneous paths,
 selection/Focus/Follow/Release, repeated zoom/drag, overlapping refresh, failure
-and recovery, long Live running, Earth travel and logout. Native visual validation
-is partially verified; see the Astra checkpoint for the remaining scenarios.
-The resumed native browser reproduced a shader compile failure because `active`
-is a reserved GLSL word; the local variable is now `phaseWeight`. The existing
+and recovery, long Live running, Earth travel and logout. See the Astra checkpoint for the latest native visual validation results.
+An earlier native browser run reproduced a shader compile failure because `active`
+is a reserved GLSL word. Orbit Trace avoids reserved identifiers. The existing
 `tests/orbit-render.html` probe's **Run satellite shader regression** compiles
 the actual material on WebGL 2 and checks six recorded real SGP4 paths over 540
 frames with phase wrap, camera/zoom changes and resident buffer replacement.
 All six cases passed without an empty frame. Node Material construction does
 not compile GLSL and must not be treated as evidence of GPU compatibility.
 
-The **Run 24/44 real satellite load regression** button now tests 1/6/12/24/44
-simultaneous satellites in both styles using 44 distinct real
-catalog objects from `tests/fixtures/satellite-load-sgp4.json`. Each of 10 cases
-advances 90 rendered frames (900 total) with camera/range changes, actual Earth-frame
-rotation, a recorded overlapping trajectory merge and resident buffer replacement.
-It asserts no empty frames, valid position coverage, phase alignment, one geometry revision for circles and two for refreshed Scientific/eccentric
-paths and collection disposal. Start inside the shared orbit/track
-coverage interval; a timestamp before an orbit's recording start wraps into the
-next period and can include a real SGP4 precession offset.
+The **Run 24/44 real satellite load regression** tests 1/6/12/24/44
+simultaneous satellites using 44 distinct real catalog objects from
+`tests/fixtures/satellite-load-sgp4.json`. Five cases advance 90 frames each
+(450 total) through camera/range changes, actual Earth rotation, overlapping
+trajectory merge and resident buffer replacement. Assertions cover no empty
+frames, valid positions, phase alignment, two geometry revisions after refresh
+and collection disposal. Start inside shared orbit/track coverage: pre-start
+phase wrapping can otherwise include a real SGP4 precession offset.
 
-To regenerate that recording against the read-only bridge:
-
-    python frontend/tests/satellite-api-check.py --record-load-fixture
-
-On 2026-10-10 both concurrent cases passed; maximum phase-to-path distances were
-462m/438m. The app's six live paths survived automatic trajectory/orbit refresh,
-Focus/Follow, Earth↔Mars and logout. Browser-to-8001 fetches were intermittently
-unavailable at higher loads although standalone API checks passed; the recorded
-GPU probe does **not** establish a normal authenticated Live 44-object network
-session. No production transport/auth changes were made to bypass that limitation.
-
-On 2026-10-12 the final dual-style native probe passed all 10 cases with zero empty,
-refresh-gap or unavailable-position frames. Both shaders compile with real
-recorded trajectories/Earth-frame rotation; the probe draws orbit paths, while
-marker/phase coincidence is independently checked mathematically. The app UI
-fixture validates marker selection/camera/style persistence and actual provider
-maps, using clearly labeled synthetic satellite input. These checks do not
-claim a normal authenticated 44-object production network session. Evidence is
-saved in the ignored Astra backup checkpoint directory.
+The native contrast/motion probe draws seven precise real tracks and markers
+in both selection states (420 frames), measuring complete-path readability and
+real phase advancement. The Earth-depth probe verifies far-side occlusion.
+`/tests/orbit-trace.html` provides the visual review gallery with reference
+Earth imagery, polar/eccentric/GEO/navigation/dense cases and motion/refresh
+controls. The actual application uses the read-only bridge with synthetic
+identity only. These tests do not certify a normal authenticated 44-object
+production network session. Results and before/after images are recorded in
+`.orbitwatch-backups/orbit-trace/` and the continuation checkpoint.

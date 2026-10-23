@@ -13,6 +13,7 @@ from repositories.satellite_orbital_data import (
     save_orbital_records,
 )
 from services.providers import celestrak, spacetrack
+from services.providers.budget import refresh_owner, error_summary
 
 space_objects_json_path = (
     Path(__file__).resolve().parent.parent / "data" / "space_objects.json"
@@ -74,6 +75,12 @@ def orbital_data_is_missing(norad_ids: list[int]) -> bool:
 
 
 def refresh_orbital_data(force: bool = False) -> dict:
+    with refresh_owner() as owned:
+        if not owned: return {"refreshed":False,"reason":"Another process owns provider refresh"}
+        return _refresh_orbital_data(force)
+
+
+def _refresh_orbital_data(force: bool = False) -> dict:
     global last_provider_attempt_at
 
     norad_ids = get_supported_norad_ids()
@@ -127,8 +134,8 @@ def refresh_orbital_data(force: bool = False) -> dict:
         source = "spacetrack"
         print(f"Received {len(records)} orbital records from Space-Track")
     except Exception as error:
-        spacetrack_error = str(error)
-        print(f"Space-Track refresh failed: {error}")
+        spacetrack_error = error_summary(error)
+        print(f"Space-Track refresh deferred/failed: {spacetrack_error}")
 
     if not records:
         try:
@@ -141,8 +148,8 @@ def refresh_orbital_data(force: bool = False) -> dict:
             source = "celestrak"
             print(f"Received {len(records)} orbital records from CelesTrak")
         except Exception as error:
-            celestrak_error = str(error)
-            print(f"CelesTrak refresh failed: {error}")
+            celestrak_error = error_summary(error)
+            print(f"CelesTrak refresh deferred/failed: {celestrak_error}")
 
     if not records:
         return {

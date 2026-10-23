@@ -29,3 +29,6 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Same-host external-provider reservations/owner lease (no credentials)
+backend/.runtime/

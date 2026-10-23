@@ -1,3 +1,4 @@
+import { uiNumber } from "../utils/uiConfig.js";
 import { useEffect, useImperativeHandle, useRef, useState } from "react";
 import {
   ArcType,
@@ -34,9 +35,8 @@ import {
 import { fetchSatelliteOrbit, fetchSatelliteTrajectories } from "../services/orbitwatchApi.js";
 import { getSpaceObject } from "../data/spaceObjects.js";
 import { createSolarSystemLayer, pickSolarSystemObject } from "../services/solarSystemLayer.js";
-import { attachSatelliteOrbit, removeSatelliteOrbit, styleSatelliteOrbit, updateSatelliteOrbit, setSatelliteOrbitDisplay } from "../services/orbitVisuals.js";
+import { attachSatelliteOrbit, removeSatelliteOrbit, styleSatelliteOrbit, updateSatelliteOrbit } from "../services/orbitVisuals.js";
 import { createSatelliteOrbitState, createSatelliteTrack, satelliteOrbitRefreshDue, satelliteTrajectoryRefreshDue } from "../services/satelliteOrbitState.js";
-import { orbitStyleDisclosure } from "../services/guidedOrbit.js";
 import { createSatelliteRequestQueue } from "../services/satelliteRequestQueue.js";
 import { StableOrbitCollection } from "../services/stableOrbitCollection.js";
 import { createSpaceBackground } from "../services/spaceBackground.js";
@@ -48,6 +48,7 @@ import { createEarthMapFactories } from "../services/earthMapProviders.js";
 import { applyBaseMap as updateBaseMap, providerErrorSummary, setEarthMapVisibility } from "../services/baseMap.js";
 import { createPlaceLabelLayer } from "../services/placeLabelLayer.js";
 import { createPlaceSearch } from "../services/placeSearch.js";
+import { prepareTimeScene } from "../services/timeScenePreparation.js";
 import { cameraDuration } from "../utils/motionPreferences.js";
 
 const EARTH_RADIUS_KM = 6371.0088;
@@ -314,8 +315,9 @@ export default function OrbitGlobe({
   onRefreshComplete,
   onSatelliteStatus,
   onMapStatus,
+  onTimeReady,
+  timeReference = false,
   quality = "auto",
-  orbitStyle = "guided",
   onOrbitInfo,
   onDetailReady,
 }) {
@@ -325,17 +327,18 @@ export default function OrbitGlobe({
   const startupCameraCommittedRef = useRef(false);
   const initialModeCameraResetRef = useRef(true);
   const initialCountryRef = useRef(startupCountry);
-  const callbacksRef = useRef({ onSceneReady, onRefreshComplete, onMapStatus, onDetailReady, onScaleChange, onSatelliteStatus, onOrbitInfo });
+  const callbacksRef = useRef({ onSceneReady, onRefreshComplete, onMapStatus, onDetailReady, onScaleChange, onSatelliteStatus, onOrbitInfo, onTimeReady });
   const mapFactoriesRef = useRef(null);
   const selectedTimeRef = useRef(selectedTime);
+  const timeReferenceRef = useRef(timeReference);
   const googleLoaderRef = useRef(null);
   const googleEventsRef = useRef([]);
   const googleRetryNonceRef = useRef(-1);
-  const applyBaseMap = (viewer,tiles,ready,map,request,labels) => updateBaseMap(viewer,tiles,ready,modeRef.current === "time" ? "nasa-time" : map,request,labels,mapFactoriesRef.current,(status)=>callbacksRef.current.onMapStatus?.(status),8000,modeRef.current === "time" ? selectedTimeRef.current.getTime()>Date.now() ? "future-reference" : selectedTimeRef.current.toISOString().slice(0,10) : "");
+  const timeRetryNonceRef = useRef(mapRetryNonce);
+  const applyBaseMap = (viewer,tiles,ready,map,request,labels) => updateBaseMap(viewer,tiles,ready,modeRef.current === "time" ? timeReferenceRef.current ? "nasa-reference" : "nasa-time" : map,request,labels,mapFactoriesRef.current,(status)=>callbacksRef.current.onMapStatus?.(status),8000,modeRef.current === "time" ? timeReferenceRef.current ? "reference" : selectedTimeRef.current.getTime()>Date.now() ? "future-reference" : selectedTimeRef.current.toISOString().slice(0,10) : "");
   const earthActiveRef = useRef(true);
   const lastInteractionRef = useRef(0);
   const qualityRef = useRef(quality);
-  const orbitStyleRef = useRef(orbitStyle);
   const backgroundQualityRef = useRef(null);
   const [entityRevision, setEntityRevision] = useState(0);
   const [automaticRefresh, setAutomaticRefresh] = useState(0);
@@ -373,12 +376,12 @@ export default function OrbitGlobe({
   mapStyleRef.current = mapStyle;
   modeRef.current = mode;
   selectedTimeRef.current = selectedTime;
+  timeReferenceRef.current = timeReference;
   shownOrbitIdsRef.current = shownOrbitIds;
   onCelestialSelectRef.current = onCelestialSelect;
-  callbacksRef.current = { onSceneReady, onRefreshComplete, onMapStatus, onDetailReady, onScaleChange, onSatelliteStatus, onOrbitInfo };
+  callbacksRef.current = { onSceneReady, onRefreshComplete, onMapStatus, onDetailReady, onScaleChange, onSatelliteStatus, onOrbitInfo, onTimeReady };
   qualityRef.current = quality;
-  orbitStyleRef.current = orbitStyle;
-  }, [selectedTime, selectedId, labelsEnabled, onObjectSelect, onViewTelemetry, mapStyle, mode, shownOrbitIds, onCelestialSelect, onSceneReady, onRefreshComplete, onMapStatus, onDetailReady, onScaleChange, onSatelliteStatus, quality, orbitStyle, onOrbitInfo]);
+  }, [selectedTime, selectedId, labelsEnabled, onObjectSelect, onViewTelemetry, mapStyle, mode, shownOrbitIds, onCelestialSelect, onSceneReady, onRefreshComplete, onMapStatus, onDetailReady, onScaleChange, onSatelliteStatus, quality, onOrbitInfo, onTimeReady, timeReference]);
 
   useImperativeHandle(globeRef, () => ({
     focusSelected() {
@@ -472,7 +475,8 @@ export default function OrbitGlobe({
 
     const googleEvents=googleEventsRef.current;
     const token = import.meta.env.VITE_CESIUM_ION_TOKEN;
-    mapFactoriesRef.current=createEarthMapFactories({ionToken:token,cartoKey:import.meta.env.VITE_CARTO_API_KEY,nasa:createNasaImageryService(),selectedTime:()=>selectedTimeRef.current});
+    const nasaService=createNasaImageryService();
+    mapFactoriesRef.current=createEarthMapFactories({ionToken:token,cartoKey:import.meta.env.VITE_CARTO_API_KEY,nasa:nasaService,selectedTime:()=>selectedTimeRef.current});
     if (token) Ion.defaultAccessToken = token;
 
     const viewer = new Viewer(mountRef.current, {
@@ -553,6 +557,7 @@ export default function OrbitGlobe({
     lastInteractionRef.current = performance.now();
     let googleLoading = false;
     const removeReady = viewer.scene.postRender.addEventListener(() => { removeReady(); callbacksRef.current.onSceneReady?.(); });
+    const idleEarthSpeed=uiNumber("--ui-idle-earth-speed",.00204);
     let idleState = "waiting", pointerHeld = false, lastIdleFrame = performance.now(), lastIdleInteraction = lastInteractionRef.current;
     const touchCamera = () => { lastInteractionRef.current = performance.now(); if (idleState === "framing") viewer.camera.cancelFlight(); idleState = "waiting"; };
     let pointerStart = null, cameraDragged = false;
@@ -813,10 +818,9 @@ export default function OrbitGlobe({
     // Before Primitive.update copies model matrices into this frame's commands.
     // preRender would leave orbit transforms one frame behind entity positions.
     const removeSatelliteUpdate = viewer.scene.preUpdate.addEventListener((_scene, time) => {
-      let stale = 0, staleOrbits = 0, eccentric = 0;
+      let stale = 0, staleOrbits = 0;
       for (const data of entityMap.values()) {
         updateSatelliteOrbit(data, time);
-        if (data.orbitGuide?.eccentric && data.orbitLine) eccentric++;
         const expired = data.track?.isStale(time) || false;
         if (expired) stale++;
         else if (data.orbitState?.stale) staleOrbits++;
@@ -825,8 +829,10 @@ export default function OrbitGlobe({
           data.entity.label.text = `${data.entity.name}${expired ? " · position stale" : ""}`;
         }
       }
-      const orbitInfo={ description:orbitStyleRef.current === "guided" ? `Guided Orbit · schematic circles · ${eccentric} eccentric path${eccentric === 1 ? "" : "s"} use real geometry` : "Scientific Orbit · real SGP4-sampled paths",
-        selectedDescription:orbitStyleDisclosure(orbitStyleRef.current,entityMap.get(selectedIdRef.current)?.orbitGuide) };
+      const selectedData=entityMap.get(selectedIdRef.current),metadata=selectedData?.orbitState?.metadata;
+      const selectedMetadata=metadata && Object.fromEntries(['reference_frame','precision_note','inclination_degrees','eccentricity','orbital_period_seconds','altitude_range_km','tle_epoch','tle_age_seconds','propagation_timestamp'].map(key=>[key,metadata[key]]));
+      const orbitInfo={description:"Orbit Trace · SGP4-predicted trajectories",selectedMetadata,
+        selectedDescription:"Orbit Trace · real propagated path · TEME"};
       const infoKey=JSON.stringify(orbitInfo);
       if(infoKey!==lastOrbitInfo) {lastOrbitInfo=infoKey;callbacksRef.current.onOrbitInfo?.(orbitInfo);}
       const status = stale ? `${stale} satellite position${stale === 1 ? " is" : "s are"} stale. Showing the last valid samples; retrying automatically.`
@@ -856,7 +862,7 @@ export default function OrbitGlobe({
           idleState = "framing";
           const location = viewer.camera.positionCartographic;
           viewer.camera.flyTo({ destination: Cartesian3.fromRadians(location.longitude, location.latitude, 27_000_000), orientation: { heading: 0, pitch: -CesiumMath.PI_OVER_TWO, roll: 0 }, duration: 2, complete: () => { idleState = "rotating"; }, cancel: () => { idleState = "waiting"; } });
-        } else if (idleState === "rotating") viewer.camera.rotate(Cartesian3.UNIT_Z, Math.min(100, now - lastIdleFrame) * 0.0000012);
+        } else if (idleState === "rotating") viewer.camera.rotate(Cartesian3.UNIT_Z, Math.min(100, now - lastIdleFrame) / 1000 * idleEarthSpeed);
       }
       lastIdleFrame = now;
       if (!follow) return;
@@ -907,6 +913,7 @@ export default function OrbitGlobe({
       googleTilesRef.current = null;
       googleReadyRef.current = false;
       mapRequestRef.abort?.();
+      nasaService.destroy();
       googleLoaderRef.current=null;
       followStateRef.current = null;
 
@@ -970,7 +977,7 @@ export default function OrbitGlobe({
 
     const timer = window.setTimeout(() => {
       if (!viewer.isDestroyed()) {
-        applyBaseMap(viewer, googleTilesRef.current, googleReadyRef.current, mapStyleRef.current, mapRequestRef, labelsEnabledRef.current);
+        if(modeRef.current === "live") applyBaseMap(viewer, googleTilesRef.current, googleReadyRef.current, mapStyleRef.current, mapRequestRef, labelsEnabledRef.current);
         if (
           initialModeCameraResetRef.current &&
           startupCameraCommittedRef.current &&
@@ -981,15 +988,7 @@ export default function OrbitGlobe({
             viewer,
             initialCountryRef.current,
           );
-        } else {
-          initialModeCameraResetRef.current = false;
-          setCameraPreset(
-            viewer,
-            "earth",
-            followStateRef,
-            null,
-          );
-        }
+        } else initialModeCameraResetRef.current = false;
       }
     }, cameraDuration(0.47) * 1000);
     return () => window.clearTimeout(timer);
@@ -997,7 +996,7 @@ export default function OrbitGlobe({
 
   useEffect(() => {
     const viewer = viewerRef.current;
-    if (!viewer || !earthActiveRef.current) return;
+    if (!viewer || !earthActiveRef.current || mode === "time") return;
     if(mode === "live" && mapStyle === "google" && mapRequestRef.googleError && mapRetryNonce>0 && googleRetryNonceRef.current!==mapRetryNonce) {
       googleRetryNonceRef.current=mapRetryNonce;
       // Keep a valid raster surface before releasing failed/cached Google data.
@@ -1013,6 +1012,18 @@ export default function OrbitGlobe({
     if(mode === "live" && mapStyle === "google" && !mapRequestRef.googleError) googleLoaderRef.current?.();
     applyBaseMap(viewer, googleTilesRef.current, googleReadyRef.current, mapStyle, mapRequestRef, labelsEnabled);
   }, [mapStyle, mode, labelsEnabled, selectedTime, mapRetryNonce]);
+
+  useEffect(()=>{
+    const viewer=viewerRef.current;
+    if(!viewer || mode !== "time") return undefined;
+    if(timeRetryNonceRef.current!==mapRetryNonce) {mapRequestRef.activeKey=null;timeRetryNonceRef.current=mapRetryNonce;}
+    const controller=new AbortController();
+    prepareTimeScene(viewer,{time:selectedTime,signal:controller.signal,earth:earthActiveRef.current,
+      applyMap:()=>applyBaseMap(viewer,googleTilesRef.current,googleReadyRef.current,mapStyleRef.current,mapRequestRef,labelsEnabledRef.current)})
+      .then(()=>{if(!controller.signal.aborted) callbacksRef.current.onTimeReady?.({timestamp:selectedTime.getTime()});})
+      .catch(error=>{if(error.name !== "AbortError" && !controller.signal.aborted) callbacksRef.current.onTimeReady?.({timestamp:selectedTime.getTime(),error:error.message});});
+    return ()=>controller.abort();
+  },[mode,selectedTime,mapRetryNonce,timeReference]);
 
   useEffect(() => {
     const viewer = viewerRef.current;
@@ -1251,8 +1262,7 @@ export default function OrbitGlobe({
           if (currentData.orbitEntity?.polyline) {
             currentData.orbitEntity.polyline.positions = orbitPositions;
             attachSatelliteOrbit(currentData, satelliteOrbitCollectionRef.current, orbitPositions, orbitState);
-            setSatelliteOrbitDisplay(currentData,orbitStyleRef.current);
-            currentData.orbitEpoch = orbitEpoch;
+            currentData.orbitEpoch = orbit.tle_epoch ?? orbitEpoch;
             styleSatelliteOrbit(currentData, color, selected, shownOrbitIdsRef.current.size, viewer.camera.positionCartographic.height);
             currentData.orbitEntity.show = earthActiveRef.current;
             viewer.scene.requestRender();
@@ -1272,8 +1282,7 @@ export default function OrbitGlobe({
           });
           styleSatelliteOrbit(currentData, color, selected, shownOrbitIdsRef.current.size, viewer.camera.positionCartographic.height);
           attachSatelliteOrbit(currentData, satelliteOrbitCollectionRef.current, orbitPositions, orbitState);
-            setSatelliteOrbitDisplay(currentData,orbitStyleRef.current);
-          currentData.orbitEpoch = orbitEpoch;
+          currentData.orbitEpoch = orbit.tle_epoch ?? orbitEpoch;
           styleSatelliteOrbit(currentData, color, selected, shownOrbitIdsRef.current.size, viewer.camera.positionCartographic.height);
           viewer.scene.requestRender();
         } catch (error) {
@@ -1290,16 +1299,6 @@ export default function OrbitGlobe({
     return undefined;
   }, [shownOrbitIds, entityRevision, automaticRefresh, mode]);
 
-
-  useEffect(() => {
-    const viewer=viewerRef.current;
-    if(!viewer) return;
-    for(const data of entityMapRef.current.values()) {
-      setSatelliteOrbitDisplay(data,orbitStyle);
-      updateSatelliteOrbit(data,viewer.clock.currentTime);
-    }
-    viewer.scene.requestRender();
-  },[orbitStyle]);
 
   if (sceneError) throw sceneError;
   return <div className="orbit-globe" ref={mountRef} />;

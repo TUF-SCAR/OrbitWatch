@@ -1,6 +1,6 @@
-# Submission gaps — inspected 12 October 2026
+# Submission gaps — inspected 13 October 2026
 
-Deadline: **1 November 2026**. Based on current `main` at `0f0a8da` plus the preserved
+Deadline: **1 November 2026**. Based on current `main` at `7bf88c7` plus the preserved
 working tree. This is implementation scoping, not a claim that absent features
 are complete. The two-mode frontend/map/navigation batch is implemented. Weather ingestion, historical satellite storage/propagation and deployment remain separate development batches.
 
@@ -80,13 +80,14 @@ require `backend/.env` and override process environment. Configure hosted origin
 HTTPS/API base and secret loading; serve SPA auth routes, Cesium static assets,
 models and media with correct paths. Supply/migrate staging storage separately
 from the existing database. Startup runs `create_all` and orbital ingestion;
-multiple API workers would each start a refresh loop, so worker ownership needs
-an explicit deployment policy. A health/readiness endpoint and repeatable install,
+same-host API workers now elect one lifespan scheduler and coordinate refresh
+jobs plus persistent provider budgets. Multiple independent hosts still need
+one designated ingestion owner/shared distributed lease. A health/readiness endpoint and repeatable install,
 backup/recovery, provider-failure and deployed login/travel/mode checks are missing.
 
 Existing assets have provenance in [ASSETS.md](ASSETS.md); Cesium/map provider
 access, geocoder and orbital feeds still need target-host smoke tests.
-The build's large-chunk warning is known, not a build failure. Current checks:80 frontend tests, lint/build, isolated 39-request backend contracts, prior read-only 1/6/12/24/44 API batches and 44 orbits, and final dual-style 1/6/12/24/44 native GPU cases (900 frames). The authenticated large-load browser network
+The build's large-chunk warning is known, not a build failure. Current checks:86 frontend tests, lint/build, isolated 39-request backend contracts, prior read-only 1/6/12/24/44 API batches and 44 orbits, and final dual-style 1/6/12/24/44 native GPU cases (900 frames). The authenticated large-load browser network
 check remains limited by intermittent test-bridge fetch failures; do not conflate
 that with the successful GPU/SGP4 checks.
 
@@ -101,4 +102,6 @@ Eight surviving terminology matches are spacecraft scientific mission/type
 metadata in `frontend/src/data/spaceObjects.js` and its matching backend catalog,
 not feature implementation. These shared descriptions are deliberately retained.
 The dedicated dock and exclusive event service were deleted; no dedicated backend
-feature, asset or package dependency was found. Backend files remain unchanged.
+feature, asset or package dependency was found. The removal did not affect shared backend catalog metadata. Later precise
+orbital responses and provider safeguards are documented in
+[ORBIT_INVESTIGATION](ORBIT_INVESTIGATION.md) and [API_USAGE](API_USAGE.md).

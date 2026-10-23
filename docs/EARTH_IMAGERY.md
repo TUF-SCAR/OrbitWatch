@@ -92,3 +92,26 @@ Genuine browser checks: archived2024-06-01 imagery/root JPEG; advertised
 restoration. Daily selections and future fallback retain one scene/layer and
 one outgoing error-listener owner. Historical satellite/weather data is a
 separate pending backend batch.
+
+## 13 October loading/quality pass
+
+Time entry and committed date changes now cover the viewport while preparing
+same-time scene frames and visible tiles in the shared Viewer. Edits coalesce
+300ms; newer committed requests cancel stale imagery application. Hour changes
+within the same UTC imagery day retain the provider. Capabilities are date-
+independent: canceled dates share one bounded fetch, released on Viewer disposal.
+Successful metadata caches an hour; failures respect Retry-After and exponential
+backoff with up to15s jitter. Readiness has a timeout and explicit retry/fallback;
+instant local computations incur no artificial multi-second minimum.
+
+Representative2000/2010/2020/2024 root images were valid; this does not prove
+uniform coverage/quality for every tile/day. MODIS cloud/swath gaps and limited
+resolution remain honest data limitations, with maximum level9 respected. A
+Mercator tile matrix also ends near ±85.05° latitude; polar coverage is not a
+complete global observation map. Valid root tiles do not certify every visible
+swath or eliminate real cloud/coverage gaps.
+The View reference map control supplies a clearly labeled fixed nonhistorical NASA
+composite while retaining selected time. It does not fill daily black gaps with
+unlabeled observations. If NASA reference tiles fail, only the credited static
+local reference is used, never current Esri as a Time reference. Injected metadata
+failure and retry/recovery were browser-checked; no large tile-grid download.

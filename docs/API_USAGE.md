@@ -99,3 +99,32 @@ CelesTrak non-200 circuit. These tests measure the protected request architectur
 actual tile counts vary with viewport/camera/provider cache/account and must be
 monitored on the deployed host. Existing local read-only bridge accessed Supabase
 records, without writes; it never started ingestion/auth account changes.
+
+## Live weather — 23 October2026
+
+Protected `/api/weather/temperature`, `/location` and `/status` use the existing
+JWT/DB checks. Weather never changes satellite provider budgets. See
+[Weather](WEATHER.md) for scientific metadata, official source terms and cache
+semantics. Browser users never contact weather providers directly.
+
+NOAA receives one global1° TMP2m field request, not a full GFS model file. Shared
+persisted minimum30min spacing (+jitter),4/hour and32/day caps apply. Open-Meteo
+uses2s spacing (+jitter),60/hour and500/day caps, comfortably below published free
+noncommercial limits. Failed requests consume reservations; exponential backoff
+and Retry-After survive restarts. One OS lease serializes weather HTTP across
+same-host workers. No automatic HTTP retries/redirects, startup downloads,
+mouse-driven requests or per-user global ingestion exists.
+
+Two global fields and256 point keys form the bounded cache. Point coordinates
+round to0.1° and reuse15min records. Browser global polling10min/error30s and
+manual30s checks cannot bypass provider gates. Status never downloads. Use one
+weather API host with persistent local storage; independent stores multiply
+quotas and are not coordinated by a same-host file lock.
+
+**Real weather-data HTTP total:4 (NOAA2, Open-Meteo2).** Each Open-Meteo call
+batched three public locations: six location-equivalent calls total. Initial
+probes and final NOAA production decode/cache verified genuine contracts. All
+stress traffic was mocked; browser used genuine recorded weather through actual
+isolated protected APIs with providers disabled. No production account/Supabase
+access. Documentation/package downloads are not weather-data API requests. Map
+visible-view tiles keep their existing policies and are counted separately.

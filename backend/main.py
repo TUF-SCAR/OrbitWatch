@@ -17,6 +17,7 @@ from models.satellite_orbital_data import (
 )
 from routes.auth import router as auth_router
 from routes.satellites import router as satellite_router
+from routes.weather import router as weather_router
 from workers.satellite_refresh import run_satellite_refresh_worker
 from services.providers.budget import refresh_owner
 
@@ -46,6 +47,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(lifespan=lifespan)
 app.include_router(satellite_router)
 app.include_router(auth_router)
+app.include_router(weather_router)
 
 
 @app.get("/health/live", include_in_schema=False)

@@ -78,8 +78,8 @@ export async function applyBaseMap(viewer, googleTiles, googleReady, effectiveMa
   if(!prepared) {status(failure?.unconfigured ? "unconfigured" : "unavailable","Map imagery unavailable. Previous imagery retained; choose another provider to retry.");viewer.scene.requestRender();return;}
   const {provider}=prepared;
   const old=Array.from({length:viewer.imageryLayers.length},(_,i)=>viewer.imageryLayers.get(i));
-  viewer.imageryLayers.addImageryProvider(provider);
-  old.forEach(layer=>viewer.imageryLayers.remove(layer,true));
+  viewer.imageryLayers.addImageryProvider(provider,0);
+  old.filter(layer=>!layer.orbitwatchWeather).forEach(layer=>viewer.imageryLayers.remove(layer,true));
   request.activeMap=prepared.fallbackMap || primary;
   setEarthMapVisibility(viewer,googleTiles,true,request.activeMap,wantsGoogle && !googleReady);
   if(googleTiles && !googleTiles.show) googleTiles.trimLoadedTiles?.();

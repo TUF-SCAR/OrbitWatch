@@ -177,3 +177,60 @@ Time Earth/Mars/Jupiter/date/return were checked. Clean final runtime has no
 warnings/errors; the normal authenticated 44-object network session remains a
 separate qualification. See the ignored checkpoint/evidence and
 [investigation](ORBIT_INVESTIGATION.md) for measurement limits.
+
+## Live Weather acceptance — 23 October2026
+
+Install the updated lock in a new CPython3.12 venv (Windows verified), then:
+
+```powershell
+.venv/Scripts/python.exe -m eccodes selfcheck
+.venv/Scripts/python.exe -m pip check
+.venv/Scripts/python.exe tests/check_weather.py
+.venv/Scripts/python.exe tests/check_backend_contract.py
+.venv/Scripts/python.exe tests/check_reliability.py
+.venv/Scripts/python.exe tests/check_availability.py
+.venv/Scripts/python.exe tests/check_provider_budgets.py
+npm test --prefix frontend
+npm run lint --prefix frontend
+npm run build --prefix frontend
+```
+
+The five backend harnesses use disposable local SQLite, generated scientific
+fixtures and mocked HTTP; they do not require production credentials. The normal
+backend contract command above passes39 requests. The optional older `--workload`
+flag documented in the historical13October section expects the old lifespan
+symbol and is not validated against the committed reliability refactor; use the
+current dedicated availability/provider harnesses for scheduler/budget checks.
+
+Weather tests exercise actual ecCodes conversion/grid orientation/multiple-message
+rejection, shared concurrent/persisted budgets and quota exhaustion, multi-user
+warm cache reads, coordinates/dateline, timeout/429/recovery, stale/hard expiry,
+DB failure before HTTP and protected200/401/422/503. Frontend tests cover real node
+sampling/poles/wrap/missing data, Celsius palette, freshness and one imagery owner
+with alpha/fade/reduced lifecycle/Google/travel/logout listener disposal.
+
+Results:94 frontend tests pass, lint/build pass; all five backend harnesses pass,
+including39 API contracts,26 reliability checks+40 concurrent failures, worker/
+recovery/scheduler lease and four-process orbital budget tests. Fresh Windows
+locked installation/selfcheck/pip check passed. Existing build chunk advisory and
+upstream TestClient deprecation remain. Linux/macOS require host qualification.
+
+Native browser: actual React/Cesium + isolated FastAPI JWT/SGP4, temporary account
+and six synthetic TLEs; genuine final NOAA/Open-Meteo recordings, no external
+weather HTTP during UI/stress testing. Verified overlay/legend, opacity/toggle,
+three locations/stale/error/cached recovery, selection/Follow unchanged,
+Esri/OpenStreetMap/Google explicit choice, Earth→Mars→Earth, Time gating, mobile
+390×844/390×667 and logout. Approved Orbit Trace sources are unchanged.
+
+`tests/weather_browser.py --serve` starts the isolated API on127.0.0.1:8001 using
+`.orbitwatch-backups/weather/browser-cache`; point records expire normally, so
+old recordings do not remain falsely current. Only `--fetch-real` deliberately
+contacts providers (two data HTTP calls: one NOAA + one3-location Open-Meteo).
+Do not use that option in stress loops. Start Vite with the API base8001 and
+port5175 for this fixture; use only its disposable login printed by the helper.
+The cache/evidence are ignored local artifacts, not production data. Actual data
+requests this entire batch were4 total (2NOAA+2Open-Meteo;6point equivalents).
+
+See `.orbitwatch-backups/weather/README.md` for screenshots, recordings, logs,
+request accounting and qualifications. See [Weather](WEATHER.md) for supported
+science/controls/installation, future NOAA product transition and provider terms.

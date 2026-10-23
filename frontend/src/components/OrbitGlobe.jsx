@@ -50,6 +50,7 @@ import { createPlaceLabelLayer } from "../services/placeLabelLayer.js";
 import { createPlaceSearch } from "../services/placeSearch.js";
 import { prepareTimeScene } from "../services/timeScenePreparation.js";
 import { cameraDuration } from "../utils/motionPreferences.js";
+import { createTemperatureLayer } from '../services/temperatureLayer.js';
 
 const EARTH_RADIUS_KM = 6371.0088;
 const EARTH_MU = 3.986004418e14;
@@ -320,10 +321,15 @@ export default function OrbitGlobe({
   quality = "auto",
   onOrbitInfo,
   onDetailReady,
+  weatherField,
+  weatherVisible = false,
+  weatherOpacity = .55,
+  weatherCompatible = false,
 }) {
   const mountRef = useRef(null);
   const viewerRef = useRef(null);
   const placeSearchRef = useRef(null);
+  const temperatureLayerRef = useRef(null);
   const startupCameraCommittedRef = useRef(false);
   const initialModeCameraResetRef = useRef(true);
   const initialCountryRef = useRef(startupCountry);
@@ -384,6 +390,14 @@ export default function OrbitGlobe({
   }, [selectedTime, selectedId, labelsEnabled, onObjectSelect, onViewTelemetry, mapStyle, mode, shownOrbitIds, onCelestialSelect, onSceneReady, onRefreshComplete, onMapStatus, onDetailReady, onScaleChange, onSatelliteStatus, quality, onOrbitInfo, onTimeReady, timeReference]);
 
   useImperativeHandle(globeRef, () => ({
+    weatherViewCenter() {
+      const viewer=viewerRef.current;if(!viewer||!earthActiveRef.current)return null;
+      const canvas=viewer.scene.canvas;
+      const point=viewer.camera.pickEllipsoid(new Cartesian2(canvas.clientWidth/2,canvas.clientHeight/2),viewer.scene.globe.ellipsoid);
+      if(!point)return null;
+      const coordinate=viewer.scene.globe.ellipsoid.cartesianToCartographic(point);
+      return {latitude:CesiumMath.toDegrees(coordinate.latitude),longitude:CesiumMath.toDegrees(coordinate.longitude)};
+    },
     focusSelected() {
       lastInteractionRef.current = performance.now();
       const viewer = viewerRef.current;
@@ -846,6 +860,11 @@ export default function OrbitGlobe({
       placeLabels.update(now, labelsEnabledRef.current && earthActiveRef.current, mapRequestRef.activeMap);
       if (now - lastViewTelemetryAtRef.current > 500) {
         lastViewTelemetryAtRef.current = now;
+        // Development-only browser evidence; no camera mutation or extra clock.
+        if(import.meta.env.DEV) {
+          const weatherLayers=Array.from({length:viewer.imageryLayers.length},(_,i)=>viewer.imageryLayers.get(i)).filter(layer=>layer.orbitwatchWeather);
+          mountRef.current?.setAttribute('data-weather-diagnostics',JSON.stringify({layers:weatherLayers.length,alpha:weatherLayers[0]?.alpha??0,following:followStateRef.current?.noradId??null,selected:selectedIdRef.current,tracked:entityMap.size,earth:earthActiveRef.current,mode:modeRef.current}));
+        }
         const cameraCartographic = viewer.scene.globe.ellipsoid.cartesianToCartographic(viewer.camera.positionWC);
         onViewTelemetryRef.current?.({
           cameraAltitudeKm: cameraCartographic ? Math.max(0, cameraCartographic.height / 1000) : null,
@@ -882,6 +901,7 @@ export default function OrbitGlobe({
 
     return () => {
       destroyed = true;
+      temperatureLayerRef.current?.destroy();temperatureLayerRef.current=null;
       mapRequestRef.current += 1;
       mapRequestRef.removeError?.();
       mapRequestRef.removeError = null;
@@ -993,6 +1013,13 @@ export default function OrbitGlobe({
     }, cameraDuration(0.47) * 1000);
     return () => window.clearTimeout(timer);
   }, [mode]);
+
+  useEffect(()=>{
+    const viewer=viewerRef.current;if(!viewer||viewer.isDestroyed())return;
+    temperatureLayerRef.current ||= createTemperatureLayer(viewer);
+    temperatureLayerRef.current.update({field:weatherField,visible:weatherVisible&&mode==='live'&&selectedCelestialBody==='earth',
+      opacity:weatherOpacity,compatible:weatherCompatible,immediate:mode!=='live'||selectedCelestialBody!=='earth'});
+  },[weatherField,weatherVisible,weatherOpacity,weatherCompatible,mode,selectedCelestialBody]);
 
   useEffect(() => {
     const viewer = viewerRef.current;

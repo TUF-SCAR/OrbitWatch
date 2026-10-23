@@ -145,3 +145,21 @@ explains that pre-ping does not rescue an interrupted transaction;
 [error handlers](https://fastapi.tiangolo.com/tutorial/handling-errors/) underpin
 startup ownership and safe HTTP responses. Application-specific behavior above
 is verified by the repository's isolated tests, not inferred from those guides.
+
+## Live weather runtime
+
+See [Weather](WEATHER.md) for NOAA/Open-Meteo contracts, terms, quota limits and
+upstream GFSv17 lifecycle risk. No weather database migration is needed. The
+updated Python lock adds ecCodes2.50.0. A fresh Windows CPython3.12 install,
+`python -m eccodes selfcheck`, `pip check` and real GRIB decoding were verified.
+Linux/macOS use pinned non-Windows eccodeslib; qualify its wheel, OS/architecture
+and real decoding on the chosen host before deployment.
+
+Persist `backend/.runtime/weather` (or `ORBITWATCH_WEATHER_CACHE_DIR`) on one
+weather API host. Its workers share local SQLite/OS locks and budgets. Independent
+containers/hosts with separate volumes multiply quotas; route `/api/weather/*`
+to that designated host. A network SQLite share is not a distributed lease.
+`ORBITWATCH_WEATHER_PROVIDER_REQUESTS=false` serves only usable cache; true is the
+normal setting. No startup weather download occurs. DB availability gates all
+external refreshes. Check target-host NOMADS/Open-Meteo access, noncommercial
+terms, attribution and actual raster/Google compatibility on staging.

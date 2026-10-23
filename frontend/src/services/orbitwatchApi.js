@@ -161,3 +161,8 @@ export function loginAccount({ usernameOrEmail, password, signal }) {
 export function fetchCurrentUser(signal) {
   return requestJson("/api/auth/me", { signal });
 }
+
+export function fetchTemperatureField(signal) { return requestJson('/api/weather/temperature',{signal}); }
+export function fetchLocationWeather(latitude,longitude,signal) {
+  return requestJson(`/api/weather/location?${new URLSearchParams({latitude:String(latitude),longitude:String(longitude)})}`,{signal});
+}

@@ -8,3 +8,5 @@ PyJWT==2.14.0
 pwdlib[argon2]==0.3.1
 skyfield==1.55
 httpx==0.28.1
+eccodes==2.50.0
+numpy==2.5.3

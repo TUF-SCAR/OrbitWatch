@@ -11,10 +11,20 @@ def unavailable():
 
 
 @router.get('/temperature')
-def temperature(response: Response):
+def temperature(response: Response, bundle: bool = False):
     response.headers['Cache-Control']='private, no-store'
-    try: return global_temperature()
+    try:
+        result = global_temperature(require_fields=True) if bundle else global_temperature()
+        if not result.get('values_c'):
+            response.status_code = 202 if result['state'] in {'preparing','downloading','decoding'} else 503
+            response.headers['Retry-After'] = str(result['retry_after_seconds'])
+        return result
     except WeatherDeferred: unavailable()
+
+
+@router.get('/fields')
+def fields(response: Response):
+    return temperature(response, bundle=True)
 
 
 @router.get('/location')

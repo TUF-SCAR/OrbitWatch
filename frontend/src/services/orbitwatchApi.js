@@ -52,6 +52,12 @@ async function requestJson(path, options = {}) {
     let code = null;
     try {
       const body = await response.json();
+      // Weather's safe state envelope carries its legitimate retry deadline.
+      // Auth/DB and all other endpoint failures keep the existing error path.
+      if (['/api/weather/temperature','/api/weather/fields'].includes(path) && response.status === 503 &&
+          ['cooldown','failed','unavailable'].includes(body?.state) &&
+          Number.isFinite(body?.retry_after_seconds)) return body;
+      if(path==='/api/events'&&response.status===503&&body?.state==='unavailable'&&Array.isArray(body.events)&&body.providers)return body;
       detail = body?.detail ?? null;
       code = body?.code ?? null;
     } catch {
@@ -163,6 +169,8 @@ export function fetchCurrentUser(signal) {
 }
 
 export function fetchTemperatureField(signal) { return requestJson('/api/weather/temperature',{signal}); }
+export function fetchWeatherFields(signal) { return requestJson('/api/weather/fields',{signal}); }
+export function fetchNaturalEvents(signal) { return requestJson('/api/events',{signal}); }
 export function fetchLocationWeather(latitude,longitude,signal) {
   return requestJson(`/api/weather/location?${new URLSearchParams({latitude:String(latitude),longitude:String(longitude)})}`,{signal});
 }

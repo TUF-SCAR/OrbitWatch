@@ -37,3 +37,26 @@
 @media(min-width:721px) and (max-width:1100px) {
   .scene-dock--weather .scene-tool span { display:none; }
 }
+
+.weather-field-picker { display:flex; flex-direction:column; gap:7px; font-size:var(--ui-font-sm); color:var(--ui-text-muted); margin-bottom:14px; }
+.weather-field-picker select { width:100%; padding:10px; background:var(--ui-background); border:1px solid var(--line); color:var(--ui-text); font:inherit; }
+
+.weather-view-tabs { display:flex; border-bottom:1px solid var(--line); padding:0 16px; gap:8px; flex-shrink:0; }
+.weather-view-tabs button { flex:1; min-height:40px; border:0; border-bottom:2px solid transparent; color:var(--ui-text-muted); background:transparent; font:inherit; font-size:var(--ui-font-sm); cursor:pointer; }
+.weather-view-tabs button[aria-pressed=true] { color:var(--accent); border-bottom-color:var(--accent); }
+.natural-events { min-width:0; font-size:var(--ui-font-regular); }
+.event-list { list-style:none; margin:0; padding:0; }
+.event-list button { width:100%; display:flex; align-items:flex-start; gap:10px; padding:12px 0; text-align:left; border:0; border-top:1px solid var(--line); color:var(--ui-text); background:transparent; font:inherit; cursor:pointer; }
+.event-list i { width:7px; height:7px; margin-top:6px; border-radius:50%; flex-shrink:0; }
+.event-list strong { display:block; font-size:var(--ui-font-regular); font-weight:500; overflow-wrap:anywhere; }
+.event-list small { display:block; margin-top:5px; }
+.event-inspector { border-left:2px solid var(--accent); padding-left:14px; margin-bottom:18px; }
+.event-inspector h3 { margin:14px 0; font-size:var(--ui-font-large); line-height:1.35; }
+.event-facts { margin:12px 0; font-size:var(--ui-font-sm); }
+.event-facts>div { border-top:1px solid var(--line); padding:8px 0; }
+.event-facts dt { color:var(--ui-text-muted); }
+.event-facts dd { margin:4px 0 0; overflow-wrap:anywhere; }
+.event-facts small { display:block; margin-top:4px; }
+.event-report-link { color:var(--accent); font-size:var(--ui-font-sm); display:inline-block; min-height:36px; }
+.event-provider { border-top:1px solid var(--line); padding:12px 0; }
+.event-timeline { padding-left:20px; max-height:200px; overflow:auto; }

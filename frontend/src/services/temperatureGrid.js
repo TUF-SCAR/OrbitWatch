@@ -30,9 +30,10 @@ export function temperaturePixels(field,width=720,height=360) {
   for(let y=0;y<height;y++)for(let x=0;x<width;x++)pixels.set(temperatureColor(sampleTemperature(field,-180+(x+.5)*360/width,90-(y+.5)*180/height)),(y*width+x)*4);
   return pixels;
 }
-export function weatherFreshness(field,now=Date.now()) {
+export function weatherFreshness(field,now=Date.now(),kind='global') {
   if(!field)return 'unavailable';
   const validAge=now-Date.parse(field.valid_at),cacheAge=now-Date.parse(field.retrieved_at);
-  if(!Number.isFinite(validAge)||!Number.isFinite(cacheAge)||validAge>86400000||validAge< -10800000)return 'unavailable';
-  return field.state==='stale'||validAge>21600000||cacheAge>21600000?'stale':'available';
+  const location=kind==='location';
+  if(!Number.isFinite(validAge)||!Number.isFinite(cacheAge)||validAge>(location?10800000:86400000)||validAge< -10800000)return 'unavailable';
+  return field.state==='stale'||validAge>(location?1800000:21600000)||cacheAge>(location?900000:21600000)?'stale':'available';
 }

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import {storeAccessToken,getStoredAccessToken,clearAccessToken,fetchCurrentUser,loginAccount,registerAccount} from '../src/services/orbitwatchApi.js';
+import {storeAccessToken,getStoredAccessToken,clearAccessToken,fetchCurrentUser,loginAccount,registerAccount,fetchTemperatureField} from '../src/services/orbitwatchApi.js';
 
 test('temporary infrastructure failures preserve credentials; invalid sessions clear only their own token',async t=>{
   const previousWindow=globalThis.window,previousFetch=globalThis.fetch;
@@ -44,4 +44,23 @@ test('login/registration outage and recovery, validation, malformed responses an
   const controller=new AbortController();controller.abort();
   globalThis.fetch=async()=>{throw controller.signal.reason;};
   await assert.rejects(fetchCurrentUser(controller.signal),e=>e.name==='AbortError');
+});
+
+test('weather preparation/cooldown envelopes preserve auth while DB outages and401 retain normal handling',async t=>{
+  const previousWindow=globalThis.window,previousFetch=globalThis.fetch;
+  const storage=new Map(),events=[];
+  globalThis.window={localStorage:{getItem:k=>storage.get(k),setItem:(k,v)=>storage.set(k,v),removeItem:k=>storage.delete(k)},dispatchEvent:e=>events.push(e.type)};
+  t.after(()=>{clearAccessToken();globalThis.window=previousWindow;globalThis.fetch=previousFetch;});
+  storeAccessToken('weather-test-session');
+  for(const [status,state,retry] of [[202,'downloading',3],[503,'cooldown',1800]]) {
+    globalThis.fetch=async()=>new Response(JSON.stringify({state,retry_after_seconds:retry}),{status});
+    assert.equal((await fetchTemperatureField()).state,state);
+    assert.equal(getStoredAccessToken(),'weather-test-session');
+  }
+  globalThis.fetch=async()=>new Response(JSON.stringify({code:'database_unavailable',detail:'private SQL'}),{status:503});
+  await assert.rejects(fetchTemperatureField(),e=>e.code==='database_unavailable'&&e.detail===null);
+  assert.equal(getStoredAccessToken(),'weather-test-session');assert.deepEqual(events,[]);
+  globalThis.fetch=async()=>new Response(JSON.stringify({detail:'Invalid token'}),{status:401});
+  await assert.rejects(fetchTemperatureField(),e=>e.status===401);
+  assert.equal(getStoredAccessToken(),null);assert.deepEqual(events,['orbitwatch:unauthorized']);
 });

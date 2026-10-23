@@ -128,3 +128,45 @@ stress traffic was mocked; browser used genuine recorded weather through actual
 isolated protected APIs with providers disabled. No production account/Supabase
 access. Documentation/package downloads are not weather-data API requests. Map
 visible-view tiles keep their existing policies and are counted separately.
+
+### Weather cold-start/retry correction (ac36865 follow-up)
+
+Global cold misses now start one background job and return202 plus safe phase and
+retry interval, instead of blocking behind a download longer than the frontend's
+10s general timeout. No-field cooldown503 responses include the actual shared
+provider deadline; frontend timers/reopen/manual checks honor it. Active jobs are
+normally checked after3s, healthy fields after10min, offline transport after60s.
+The existing NOAA/Open-Meteo spacing/budgets/backoff remain unchanged; safe local
+activity diagnostics do not reset gates, call history or fields. Local decoder
+preflight occurs before spending a NOAA reservation.
+
+This follow-up made exactly **two new weather-data HTTP requests: NOAA1 and
+Open-Meteo1**. The normal cache's cumulative counters moved NOAA1→2 and
+Open-Meteo5→6 (earlier calls include the user's own activity). These are separate
+from the original isolated batch's4 calls. Repeated UI requests and a backend
+restart reused normal data without another download. Failure/stress cases used
+only mocks/disposable caches. See [Weather](WEATHER.md) for evidence and the
+explicitly unknown original historical failure category.
+
+
+## Global fields and natural reports (23 October expansion)
+
+`GET /api/weather/fields` is protected, with the same202 preparation /503 safe
+cooldown envelope and Retry-After contract as temperature. A200 includes the
+original temperature plus instant cloud %, precipitation mm/h and east/north10m
+wind arrays in `fields`; valid/init/retrieval metadata is shared. One grouped
+NOAA request; existing NOAA/Open-Meteo budgets are unchanged. No Time requests.
+
+`GET /api/events` is protected and read-only.200 supplies usable provider caches
+(including legitimate empty results); `state` is available/partial, each provider
+has its own freshness/failure/deadline/count/limitation.202 means no cache yet and
+jobs preparing;503 means no usable provider cache.401 and database503 retain the
+normal auth/DB contract. Response has `events`, `providers`, `generated_at`,
+`optional_sources`, `disclaimer`; generated time is not a provider retrieval time.
+
+`GET /api/events/{event_id}` returns a cached normalized report and provider
+status, or404 if absent/hard-expired; it does **zero** upstream HTTP. IDs use
+`eonet:EONET_…`, `gdacs:TC:…`, `usgs:…`, validated to180safe characters. List already
+contains all supported details; clicks do not fan out to source detail services.
+All endpoints return private,no-store. No arbitrary URL, bbox, pagination or
+provider credential can be supplied by a client. See [contracts and budgets](NATURAL_EVENTS.md).

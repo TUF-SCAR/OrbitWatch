@@ -1,14 +1,14 @@
-# Submission gaps — 23 October 2026
+# Submission gaps —24October2026 IST
 
-Deadline: **1 November 2026**. Current baseline `55bb762` plus the uncommitted Live
-Weather batch. See [weighted assessment](COMPLETION_ASSESSMENT.md) (78%, moderate
+Deadline: **1 November 2026**. Current baseline `ac36865` plus preserved Weather reliability and the uncommitted
+global Weather/natural-events expansion. See [weighted assessment](COMPLETION_ASSESSMENT.md) (about79%, moderate
 confidence ±5), [Weather](WEATHER.md), [deployment](DEPLOYMENT.md) and
 [API usage](API_USAGE.md). Exactly two modes remain: Live and Time Explorer.
 Disaster Lab stays permanently removed. No production schema/accounts changed.
 
 | Area | Implemented | Partial / qualification | Missing / next dependency |
 | --- | --- | --- | --- |
-| Live Earth weather | Genuine NOAA GFS1° global2m temperature, eight Open-Meteo location values, protected API, valid/init/retrieval metadata, legend/opacity/toggle, quotas/cache/stale/error, native Cesium integration | Clean Windows ecCodes verified; target OS/provider rights need deployment checks; Google3D explicitly unsupported with user Esri choice | No blocking local feature defect; monitor proposed GFSv17 product retirement; certify deployed operation |
+| Live Earth weather | Genuine NOAA GFS1° temperature/cloud coverage/instant precipitation/static10m wind, EONET/GDACS/USGS reported events, eight Open-Meteo location values, protected API, valid/init/retrieval metadata, legend/opacity/toggle, quotas/cache/stale/error, native Cesium integration | Clean Windows ecCodes verified; target OS/provider rights need deployment checks; Google3D explicitly unsupported with user Esri choice | No blocking local feature defect; monitor proposed GFSv17 product retirement; certify deployed operation |
 | Time satellites | Date/time controls,15-object selection, paused clock and honest unavailable state | Scientific renderer can consume future epoch-aware samples | Licensed historical source/coverage, multi-epoch archive/migration, as-of API and time-aware telemetry/cache |
 | Time celestial | Shared Sun/eight-planet navigation, travel/return, LOD/slider, selected-time calculations | Approximate J2000 model, not precision historical ephemerides | Defensible scientific validity/coverage policy; precision history only if required |
 | Earth maps | Live provider gallery/fallback/credits; existing Time NASA metadata/exact advertised days/reference fallback | Network/key/account availability; CARTO key absent | Target-host rights/smoke tests; agreed fixed Time reference replacement in next batch |
@@ -86,3 +86,35 @@ preserves its implementation. Local tests are not hosted production certificatio
 
 Next sequence: historical source/Time scope; staging qualification; submission
 rehearsal. Optional orbit/background/general UI cosmetics remain closed.
+
+Normal Weather follow-up (ac36865): protected temperature/location200 and actual
+normal-cache rendering are now verified with an existing testing account. Cold
+requests use202/background single-flight;503 retry deadlines match persisted
+provider gates instead of30s. Historical failure categories were not stored, so
+no unsupported original network/decoder cause is claimed. Subsequent permitted
+NOAA retrieval succeeded; no cache/cooldown reset was used. Held point readings
+now age by both retrieval/valid time and disappear at hard expiry. See
+[Weather](WEATHER.md). Time Explorer remains untouched and separately scoped.
+
+
+## Expanded Weather/events batch — complete locally
+
+New modules: `weather_fields.py`, `natural_event_data.py`, `natural_events.py`,
+`routes/natural_events.py`; `weatherFields.js`, `weatherPresentation.js`,
+`naturalEventLayer.js`, `useNaturalEvents.js`, `NaturalEventsPanel.jsx` plus narrow
+existing Weather/App/Viewer integration. Protected fields/list/cache-only detail
+routes, independent provider caches/quotas/normalization, clustered/selectable
+reported events and source-limited inspector are implemented. See
+[Natural events](NATURAL_EVENTS.md) for contracts, sources, limits and missing keys.
+
+Local acceptance: actual sunlit comparison, four real fields,671reported events,
+cyclone/quake/flood/fire/volcano handling, empty categories, source timestamps,
+Follow/picking/travel/Time isolation, mobile and logout;102frontend tests and
+backend suites/lint/build pass. Native OS reduced-motion override is not exposed
+by this browser; deterministic initial/dynamic reduced-motion checks pass.
+GIBS daily observed clouds and FIRMS hotspot adapter are **not enabled**; no
+synthetic events, danger areas or inferred tracks substitute for missing data.
+
+The next batch is still Time Explorer: genuine epoch archive/source feasibility,
+as-of propagation/API and the separately agreed fixed Time map work. This batch
+has not begun it, any migration, deployment or Disaster Lab work.

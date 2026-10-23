@@ -1,21 +1,25 @@
 import { Credit, Rectangle, SingleTileImageryProvider } from 'cesium';
-import { temperaturePixels } from './temperatureGrid.js';
+import { weatherPixels, drawWindVectors } from './weatherFields.js';
+import { createWeatherPresentation } from './weatherPresentation.js';
 import { prefersReducedMotion } from '../utils/motionPreferences.js';
 
 export function temperatureProvider(field) {
   const canvas=document.createElement('canvas');canvas.width=720;canvas.height=360;
   const context=canvas.getContext('2d'),image=context.createImageData(720,360);
-  image.data.set(temperaturePixels(field));context.putImageData(image,0,0);
+  image.data.set(weatherPixels(field));context.putImageData(image,0,0);
+  if(field.display_variable==='wind')drawWindVectors(context,field,720,360);
   return new SingleTileImageryProvider({url:canvas.toDataURL('image/png'),tileWidth:720,tileHeight:360,rectangle:Rectangle.MAX_VALUE,
-    credit:new Credit('<a href="https://nomads.ncep.noaa.gov/">NOAA/NCEP GFS · 2 m air temperature</a>')});
+    credit:new Credit('<a href="https://nomads.ncep.noaa.gov/">NOAA/NCEP GFS · model weather</a>')});
 }
 
 export function createTemperatureLayer(viewer,{makeProvider=temperatureProvider,now=()=>performance.now(),reduced=prefersReducedMotion}={}) {
   let layer=null,key=null,removeFrame=null,destroyed=false;
+  const presentation=createWeatherPresentation(viewer.scene);
   function remove() {
     removeFrame?.();removeFrame=null;
     if(layer&&viewer.imageryLayers.contains(layer))viewer.imageryLayers.remove(layer,true);
     layer=null;key=null;
+    presentation.set(false);
   }
   function fade(target) {
     removeFrame?.();removeFrame=null;
@@ -25,6 +29,7 @@ export function createTemperatureLayer(viewer,{makeProvider=temperatureProvider,
       if(destroyed||viewer.isDestroyed()||!viewer.imageryLayers.contains(current)){removeFrame?.();removeFrame=null;return;}
       const progress=reduced()?1:Math.min(1,(now()-start)/350),ease=progress*progress*(3-2*progress);
       current.alpha=from+(target-from)*ease;
+      presentation.set(current.alpha>0,target===0?1-ease:from===0?ease:1);
       if(progress>=1){removeFrame?.();removeFrame=null;if(target===0)remove();}
       else viewer.scene.requestRender();
     };

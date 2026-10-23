@@ -10,6 +10,7 @@ from pathlib import Path
 import random
 import sqlite3
 import time
+import math
 from email.utils import parsedate_to_datetime
 
 
@@ -31,6 +32,7 @@ class WeatherCache:
                 connection.execute("CREATE TABLE IF NOT EXISTS data(key TEXT PRIMARY KEY,kind TEXT,payload TEXT,retrieved REAL)")
                 connection.execute("CREATE TABLE IF NOT EXISTS gates(provider TEXT PRIMARY KEY,next_at REAL,failures INTEGER)")
                 connection.execute("CREATE TABLE IF NOT EXISTS calls(provider TEXT,stamp REAL)")
+                connection.execute("CREATE TABLE IF NOT EXISTS activity(provider TEXT PRIMARY KEY,phase TEXT,category TEXT,http_status INTEGER,updated REAL)")
                 yield connection
         finally:
             connection.close()
@@ -77,7 +79,7 @@ class WeatherCache:
 
     def reserve(self, provider):
         now = self.clock()
-        interval, hourly, daily = (1800, 4, 32) if provider == 'noaa' else (2, 60, 500)
+        interval, hourly, daily = self.policy(provider)
         with self.db() as db:
             db.execute('BEGIN IMMEDIATE')
             row = db.execute('SELECT next_at FROM gates WHERE provider=?', (provider,)).fetchone()
@@ -98,14 +100,49 @@ class WeatherCache:
             except ValueError:
                 try: retry = parsedate_to_datetime(value).timestamp()-now
                 except (ValueError, TypeError, OverflowError): pass
+        if not math.isfinite(retry): retry = 0
         with self.db() as db:
             row = db.execute('SELECT failures,next_at FROM gates WHERE provider=?', (provider,)).fetchone()
             failures = min((row[0] if row else 0)+1, 7)
-            delay = min(21600, (1800 if provider == 'noaa' else 60)*2**(failures-1))
+            delay = min(21600, max(60,self.policy(provider)[0])*2**(failures-1))
             db.execute('UPDATE gates SET failures=?,next_at=? WHERE provider=?', (failures, max(row[1] if row else now, now+max(delay,retry)+random.uniform(1,5)), provider))
+        category = ('http_error' if response is not None else
+                    'timeout' if isinstance(error, TimeoutError) or type(error).__name__.endswith('Timeout') else
+                    'network_error' if type(error).__name__ in {'ConnectError', 'NetworkError', 'ReadError', 'ProxyError', 'RemoteProtocolError'} else
+                    'decoder_unavailable' if isinstance(error, (ImportError, ModuleNotFoundError)) else
+                    'invalid_data' if isinstance(error, ValueError) else 'processing_error')
+        self.record(provider, 'failed', category, response.status_code if response is not None else None)
 
     def succeeded(self, provider):
         with self.db() as db: db.execute('UPDATE gates SET failures=0 WHERE provider=?', (provider,))
+        self.record(provider, 'available')
+
+    def record(self, provider, phase, category=None, http_status=None):
+        # Deliberately store categories only: never exception text, URLs or keys.
+        with self.db() as db:
+            db.execute('INSERT OR REPLACE INTO activity VALUES(?,?,?,?,?)',
+                       (provider, phase, category, http_status, self.clock()))
+
+    def event(self, provider):
+        with self.db() as db:
+            row = db.execute('SELECT phase,category,http_status,updated FROM activity WHERE provider=?', (provider,)).fetchone()
+            return dict(zip(('phase','category','http_status','updated_at'), row)) if row else None
+
+    def gate(self, provider):
+        now = self.clock()
+        _, hourly, daily = self.policy(provider)
+        with self.db() as db:
+            row = db.execute('SELECT next_at,failures FROM gates WHERE provider=?', (provider,)).fetchone()
+            stamps = [r[0] for r in db.execute('SELECT stamp FROM calls WHERE provider=? AND stamp>? ORDER BY stamp', (provider, now-86400))]
+        next_at, failures = row if row else (0, 0)
+        hour = [stamp for stamp in stamps if stamp > now-3600]
+        if len(hour) >= hourly: next_at = max(next_at, hour[-hourly]+3600)
+        if len(stamps) >= daily: next_at = max(next_at, stamps[-daily]+86400)
+        return {'next_attempt_at': next_at, 'failures': failures,
+                'retry_after_seconds': max(0, math.ceil(next_at-now))}
+
+    def policy(self, provider):
+        return (1800,4,32) if provider=='noaa' else (2,60,500)
 
     def status(self):
         with self.db() as db:

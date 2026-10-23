@@ -1,26 +1,33 @@
-# Scope and completion assessment — 23 October 2026
+# Scope and completion assessment —24October2026 IST
 
-Weather baseline: clean main `55bb762`, after completed reliability hardening.
+Initial Weather baseline: `55bb762`. Current expansion preserves main `ac36865`
+and the pending normal-cache reliability fixes.
 Deadline: **1 November 2026**. Scores assess working requirements, not commit size,
 UI presence or test counts. The same category weights are retained. Disaster Lab
 is permanently excluded. Existing Time imagery is unchanged; its planned removal
 belongs to the next Time batch, not this Weather scope.
 
-| Category | Weight | Before Weather | After Weather | Weighted before / after |
+| Category | Weight | Before expansion | After expansion | Weighted before / after |
 | --- | ---: | ---: | ---: | ---: |
 | Live tracking / Solar System / maps / Orbit Trace / UI |45%|92%|92%|41.40 /41.40 |
 | Core Python / auth / satellite APIs |15%|90%|90%|13.50 /13.50 |
-| Real Live Earth weather |15%|0%|90%|0 /13.50 |
+| Real Live Earth weather and natural reports |15%|90%|93%|13.50 /13.95 |
 | Time Explorer with genuine historical tracking |15%|35%|35%|5.25 /5.25 |
 | Deployment / reliability / submission |10%|45%|45%|4.50 /4.50 |
-| **Overall** |100%|**64.65% →65%**|**78.15% →78%**| |
+| **Overall** |100%|**78.15% ≈78%**|**78.60% ≈79%**| |
 
-Confidence: moderate, approximately ±5 percentage points. Weather credit is for
-real global and local data, integrated native rendering, scientific metadata,
-protected caching/budgets, failure recovery and verified controls/lifecycle.
-The remaining10% in Weather reflects target-host binary/provider qualification,
-upstream lifecycle risk and real deployment operation. No historical weather,
-historical satellite archive, hosted release or new Time functionality is credited.
+Confidence remains moderate, about±5percentage points; the decimal arithmetic is
+not a claim of measurement precision. Core temperature/local weather had already
+received90% credit. This expansion adds verified global clouds/precipitation/static
+wind, reversible sunlit readability and real bounded multi-provider event reports;
+it raises that category conservatively to93%. No Time, historical archive, hosted
+release or production-operation credit is added. Initial pre-Weather assessment
+was64.65%; the preceding temperature/reliability batch reached78.15%.
+
+Remaining Weather qualifications: upstream lifecycle/availability, target-host
+native decoder and deployed operation; bounded reported events are not globally
+complete warnings. FIRMS hotspots and GIBS observed cloud imagery are not enabled
+and are not credited. Same-host quotas are not distributed-host coordination.
 
 ## Evidence and limitations
 
@@ -29,8 +36,8 @@ historical satellite archive, hosted release or new Time functionality is credit
 | Live authentication/SGP4 | Existing JWT/Argon2, PostgreSQL repository, precise TEME propagation and outage recovery retained. Isolated checks pass; production failover is not certified. |
 | Orbit Trace | Approved `satelliteOrbitMaterial.js`, `orbitVisuals.js`, `stableOrbitCollection.js`, `satelliteOrbitState.js` unchanged. Weather adds imagery ownership only. |
 | Celestial / UI |47 Live destinations, one Viewer, explicit travel, approximate ephemerides and scientific disclosures retained. Loader/dock/font/auth/idle systems remain. |
-| Live weather | Implemented in `backend/services/weather*.py`, `routes/weather.py`, `temperatureGrid.js`, `temperatureLayer.js`, `WeatherPanel.jsx`, `useLiveWeather.js`. Genuine NOAA1° global2m temperature plus eight Open-Meteo current model variables; valid/init/retrieval metadata, legend, controls, explicit Google incompatibility, shared bounded storage/quotas. See [Weather](WEATHER.md). |
-| Weather validation | Four actual data HTTP calls total; real complex GRIB decode and three public locations; real React/Cesium rendering on cached genuine snapshots; synthetic disposable account/TLEs, actual protected routes.94 frontend tests, clean Windows dependency install, backend weather/concurrency/failure/routes and existing suites pass. No production DB/account/schema change. |
+| Live weather | Implemented in `backend/services/weather*.py`, `routes/weather.py`, `temperatureGrid.js`, `temperatureLayer.js`, `WeatherPanel.jsx`, `useLiveWeather.js`. Genuine NOAA1° temperature/cloud coverage/instant liquid-equivalent precipitation/static10m wind plus eight Open-Meteo location variables and EONET/GDACS/USGS reports; valid/init/retrieval metadata, legend, controls, explicit Google incompatibility, shared bounded storage/quotas. See [Weather](WEATHER.md). |
+| Weather validation | Latest expansion:5dataHTTP,3savedmetadata downloads;102frontend tests, lint/build, groupedGRIB/event/budget/recovery and existing backend suites pass. Normal authenticated app/existingDB/nativeWebGL verifies all four fields,671reports/cyclone,Follow,picking,Earth-Mars-Earth,Time isolation,mobile and logout. Earlier isolated temperature evidence remains separately documented. No production DB/account/schema change. |
 | Earth maps | Existing provider lifecycle/fallback/credits retained; weather works on raster imagery. Google3D explicitly unsupported for this overlay, with a user-controlled Esri choice. Target-host account/network rights remain. |
 | Time controls/celestial | Existing paused date, shared Viewer, Sun/eight planets, calculated scene-time positions. Existing date-dependent imagery untouched. This is not genuine historical satellite tracking. |
 | Historical satellites | Missing multi-epoch source/archive and as-of APIs. Current history table has one row per NORAD, overwritten/purged by fetch time: fallback snapshot, not an archive. Requires licensed source/coverage, migration and epoch-aware propagation/cache. |
@@ -63,5 +70,13 @@ historical satellite archive, hosted release or new Time functionality is credit
 3. Run deployed end-to-end/failure/restore checks and a reproducible submission
    demo/runbook before1November. Keep optional orbit cosmetics closed.
 
-The local Weather batch is ready for manual review. No commit or deployment was
+The expanded local Weather/events batch is complete and ready for manual review. No commit or deployment was
 performed. Stop implementation here pending the next separately scoped task.
+
+The normal-application follow-up fromac36865 now verifies protected temperature/
+location200 and real Cesium rendering against the existing database and normal
+cache. Cold async preparation, real cooldown scheduling, persisted safe failure
+categories and held-location freshness were corrected. No historical feature or
+hosted-deployment credit is added; that preceding follow-up score was78.15%; the current expansion reassessment above is78.60%. See
+[Weather](WEATHER.md) for the confirmed empty-cache/cooldown diagnosis and the
+explicitly unknown original exception category.

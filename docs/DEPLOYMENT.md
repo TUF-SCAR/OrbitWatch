@@ -163,3 +163,33 @@ to that designated host. A network SQLite share is not a distributed lease.
 normal setting. No startup weather download occurs. DB availability gates all
 external refreshes. Check target-host NOMADS/Open-Meteo access, noncommercial
 terms, attribution and actual raster/Google compatibility on staging.
+
+### Weather startup troubleshooting
+
+Use the explicitly installed pinned Python runtime and `python -m eccodes
+selfcheck`; do not assume a random PATH Python has the application/decoder.
+The first authenticated global request returns202 while one background job runs.
+503 with a weather `cooldown` state has a real `Retry-After`/UTC deadline. Preserve
+that state across restarts: never delete cache/gates or edit next_at to force HTTP.
+`/api/weather/status` is protected and reads safe phase/failure category/status/
+count and cache freshness without provider access. `decoder_unavailable` is a
+local dependency problem, checked before NOAA quota is spent. Raw errors/secrets
+are never returned. A missing field remains visibly pending/unavailable even if
+its layer checkbox is enabled. See [normal-app follow-up](WEATHER.md).
+
+
+### Natural report operation (configuration only; no deployment performed)
+
+Route protected `/api/events` and `/api/events/{id}` to the designated API host.
+Persist `backend/.runtime/events` (or `ORBITWATCH_EVENTS_CACHE_DIR`) with existing
+weather/orbital budgets. Three provider sub-stores have independent process
+leases, single-flight jobs and gates. `ORBITWATCH_EVENT_PROVIDER_REQUESTS=false`
+serves retained snapshots only; true is normal read-only external operation.
+No startup fetches or production database tables/records are created. A provider
+outage must not block other sources. No multi-host quota coordination is claimed.
+
+The global model download is now grouped16MB-bound/five required instantaneous
+components rather than temperature-only; existing NOAA budgets remain unchanged.
+FIRMS is not enabled; do not put MAP_KEY in frontend/Vite variables. Consult
+[Natural events](NATURAL_EVENTS.md) for source terms, scope/freshness/limits and
+future optional key qualification. Event reports are not an emergency service.

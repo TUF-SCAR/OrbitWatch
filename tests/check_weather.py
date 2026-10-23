@@ -7,6 +7,8 @@ import os
 from pathlib import Path
 import sys
 import tempfile
+import threading
+import time
 from datetime import datetime, timezone, timedelta
 from concurrent.futures import ThreadPoolExecutor
 from unittest.mock import patch
@@ -28,6 +30,18 @@ def fixture_grib(now):
         codes_set_values(h,values)
         return codes_get_message(h)
     finally: codes_release(h)
+
+
+def fixture_bundle(now):
+    from eccodes import codes_new_from_message,codes_set,codes_set_values,codes_get_message,codes_release
+    messages=[]
+    for category,param,level_type,level,value in [(0,0,'heightAboveGround',2,280),(6,1,'atmosphere',0,75),(1,7,'surface',0,.001),(2,2,'heightAboveGround',10,5),(2,3,'heightAboveGround',10,-3)]:
+        h=codes_new_from_message(fixture_grib(now))
+        try:
+            for key,v in {'centre':'kwbc','discipline':0,'parameterCategory':category,'parameterNumber':param,'typeOfLevel':level_type,'level':level}.items():codes_set(h,key,v)
+            codes_set_values(h,np.full(65160,value));messages.append(codes_get_message(h))
+        finally:codes_release(h)
+    return b''.join(messages)
 
 
 def run():
@@ -129,6 +143,67 @@ def run():
         with patch('routes.weather.global_temperature',side_effect=WeatherDeferred()):
             response=client.get('/api/weather/temperature',headers=headers)
             assert response.status_code==503 and response.headers.get('retry-after')=='30'
+        # Real protected cold route returns immediately, even while upstream is
+        # blocked. Concurrent clients share one download and then the real grid.
+        test_file=f'gfs.t{now:%H}z.pgrb2.1p00.f000'
+        entered,release=threading.Event(),threading.Event()
+        def slow_download(*args):
+            entered.set();assert release.wait(5);return fixture_bundle(now)
+        cold=WeatherCache(Path(tmp)/'cold')
+        with patch.object(w,'cache',cold),patch.object(w,'target',return_value=(now,0,test_file)),patch.object(w,'download',side_effect=slow_download) as download:
+            started=time.monotonic();response=client.get('/api/weather/temperature',headers=headers)
+            assert response.status_code==202 and time.monotonic()-started<2
+            assert entered.wait(3)
+            with ThreadPoolExecutor(max_workers=8) as pool:
+                responses=list(pool.map(lambda _:client.get('/api/weather/temperature',headers=headers),range(24)))
+            assert all(r.status_code==202 and r.json()['state']=='downloading' for r in responses)
+            assert download.call_count==1 and not w.weather_status()['availability']['has_field']
+            release.set();w.pending.result(timeout=5)
+            response=client.get('/api/weather/temperature',headers=headers)
+            assert response.status_code==200 and len(response.json()['values_c'])==65160
+            for _ in range(12):assert client.get('/api/weather/temperature',headers=headers).status_code==200
+            assert download.call_count==1
+            persisted=WeatherCache(cold.root)
+            assert persisted.gate('noaa')['next_attempt_at']==cold.gate('noaa')['next_attempt_at']
+            cold.clock=lambda:time.time()+1900
+            assert w.global_availability(cold.latest_global())['state']=='available'
+            cold.clock=time.time;cold.record('noaa','downloading')
+            # A crashed old process leaves a phase, but cannot leave the OS
+            # lease held. Do not report its abandoned job as still downloading.
+            assert w.global_availability(cold.latest_global())['state']=='cooldown'
+        # No retry storm during a legitimate persisted cooldown; time advances
+        # only in this disposable store, never in normal provider state.
+        retry_clock=[time.time()];failure_cache=WeatherCache(Path(tmp)/'failed',clock=lambda:retry_clock[0])
+        with patch.object(w,'cache',failure_cache),patch.object(w,'target',return_value=(now,0,test_file)),patch.object(w,'download',side_effect=httpx.ReadTimeout('private raw diagnostic must not escape')) as download:
+            client.get('/api/weather/temperature',headers=headers)
+            try:w.pending.result(timeout=5)
+            except WeatherDeferred:pass
+            response=client.get('/api/weather/temperature',headers=headers)
+            assert response.status_code==503 and response.json()['state']=='cooldown'
+            assert int(response.headers['retry-after'])>=1800
+            assert response.json()['last_failure']['category']=='timeout'
+            assert 'private raw' not in response.text
+            for _ in range(24):assert client.get('/api/weather/temperature',headers=headers).status_code==503
+            assert download.call_count==1
+            restarted=WeatherCache(failure_cache.root,clock=lambda:retry_clock[0])
+            assert restarted.gate('noaa')['retry_after_seconds']>=1800
+            assert restarted.event('noaa')['category']=='timeout'
+            retry_clock[0]+=1900
+            download.side_effect=None;download.return_value=fixture_bundle(now)
+            client.get('/api/weather/temperature',headers=headers);w.pending.result(timeout=5)
+            assert client.get('/api/weather/temperature',headers=headers).status_code==200
+            assert download.call_count==2 and failure_cache.gate('noaa')['failures']==0
+        # An absent local decoder must not spend a NOAA reservation or be
+        # incorrectly presented as an upstream HTTP/network failure.
+        missing=WeatherCache(Path(tmp)/'missing-decoder')
+        with patch.object(w,'cache',missing),patch.dict(sys.modules,{'eccodes':None}),patch.object(w,'download') as download:
+            client.get('/api/weather/temperature',headers=headers)
+            try:w.pending.result(timeout=5)
+            except WeatherDeferred:pass
+            response=client.get('/api/weather/temperature',headers=headers)
+            assert response.json()['last_failure']['category']=='decoder_unavailable'
+            assert missing.gate('noaa')['failures']==0 and not download.called
+        print('PASS: nonblocking cold202-to-200,24 concurrent clients/one download; persisted503/Retry-After/no retry storm, timed recovery, missing decoder spends0 HTTP')
         client.close();database_engine.dispose();w.executor.shutdown(wait=True)
         print('PASS: protected global/status/location routes, safe503 and coordinate validation; real provider HTTP0')
 

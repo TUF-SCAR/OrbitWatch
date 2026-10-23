@@ -234,3 +234,81 @@ requests this entire batch were4 total (2NOAA+2Open-Meteo;6point equivalents).
 See `.orbitwatch-backups/weather/README.md` for screenshots, recordings, logs,
 request accounting and qualifications. See [Weather](WEATHER.md) for supported
 science/controls/installation, future NOAA product transition and provider terms.
+
+## Normal Weather reliability verification — baseline ac36865
+
+The earlier94-test Weather batch used genuine recordings behind an isolated API.
+Its normal environment/cold cache was not certified by that evidence. This
+follow-up inspected normal cache state first:0global fields; one NOAA failure
+with persisted deadline16:25:52.653711UTC. The original error category was never
+stored and is not recoverable; subsequent503s were confirmed empty-cache cooldowns.
+No cooldown was reset and no cache deleted/copied from fixtures.
+
+After eligibility, one actual NOAA request populated the normal cache with
+65,160 genuine nodes (06Z init/15Z valid f009, zero missing). Normal signed-in
+localhost5173→backend8000/existingDB protected temperature/location routes returned
+200 and real Esri temperature rendered. Native checks covered legend/units/time,
+opacity0/55, toggle0/1, six real paths/ISS Follow, cached point requests, restart
+persistence and off-Earth/return cleanup. Actual location request at public
+Hyderabad returned25°C valid16:30UTC. New data HTTP: NOAA1 +Open-Meteo1 only.
+Satellite ingestion was disabled during the test; no production records changed.
+
+Updated tests/check_weather.py verifies protected cold202 in under2s while mocked
+upstream is held,24 concurrent clients/one request, completed200 grid, exact
+persisted Retry-After, repeated cooldown calls spending no HTTP, restart retention,
+permitted recovery and missing decoder spending zero NOAA reservations. Normal
+cold service dispatch measured15ms; normal backend restart retained exact field,
+provider gates and counts. These cases do not reset the normal cache for testing.
+
+Frontend weatherPolling tests use a fake clock/timer and mock responses to verify
+server-deadline scheduling across manual reopen, active preparation, offline
+backoff and canceled late completions. Weather API transport tests verify202/503
+state envelopes without swallowing DB503 or invalid-token401 semantics. Final
+suite98tests; lint/build and backend weather/reliability/contracts pass. Existing
+build chunk-size/TestClient deprecation advisories remain. See evidence under
+`.orbitwatch-backups/weather-reliability/` and the current [Weather](WEATHER.md).
+
+
+## Global fields and natural events —24October2026 IST
+
+Run with the pinned CPython3.12 environment (PATH Python may be MSYS without
+application dependencies):
+
+```powershell
+.orbitwatch-backups/weather-clean-venv/Scripts/python.exe tests/check_weather.py
+.orbitwatch-backups/weather-clean-venv/Scripts/python.exe tests/check_weather_fields.py
+.orbitwatch-backups/weather-clean-venv/Scripts/python.exe tests/check_natural_events.py
+```
+
+All are isolated/mocked upstream:0real provider HTTP. New tests verify real ecCodes
+multi-message signatures/units/geography/time, average exclusion and malformed
+bundles; natural report geometry/dateline/text/URL/time/fractional ordering,
+unitless placeholders, duplicate/empty/stale data, protected list/details,
+36parallel clients/3jobs,48atomic reservations, restart/429/independent recovery,
+304original timestamps and cache headers/DB gate. Existing39backend contracts,
+26reliability+40outage, availability and persistent/four-process satellite budgets
+also pass.102full frontend tests plus ESLint/build pass. Existing TestClient
+httpx deprecation and >500KB bundle advisory remain.
+
+Native normal-app browser uses existing test-account authentication/database
+read-only, normal caches and genuine public field/feed responses (not synthetic
+fixtures); satellite ingestion disabled. Verified original/reduced/ground-off/
+fog-off/unlit same-camera comparison; final ground-intensity10->1->10 retaining
+all other flags; daylight/night/terminator/close+wholeEarth, clouds/rain/wind,
+671clustered reports, real selected cyclone and source details, earthquake
+magnitude/depth, flood/fire/volcano/empty category, event picking and ISS Follow
+identity25544, Earth-Mars-Earth, Time0layers/events, desktop1280x720 and mobile
+390x844/667, official link keyboard reachability, scroll reset, final console0.
+Logout leaves0Viewers/owners/panels/legends and1normal auth-preview canvas. Selected
+cyclone uses one continuously rotated native sprite (illustrative24s), not
+stepped texture swaps. Cluster count clipping found in WebGL was fixed using one
+baked count/disc sprite; no coincident point/label depth fighting.
+
+This browser exposes viewport controls but no OS media-preference override;
+initial and dynamically changed reduced motion are deterministically tested in
+real Cesium entity/property lifecycle tests. No native OS-switch claim. Existing
+Time NASA network failure/reference fallback was observed; Time source unchanged.
+Evidence index: `.orbitwatch-backups/weather-events/README.md`.5realdata requests,
+3savedmetadata downloads, documentation browsing separate; stress/browser adds0
+upstream feed calls. Read [provider details](NATURAL_EVENTS.md) before any live
+revalidation; never clear gates or modify next_at to force requests.

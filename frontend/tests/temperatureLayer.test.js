@@ -24,6 +24,9 @@ test('original model valid/retrieval times drive stale and hard expiry, never pr
   assert.equal(weatherFreshness(f,Date.parse('2026-10-23T19:00:00Z')),'stale');
   assert.equal(weatherFreshness(f,Date.parse('2026-10-24T13:00:00Z')),'unavailable');
   assert.equal(weatherFreshness({...f,state:'stale'},Date.parse('2026-10-23T15:00:00Z')),'stale');
+  assert.equal(weatherFreshness(f,Date.parse('2026-10-23T12:19:00Z'),'location'),'available');
+  assert.equal(weatherFreshness(f,Date.parse('2026-10-23T12:21:00Z'),'location'),'stale');
+  assert.equal(weatherFreshness(f,Date.parse('2026-10-23T15:01:00Z'),'location'),'unavailable');
 });
 test('one weather imagery owner survives opacity/map changes and releases all frames/layers on toggle, Google, travel and logout',()=>{
   const entries=[],preRender=new Event();let clock=0,builds=0,disposed=0;

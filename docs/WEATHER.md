@@ -1,14 +1,76 @@
 # Live Earth weather
 
-Implemented and validated locally on 23 October 2026, from main `55bb762`.
+Initial implementation from `55bb762`; reliability continuation and global fields/
+events expansion on the preserved `ac36865` working tree,23October2026.
 This feature belongs exclusively to **Live → Earth**. Time Explorer and its
 existing imagery are unchanged. No historical weather ingestion is implemented.
+
+
+## Global field expansion
+
+One NOAA reservation/download supplies all fields; changing a field or opening a
+panel never makes an independent per-variable NOAA request. `/api/weather/fields`
+returns the existing temperature envelope plus `fields.clouds`,
+`fields.precipitation` and `fields.wind`. `/temperature` remains compatible.
+Each scalar has65,160 NW-ordered nodes; wind has signed eastward `u` and northward
+`v`. Same missing-node, geography, coverage, UTC and freshness safeguards apply.
+
+| Field | Verified GRIB signature / source units | Display |
+| --- | --- | --- |
+| Temperature |2t,heightAboveGround2,K,instant |°C |
+| Clouds |tcc,atmosphere0,%,instant |Model total cloud coverage,%,white/gray alpha |
+| Precipitation |prate,surface0,kg m^-2 s^-1,instant |Liquid-equivalent **rate**,mm/h,source×3600; includes frozen precipitation, **not accumulation** |
+| Wind |10u/10v,heightAboveGround10,m s^-1,instant |10m speed,m/s,and static arrows pointing **toward** the flow |
+
+The official live NOAA inventory was checked before implementing. It contains
+both instant and averaged PRATE/TCDC; these are not interchangeable. The grouped
+filter returns eight messages for the verified file; extra surface temperature
+and averaged fields are ignored, never selected instead of the required fields.
+Bundle bound16MB/16messages; no change to NOAA30min/4hour/32day budget.
+
+A single dominant field is visible. Pixel interpolation does not add resolution.
+Wind is a sparse canvas vector field from the actual east/north components;
+equirectangular longitude displacement accounts for cos(latitude). Arrow length
+is symbolic speed emphasis, not an air-parcel trajectory; no particle animation.
+Clouds are **GFS forecast cloud fraction**, never called satellite observations.
+
+### Readability and reversible presentation
+
+Native same-camera comparisons (`weather-events/compare-*.jpg`) isolated additive
+ground scattering as the sunlit washout. Fog-off did not fix it; ground-off
+flattened the night presentation; sunlight-off made it worse. The final owner
+reduces only `globe.atmosphereLightIntensity` from its captured value toward1
+while weather alpha fades in. Ground atmosphere, sky atmosphere, fog, real sunlight
+and day/night flags remain untouched. It smoothly restores the **exact prior
+intensity** when fading out, or immediately on travel/Time/incompatibility/destroy.
+Native default10->1->10 and automated nondefault7.25 restoration were checked.
+The DEV-only `/?weatherCompare` harness offers explicit native comparison buttons;
+it is not included in production. Normal app navigation strips that query after
+startup; the module captures the opt-in before authentication navigation.
+
+Raster imagery works on the globe. Google Photorealistic3D Tiles is a separate
+surface and remains explicitly unsupported for draped fields; an intentional
+Esri switch is offered. A second raster sphere over Google's surface would
+misrepresent the visualization, so it was not used. Event billboards can coexist
+with Google because they are independent reported-location symbols.
+
+### Observed cloud investigation
+
+The actual NASA GIBS WMTS capabilities include
+`MODIS_Terra_Cloud_Fraction_Day` / `MODIS_Aqua_Cloud_Fraction_Day` and night variants,
+with daily dates through23October2026. These are dated satellite swath products,
+with observation/sampling gaps and different day/night coverage, not an
+instantaneous continuous cloud globe. No observed-cloud layer is enabled in this
+batch; it is not silently substituted for GFS. See [GIBS metadata](https://gibs.earthdata.nasa.gov/layer-metadata/v1.0/)
+and [MODIS cloud products](https://modis.gsfc.nasa.gov/data/dataprod/mod06.php).
+Reported incidents are documented separately in [Natural events](NATURAL_EVENTS.md).
 
 ## Sources and scientific meaning
 
 The global field is NOAA/NCEP **GFS 2-metre air temperature**, from the official
 [1-degree GRIB catalog](https://www.nco.ncep.noaa.gov/pmb/products/gfs/nomads/).
-The NOMADS filter requests only `TMP` at `2 m above ground` from
+The NOMADS filter now groups `TMP` at2m, `TCDC` through the atmosphere,
+instantaneous `PRATE` at the surface, and `UGRD`/`VGRD` at10m from
 `gfs.YYYYMMDD/HH/atmos/gfs.tHHz.pgrb2.1p00.fFFF`. This is a genuine global field,
 not a reconstruction from point readings. NOAA US government data is public
 domain; NOAA/NCEP attribution remains in the panel, legend and Cesium credits.
@@ -26,7 +88,10 @@ units, regular latitude/longitude geometry, coordinate uniqueness/alignment,
 coverage and timestamps. Values are converted by `K − 273.15` and rounded to
 0.1°C. The API orders rows from 90°N to 90°S and columns from 180°W to179°E;
 longitude wraps, missing nodes remain null. At least95% of nodes must be valid
-and within140–360K. The decoder rejects unexpected fields and multiple messages.
+and within140–360K. The original temperature decoder still requires exactly one temperature message.
+`weather_fields.py` now validates a bounded multi-message bundle, accepts only the
+correct instantaneous field/level signatures, excludes averaged alternatives and
+requires matching initialization/valid times for all five components.
 
 Selected-location values use [Open-Meteo's forecast API](https://open-meteo.com/en/docs)
 with explicit `models=gfs_global`. Implemented variables:
@@ -74,11 +139,16 @@ uses independent bounded SQLite files under `backend/.runtime/weather`, retainin
 two global fields and256 locations. Global keys include actual model cycle/valid
 time; points use0.1° rounded keys with antimeridian/signed-zero normalization.
 All same-host workers share the store, an OS file lease and atomic reservations.
-Only one external weather request runs at a time; concurrent cold misses may get
-503/Retry-After30 rather than duplicate downloads. Warm readers share the field.
+Only one external weather request runs at a time. Cold requests start one
+background preparation job and return a small202 state envelope immediately,
+instead of waiting for network/GRIB work inside the API request. Concurrent
+readers share that job and then the completed field. A no-field provider
+cooldown/unavailable state returns503 with the legitimate `Retry-After`, not a
+fixed30-second hint. Warm readers share the field.
 
-There is **no startup weather ingestion**. A global weather request can schedule
-one background revalidation job when a newer target exists. Cached data returns
+There is **no startup weather ingestion**. An authenticated global weather request
+can schedule one background cold preparation/revalidation job when needed. The
+local ecCodes dependency is checked before spending a NOAA reservation. Cached data returns
 immediately, explicitly stale with its original valid time; repeated requests
 cannot create an unbounded job queue. Point requests reuse the15-minute cache;
 refresh failure can return a retained, explicitly stale point. Global fields
@@ -101,8 +171,11 @@ are no automatic HTTP retries/redirects. Connect timeout5s, read timeout20s,
 response cap2MB global/100KB point. A database availability check occurs before
 any external request; protected routes retain existing outage behavior.
 
-The browser polls an active global field every10min, or30s after failures/pending
-revalidation; manual checks have a30s cooldown. Location requests require an
+The browser polls a healthy field every10min; active preparation normally every3s,
+or after the exact retry interval in the backend state envelope. NOAA cooldowns
+survive panel/mode reopen and manual checks. Network/transport errors back off60s.
+Manual checks retain their30s UI cooldown and cannot bypass a server deadline.
+Location requests require an
 explicit form submission or **Weather at view centre** action, with2s client
 spacing. Mouse/camera movement never requests point weather. No per-user provider
 download, polling of all coordinates or model-file sweep exists.
@@ -197,3 +270,81 @@ Esri/OpenStreetMap/Google handoffs, Earth→Mars→Earth, Time gating, responsiv
 `.orbitwatch-backups/weather/README.md`. Hosted provider permissions, target-OS
 runtime and deployed end-to-end operation remain release qualifications, not
 claims of this local implementation.
+
+## Normal-application reliability follow-up (baseline ac36865)
+
+The first implementation's native browser acceptance used an isolated account/API
+and a separate cache of genuine recordings. It did **not** certify the user's
+normal cache, Python environment or cold initialization. The follow-up found:
+
+- Normal `backend/.runtime/weather` contained **zero global fields** and one failed
+  NOAA reservation at15:55:47UTC on23October. Its next permitted attempt was
+  **16:25:52.653711UTC**. Subsequent503 responses were enforced cooldowns with no
+  field to return. Five successful location records were present.
+- SQLite quick_check passed, the directory was writable, and the download lease
+  was free. Weather overrides were absent: the default normal directory/provider
+  setting was intended. No API was listening when inspection began.
+- The original error category was **not persisted**, so a timeout, upstream HTTP
+  failure or decoder failure cannot be assigned retroactively. No historical raw
+  traceback was available. Do not reinterpret the later success as proof of the
+  original trigger.
+
+Confirmed design defects were synchronous cold preparation behind a10s frontend
+timeout, generic503/Retry-After30 regardless of the real cooldown, unconditional
+30s retries and loss of useful failure diagnostics. Global initialization is now
+background single-flight. The general10s API/auth timeout is unchanged.
+
+`202` envelopes distinguish `preparing`, `downloading`, `decoding`. No-field503
+envelopes distinguish `cooldown`, `failed`, `unavailable`; `data_state` separately
+identifies empty/hard-expired data. Usable200 fields retain available/stale state
+and carry refresh availability. Envelopes contain `has_field`,
+`retry_after_seconds`, UTC `next_attempt_at`, safe `last_failure` category/status/
+count and provider-enabled state. The panel never presents a checkbox as proof
+that a field is loaded. Expired fields are hidden. Retained usable fields keep
+their original valid time during failure.
+
+A small independent local-cache `activity` table records phases and sanitized
+categories (`timeout`, `network_error`, `http_error`, `invalid_data`,
+`decoder_unavailable`, `processing_error`), not exception text, credentials or
+URLs. Existing gates/calls/data are retained, not deleted or reset. An abandoned
+phase is not treated as an active download without a live job/OS lease. Hour/day
+quota exhaustion also contributes to the real retry deadline. Status reads do not
+start provider work.
+
+After the original deadline elapsed naturally, **one** real NOAA attempt through
+the service and normal configuration/cache succeeded at16:26:34UTC:360×181,
+65,160 nodes, zero missing,06Z initialization/15Z valid,
+`20261023/gfs.t06z.pgrb2.1p00.f009`. Cold service response took15ms. No recorded
+test grid was copied into the normal cache. The normal cache's total NOAA calls
+changed1→2, and successful completion cleared its failure count normally.
+
+The actual localhost5173→127.0.0.1:8000 application was then verified with the
+user's existing testing account and normal database/config/cache: protected
+temperature200, location200, real Cesium Esri overlay, source/valid time, legend,
+opacity/toggle and ISS selection/Follow. One genuine Open-Meteo call returned
+Hyderabad25°C at16:30UTC; repeated location requests reused it. **Follow-up data
+HTTP total:2 (NOAA1 + Open-Meteo1)**, separate from the original batch's four.
+Normal backend restart preserved exact provider gates, call counts and field
+identity; no extra NOAA retrieval occurred. Satellite ingestion was disabled
+during this verification; no Supabase records/accounts/schema were modified.
+
+Use an explicitly installed pinned runtime, not an arbitrary PATH Python:
+
+```powershell
+.venv/Scripts/python.exe -m pip install -r backend/requirements.lock
+.venv/Scripts/python.exe -m eccodes selfcheck
+.venv/Scripts/python.exe -m uvicorn main:app --app-dir backend --host 127.0.0.1 --port 8000
+```
+
+The local test used a clean pinned venv under the ignored backups;
+that test environment is not a deployment path. Repeated failure/concurrency/
+recovery/cold routes use mocked HTTP and disposable cache only, never a reset of
+normal cooldowns. See `.orbitwatch-backups/weather-reliability/README.md` for the
+normal-app screenshots, exact metadata/counts and test results.
+
+The long-running normal UI check also demonstrated a held point reading still
+labeled CURRENT MODEL after16.3min retrieval age. The frontend now applies the
+same15min retrieval/30min valid stale thresholds and3h hard expiry as the backend,
+using original timestamps and no automatic point-provider request. Boundary tests
+cover these cases. Development HMR reset the panel afterward; final normal field
+rendering was rechecked after that reload.

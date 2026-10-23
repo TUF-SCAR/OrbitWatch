@@ -8,7 +8,7 @@ import {
   Orbit,
   UserRound,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import SolarSystemScene from "../components/SolarSystemScene.jsx";
 import SpatialSurface from "../components/SpatialSurface.jsx";
 import {
@@ -51,6 +51,8 @@ export default function AuthPage({
   const [formMessage, setFormMessage] = useState("");
   const [requestRunning, setRequestRunning] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(false);
+  const requestRef = useRef(null);
+  useEffect(() => () => requestRef.current?.abort(), []);
   useEffect(() => {
     if (!extracting) return;
     const timer = window.setTimeout(onExtracted, window.matchMedia("(prefers-reduced-motion: reduce)").matches ? 150 : 1600);
@@ -84,6 +86,8 @@ export default function AuthPage({
     }
 
     setRequestRunning(true);
+    requestRef.current?.abort();
+    const controller = new AbortController(); requestRef.current = controller;
 
     try {
       const authResponse = registrationOpen
@@ -91,21 +95,23 @@ export default function AuthPage({
             username: normalizedUsername,
             email: normalizedEmail,
             password: normalizedPassword,
+            signal: controller.signal,
           })
         : await loginAccount({
             usernameOrEmail: normalizedUsernameOrEmail,
             password: normalizedPassword,
+            signal: controller.signal,
           });
 
       await onAuthenticated(authResponse);
     } catch (error) {
+      if (controller.signal.aborted) return;
       setFormMessage(
         error?.detail ||
           error?.message ||
           "OrbitWatch could not authenticate this account.",
       );
-      setRequestRunning(false);
-    }
+    } finally { if (!controller.signal.aborted) setRequestRunning(false); }
   }
 
   const busy = requestRunning || launching || extracting;

@@ -60,7 +60,9 @@ export default function App({ currentUser, onLogout, hudActive = true, onSceneRe
   const [telemetry, setTelemetry] = useState(null);
   const [telemetryError, setTelemetryError] = useState(false);
   const [apiState, setApiState] = useState("checking");
-  const [feedAge, setFeedAge] = useState(null);
+  const [feedSnapshot, setFeedSnapshot] = useState(null);
+  const [feedClock, setFeedClock] = useState(Date.now);
+  const feedAge = Number.isFinite(feedSnapshot?.age) ? feedSnapshot.age + Math.max(0, (feedClock - feedSnapshot.receivedAt) / 1000) : null;
   const [refreshNonce, setRefreshNonce] = useState(0);
   const [refreshBusy, setRefreshBusy] = useState(false);
   const [cooldown, setCooldown] = useState(false);
@@ -145,16 +147,22 @@ export default function App({ currentUser, onLogout, hudActive = true, onSceneRe
   }, []);
 
   useEffect(() => {
+    const timer = window.setInterval(() => setFeedClock(Date.now()), 15000);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  useEffect(() => {
     const controller = new AbortController();
     let timer;
     async function update() {
       try {
         const data = await fetchSatelliteDataStatus(controller.signal);
         if (controller.signal.aborted) return;
-        setApiState(data.stale || data.missing_supported_objects ? "stale" : "online");
-        setFeedAge(data.age_seconds);
-      } catch {
-        if (!controller.signal.aborted) setApiState("offline");
+        setApiState(data.stale || data.missing_supported_objects || !Number.isFinite(data.age_seconds) ? "stale" : "online");
+        const receivedAt = Date.now(); setFeedClock(receivedAt);
+        setFeedSnapshot({ age: data.age_seconds, receivedAt });
+      } catch (error) {
+        if (!controller.signal.aborted) setApiState(error.kind === "offline" ? "offline" : "unavailable");
       } finally {
         if (!controller.signal.aborted) timer = window.setTimeout(update, 60000);
       }

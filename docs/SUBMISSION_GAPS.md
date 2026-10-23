@@ -1,4 +1,15 @@
-# Submission gaps — inspected 13 October 2026
+# Submission gaps — updated 23 October 2026
+
+Current agreed scope and weighted assessment are in [completion assessment](COMPLETION_ASSESSMENT.md).
+The reliability pass adds outage-safe startup, read-only readiness, bounded DB
+recovery, safe errors, saved-session retry, pinned dependencies and environment/CORS
+configuration. See [deployment prerequisites](DEPLOYMENT.md). Startup no longer
+creates schema or waits for ingestion. No production migration or deployment has
+been performed. Historical satellite data and real weather are still missing.
+Historical NASA imagery is scheduled for removal in the separate Time batch and
+is not a required final deliverable. The older detailed investigation below is
+retained for module/source context; its release-configuration findings are
+superseded by those two current documents.
 
 Deadline: **1 November 2026**. Based on current `main` at `7bf88c7` plus the preserved
 working tree. This is implementation scoping, not a claim that absent features

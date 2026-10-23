@@ -1,25 +1,24 @@
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
+from sqlalchemy.engine import make_url
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import DeclarativeBase, sessionmaker
-from os import getenv
-from dotenv import load_dotenv
-from pathlib import Path
+from contextlib import contextmanager
+from core.config import required
+from core.availability import DatabaseAvailability, DatabaseUnavailable
 
 
 def get_database_engine():
 
-    env_path = Path(__file__).resolve().parent.parent / ".env"
-    if not env_path.is_file():
-        raise FileNotFoundError(f".env file not found at: {env_path}")
-
-    load_dotenv(dotenv_path=env_path, override=True)
-
-    DATABASE_URL = getenv("DATABASE_URL")
-    if not DATABASE_URL or not DATABASE_URL.strip():
-        raise RuntimeError("DATABASE_URL is missing or empty in backend/.env")
-
+    DATABASE_URL = required("DATABASE_URL")
+    options = {}
+    if make_url(DATABASE_URL).get_backend_name() == "postgresql":
+        options = dict(pool_size=5, max_overflow=0, pool_timeout=3,
+                       connect_args={"connect_timeout": 3, "options": "-c statement_timeout=8000"})
     database_engine = create_engine(
         url=DATABASE_URL,
         pool_pre_ping=True,
+        hide_parameters=True,
+        **options,
     )
 
     return database_engine
@@ -27,7 +26,7 @@ def get_database_engine():
 
 database_engine = get_database_engine()
 
-database_session_maker = sessionmaker(
+_session_factory = sessionmaker(
     bind=database_engine,
     autoflush=False,
     expire_on_commit=False,
@@ -36,6 +35,27 @@ database_session_maker = sessionmaker(
 
 class DatabaseBase(DeclarativeBase):
     pass
+
+
+def probe_database():
+    # Readiness includes the existing schema, not just a TCP connection. No DDL.
+    with database_engine.connect() as connection:
+        for table in ("users", "satellite_orbit_data", "satellite_orbit_history"):
+            connection.execute(text(f"SELECT 1 FROM {table} LIMIT 0"))
+
+
+database_availability = DatabaseAvailability(probe_database)
+
+
+@contextmanager
+def database_session_maker():
+    database_availability.ensure()
+    try:
+        with _session_factory() as session:
+            yield session
+    except SQLAlchemyError as error:
+        database_availability.failed(error)
+        raise DatabaseUnavailable() from None
 
 
 def get_database_session():

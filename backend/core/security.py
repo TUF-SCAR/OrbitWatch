@@ -86,10 +86,9 @@ def check_email(email: str) -> bool:
     return False
 
 
-def get_current_user(
+def get_token_user_id(
     credentials: HTTPAuthorizationCredentials = Depends(bearer_scheme),
-    database: Session = Depends(get_database_session),
-) -> User:
+) -> int:
     if credentials is None:
         raise HTTPException(status_code=401, detail="Authentication required")
 
@@ -97,6 +96,14 @@ def get_current_user(
         user_id = decode_access_token(credentials.credentials)
     except RuntimeError:
         raise HTTPException(status_code=401, detail="Invalid or expired token")
+
+    return user_id
+
+
+def get_current_user(
+    user_id: int = Depends(get_token_user_id),
+    database: Session = Depends(get_database_session),
+) -> User:
 
     query = select(User).where(User.id == user_id)
 

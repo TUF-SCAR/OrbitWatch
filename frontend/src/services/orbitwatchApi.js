@@ -1,13 +1,15 @@
-const API_BASE = (import.meta.env.VITE_API_BASE_URL || "http://127.0.0.1:8000").replace(/\/$/, "");
+const API_BASE = (import.meta.env?.VITE_API_BASE_URL ?? "http://127.0.0.1:8000").replace(/\/$/, "");
 const AUTH_TOKEN_KEY = "orbitwatch_access_token";
 let sessionToken = null;
 
 export class OrbitWatchApiError extends Error {
-  constructor(message, status, detail = null) {
+  constructor(message, status, detail = null, kind = "request", code = null) {
     super(message);
     this.name = "OrbitWatchApiError";
     this.status = status;
     this.detail = detail;
+    this.kind = kind;
+    this.code = code;
   }
 }
 
@@ -36,13 +38,22 @@ async function requestJson(path, options = {}) {
   const signal = options.signal
     ? AbortSignal.any([options.signal, AbortSignal.timeout(10000)])
     : AbortSignal.timeout(10000);
-  const response = await fetch(`${API_BASE}${path}`, { ...options, headers, signal });
+  let response;
+  try {
+    response = await fetch(`${API_BASE}${path}`, { ...options, headers, signal });
+  } catch (error) {
+    if (options.signal?.aborted) throw error;
+    const timeout = signal.aborted || error.name === "TimeoutError";
+    throw new OrbitWatchApiError(timeout ? "The request timed out. Please try again." : "Cannot reach OrbitWatch. Check your connection and try again.", 0, null, timeout ? "timeout" : "offline");
+  }
 
   if (!response.ok) {
     let detail = null;
+    let code = null;
     try {
       const body = await response.json();
       detail = body?.detail ?? null;
+      code = body?.code ?? null;
     } catch {
       // Non-JSON provider errors use the HTTP status below.
     }
@@ -50,21 +61,30 @@ async function requestJson(path, options = {}) {
     if (
       response.status === 401 &&
       !path.startsWith("/api/auth/login") &&
-      !path.startsWith("/api/auth/register")
+      !path.startsWith("/api/auth/register") && token === getStoredAccessToken()
     ) {
       clearAccessToken();
       window.dispatchEvent(new CustomEvent("orbitwatch:unauthorized"));
     }
 
+    const serverMessage = response.status === 503
+      ? code === "database_unavailable" ? "OrbitWatch's database is temporarily unavailable. Please try again shortly." : "OrbitWatch is temporarily unavailable. Please try again shortly."
+      : "OrbitWatch encountered a server error. Please try again.";
     throw new OrbitWatchApiError(
-      typeof detail === "string" ? detail : `Request failed (${response.status}). Please try again.`,
+      response.status >= 500 ? serverMessage : typeof detail === "string" ? detail : `Request failed (${response.status}). Please try again.`,
       response.status,
-      typeof detail === "string" ? detail : null,
+      response.status < 500 && typeof detail === "string" ? detail : null,
+      response.status === 401 ? "unauthorized" : response.status === 503 ? "unavailable" : response.status >= 500 ? "server" : "validation", code,
     );
   }
 
   if (response.status === 204) return null;
-  return response.json();
+  try { return await response.json(); }
+  catch (error) {
+    if (options.signal?.aborted) throw error;
+    if (signal.aborted || error.name === "TimeoutError") throw new OrbitWatchApiError("The request timed out. Please try again.", 0, null, "timeout");
+    throw new OrbitWatchApiError("OrbitWatch returned an invalid response. Please try again.", 502, null, "server");
+  }
 }
 
 export function getApiBaseUrl() {
@@ -120,19 +140,21 @@ export function fetchSatelliteOrbit(
   return requestJson(`/api/satellites/${noradId}/orbit?${query}`, { signal });
 }
 
-export function registerAccount({ username, email, password }) {
+export function registerAccount({ username, email, password, signal }) {
   return requestJson("/api/auth/register", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ username, email, password }),
+    signal,
   });
 }
 
-export function loginAccount({ usernameOrEmail, password }) {
+export function loginAccount({ usernameOrEmail, password, signal }) {
   return requestJson("/api/auth/login", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ username_or_email: usernameOrEmail, password }),
+    signal,
   });
 }
 

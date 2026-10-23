@@ -1,15 +1,7 @@
 import httpx
 from services.providers.budget import budget, ProviderAuthorizationError
 from os import getenv
-from pathlib import Path
-from dotenv import load_dotenv
-
-env_path = Path(__file__).resolve().parent.parent.parent / ".env"
-
-if not env_path.is_file():
-    raise FileNotFoundError(f".env file not found at: {env_path}")
-
-load_dotenv(dotenv_path=env_path, override=True)
+import core.config  # optional local configuration, environment takes precedence
 
 BASE_URL = "https://www.space-track.org"
 SPACETRACK_USERNAME = getenv("SPACETRACK_USERNAME")

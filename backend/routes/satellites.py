@@ -1,4 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
+import logging
+from core.availability import DatabaseUnavailable
+from sqlalchemy.exc import SQLAlchemyError
 from core.security import get_current_user
 from schemas.satellites import TrajectoryBatchRequest
 from services.orbital_data_service import get_orbital_data_status
@@ -29,21 +32,28 @@ def check_norad_id(norad_id: int) -> None:
 
 
 def convert_satellite_error(error: Exception):
+    if isinstance(error, (HTTPException, DatabaseUnavailable)):
+        raise error
+    if isinstance(error, SQLAlchemyError):
+        from core.database import database_availability
+        database_availability.failed(error)
+        raise DatabaseUnavailable() from None
+    logging.getLogger("orbitwatch.satellites").warning("Satellite request failed (%s)", type(error).__name__)
     if isinstance(error, ValueError):
         raise HTTPException(
             status_code=400,
-            detail=str(error),
+            detail="Satellite propagation is unavailable for the requested parameters or interval",
         )
 
     if isinstance(error, LookupError):
         raise HTTPException(
             status_code=503,
-            detail=str(error),
+            detail="Orbital data is temporarily unavailable",
         )
 
     raise HTTPException(
-        status_code=503,
-        detail=f"Satellite data is temporarily unavailable: {error}",
+        status_code=500,
+        detail="Satellite request could not be completed. Please try again.",
     )
 
 
@@ -52,10 +62,7 @@ def satellite_data_status() -> dict:
     try:
         return get_orbital_data_status()
     except Exception as error:
-        raise HTTPException(
-            status_code=503,
-            detail=f"Could not read orbital data status: {error}",
-        )
+        convert_satellite_error(error)
 
 
 @router.post("/trajectories")
@@ -80,10 +87,7 @@ def satellite_catalog() -> dict:
         space_objects = get_satellite_catalog()
         return space_objects
     except Exception as error:
-        raise HTTPException(
-            status_code=503,
-            detail=f"Could not read satellite catalog: {error}",
-        )
+        convert_satellite_error(error)
 
 
 @router.get("/{norad_id}/position")

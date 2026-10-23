@@ -39,11 +39,42 @@ Create a virtual environment under the ignored backup directory with a Windows C
 
 ```powershell
 python -m venv .orbitwatch-backups/api-venv
-.orbitwatch-backups/api-venv/Scripts/python.exe -m pip install fastapi uvicorn sqlalchemy python-dotenv PyJWT 'pwdlib[argon 2]' skyfield httpx
+.orbitwatch-backups/api-venv/Scripts/python.exe -m pip install -r backend/requirements.lock
 .orbitwatch-backups/api-venv/Scripts/python.exe tests/check_backend_contract.py
 ```
 
 The suite checks 39 API requests: login by name/email, bad credentials, registration/duplicate registration, profile, missing/expired/invalid JWTs, catalog/status, finite propagated coordinates, mixed-success trajectory batches, 480-point orbits and validation errors, including registration concurrent with catalog reads.
+
+### Reliability checks (23 October)
+
+```powershell
+.orbitwatch-backups/api-venv/Scripts/python.exe tests/check_reliability.py
+.orbitwatch-backups/api-venv/Scripts/python.exe tests/check_availability.py
+.orbitwatch-backups/api-venv/Scripts/python.exe tests/check_provider_budgets.py
+```
+
+These use temporary SQLite storage, mocked disconnects/HTTP and an intentionally
+closed loopback PostgreSQL port with independent credentials. They never load
+the real `.env`, disconnect Supabase or run production ingestion. The outage
+suite exercises26 actual route requests plus40 simultaneous503s, safe startup,
+liveness/readiness, invalid JWT vs valid JWT with DB down, auth recovery, cached
+propagator authorization, mid-trajectory errors and sanitized responses.
+The strict unexpected-error check also verifies no exception escapes to ASGI
+traceback logging and the generated500 retains configured CORS headers.
+Availability checks cover single-flight probes,5-60sec recovery backoff/jitter,
+worker cancellation/backoff, scheduler lease release and unchanged provider
+reservations under DB failures. Existing provider tests cover mock HTTP budgets,
+restart/circuits/Retry-After and independent process reservations. External
+orbital-provider requests are zero.
+
+The UI fixture's `Fixture infrastructure` selector can inject database503,
+backend502, offline, timeout and expired-session failures. It persists only this
+test setting in sessionStorage across fixture reloads to exercise saved-session
+restoration. `Session diagnostics` reports token presence only, never its value.
+Set online to restore normal test behavior; no production accounts are used.
+Check retained credentials/no Viewer while unverified, automatic/manual retry,
+normal cinematic arrival, failing refresh with existing tracks and401 logout.
+Intentional request-failure warnings are expected; distinguish them from crashes.
 
 For browser integration, run the script with `--serve` (loopback port 8001; refresh lifespan disabled), then in another terminal:
 

@@ -17,3 +17,9 @@
 .auth-root-layer--auth {
   z-index: 10;
 }
+
+.auth-session-recovery { position:absolute; z-index:30; left:50%; top:50%; transform:translate(-50%,-50%); width:min(420px,calc(100% - 32px)); padding:var(--ui-panel-padding); border:1px solid var(--line); background:var(--panel); color:var(--ui-text); }
+.auth-session-recovery h1 { font-size:var(--ui-font-large); margin:0 0 12px; }
+.auth-session-recovery p { color:var(--ui-text-muted); font-size:var(--ui-font-regular); }
+.auth-session-recovery button { min-height:var(--ui-button-height); margin:8px 8px 0 0; border:1px solid var(--line); background:var(--panel); color:var(--accent); font-size:var(--ui-font-sm); cursor:pointer; }
+.auth-session-recovery button:disabled { opacity:.6; cursor:wait; }

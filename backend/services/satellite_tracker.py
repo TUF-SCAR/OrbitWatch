@@ -4,6 +4,7 @@ from datetime import datetime, timedelta, timezone
 from skyfield.api import EarthSatellite, load, wgs84
 from skyfield.sgp4lib import TEME
 from skyfield.framelib import itrs
+from core.availability import DatabaseUnavailable
 
 from repositories.satellite_orbital_data import (
     get_all_orbital_records,
@@ -226,10 +227,12 @@ def get_satellite_trajectories(
             )
             objects.append(result)
         except Exception as error:
+            if isinstance(error, DatabaseUnavailable):
+                raise
             errors.append(
                 {
                     "norad_id": norad_id,
-                    "message": str(error),
+                    "message": "Orbital data unavailable for this object or interval",
                 }
             )
 

@@ -185,7 +185,7 @@ def _refresh_orbital_data(force: bool = False) -> dict:
 
         clear_satellite_cache(received_ids)
     except Exception as error:
-        print(f"Could not clear satellite RAM cache: {error}")
+        print(f"Could not clear satellite RAM cache: {type(error).__name__}")
 
     return {
         "refreshed": True,

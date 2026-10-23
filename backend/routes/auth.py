@@ -1,5 +1,6 @@
 from sqlalchemy import select, or_
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import IntegrityError
 from fastapi import APIRouter, Depends, HTTPException
 
 from models.user import User
@@ -70,7 +71,11 @@ def Registration(
     )
 
     database.add(new_user)
-    database.commit()
+    try:
+        database.commit()
+    except IntegrityError:
+        database.rollback()
+        raise HTTPException(status_code=409, detail="Username or email already exists") from None
     database.refresh(new_user)
 
     access_token = create_access_token(new_user.id)

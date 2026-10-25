@@ -1,3 +1,5 @@
+> Surface Wind now uses animated, depth-tested flow instead of baked arrows. See [WIND_FLOW.md](WIND_FLOW.md) for scientific limitations, tuning, library evaluation and native validation. Other fields retain their approved renderer.
+
 # Live Earth weather
 
 Initial implementation from `55bb762`; reliability continuation and global fields/

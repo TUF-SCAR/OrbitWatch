@@ -44,17 +44,3 @@ export function weatherPixels(field,width=720,height=360) {
   }
   return pixels;
 }
-// Static vectors from this model valid time. No fabricated parcel animation.
-export function drawWindVectors(context,field,width,height) {
-  context.strokeStyle='rgba(220,255,252,.9)';context.lineWidth=1;
-  for(let lat=-75;lat<=75;lat+=10)for(let lon=-175;lon<180;lon+=10){
-    const u=sampleModel(field.u,lon,lat),v=sampleModel(field.v,lon,lat);
-    if(u===null||v===null||Math.hypot(u,v)<.5)continue;
-    // Equirectangular eastward displacement needs the longitude metric factor.
-    const dx=u/Math.cos(lat*Math.PI/180),dy=-v,len=Math.hypot(dx,dy),scale=(4+Math.min(7,Math.hypot(u,v)/3))/len;
-    const x=(lon+180)/360*width,y=(90-lat)/180*height,ex=x+dx*scale,ey=y+dy*scale,angle=Math.atan2(dy,dx);
-    context.beginPath();context.moveTo(x,y);context.lineTo(ex,ey);
-    for(const side of [-1,1]){context.moveTo(ex,ey);context.lineTo(ex-3*Math.cos(angle+side*.55),ey-3*Math.sin(angle+side*.55));}
-    context.stroke();
-  }
-}

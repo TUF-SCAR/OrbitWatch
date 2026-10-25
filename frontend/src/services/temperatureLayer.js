@@ -1,5 +1,5 @@
 import { Credit, Rectangle, SingleTileImageryProvider } from 'cesium';
-import { weatherPixels, drawWindVectors } from './weatherFields.js';
+import { weatherPixels } from './weatherFields.js';
 import { createWeatherPresentation } from './weatherPresentation.js';
 import { prefersReducedMotion } from '../utils/motionPreferences.js';
 
@@ -7,7 +7,6 @@ export function temperatureProvider(field) {
   const canvas=document.createElement('canvas');canvas.width=720;canvas.height=360;
   const context=canvas.getContext('2d'),image=context.createImageData(720,360);
   image.data.set(weatherPixels(field));context.putImageData(image,0,0);
-  if(field.display_variable==='wind')drawWindVectors(context,field,720,360);
   return new SingleTileImageryProvider({url:canvas.toDataURL('image/png'),tileWidth:720,tileHeight:360,rectangle:Rectangle.MAX_VALUE,
     credit:new Credit('<a href="https://nomads.ncep.noaa.gov/">NOAA/NCEP GFS · model weather</a>')});
 }

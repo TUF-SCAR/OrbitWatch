@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { Event } from 'cesium';
 import {createWeatherPresentation} from '../src/services/weatherPresentation.js';
-import {selectWeatherField,sampleModel,weatherPixels,drawWindVectors,validateModelField} from '../src/services/weatherFields.js';
+import {selectWeatherField,sampleModel,weatherPixels,validateModelField} from '../src/services/weatherFields.js';
 import {createNaturalEventLayer} from '../src/services/naturalEventLayer.js';
 
 test('weather presentation reduces scattering only, retains all atmosphere/shading flags and restores the exact prior intensity',()=>{
@@ -13,7 +13,7 @@ test('weather presentation reduces scattering only, retains all atmosphere/shadi
     owner.set(false);assert.equal(scene.globe.atmosphereLightIntensity,7.25);owner.set(true);owner.destroy();assert.equal(scene.globe.atmosphereLightIntensity,7.25);
   }
 });
-test('real model fields preserve units/missing nodes/dateline and wind arrows follow east/north components',()=>{
+test('real model fields preserve units/missing nodes/dateline and signed wind components',()=>{
   const values=Array(65160).fill(70),u=Array(65160).fill(10),v=Array(65160).fill(0);
   const bundle={id:'fixture',grid:{width:360,height:181,west:-180,north:90,step:1},fields:{
     clouds:{units:'%',step_type:'instant',values},precipitation:{units:'mm/h',step_type:'instant',values:Array(65160).fill(.3)},wind:{units:'m/s',step_type:'instant',u,v}}};
@@ -22,11 +22,7 @@ test('real model fields preserve units/missing nodes/dateline and wind arrows fo
   assert.equal(sampleModel(values,-180,0),sampleModel(values,180,0));
   values[90*360+180]=null;assert.equal(sampleModel(values,0,0),null);
   assert.throws(()=>validateModelField('clouds',{units:'%',step_type:'avg',values}));
-  const moves=[],lines=[],context={beginPath(){},moveTo(x,y){moves.push([x,y]);},lineTo(x,y){lines.push([x,y]);},stroke(){}};
-  drawWindVectors(context,bundle.fields.wind,720,360);
-  assert.ok(lines[0][0]>moves[0][0]);assert.equal(lines[0][1],moves[0][1]);
-  bundle.fields.wind.u=Array(65160).fill(0);bundle.fields.wind.v=u;moves.length=0;lines.length=0;
-  drawWindVectors(context,bundle.fields.wind,720,360);assert.equal(lines[0][0],moves[0][0]);assert.ok(lines[0][1]<moves[0][1]);
+
 });
 
 test('event layer owns two bounded data sources; clustering/selection consumes clicks without touching satellite selection, and all resources are released',async()=>{

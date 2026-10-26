@@ -53,6 +53,7 @@ import { cameraDuration } from "../utils/motionPreferences.js";
 import { createWindLayer } from '../services/windLayer.js';
 import { mountWindReview } from '../services/windReview.js';
 const WIND_REVIEW=import.meta.env.DEV&&new URLSearchParams(window.location.search).has('windReview');
+import { createCloudLayer } from '../services/cloudLayer.js';
 import { createTemperatureLayer } from '../services/temperatureLayer.js';
 import { createNaturalEventLayer } from '../services/naturalEventLayer.js';
 import { mountWeatherComparison } from '../services/weatherPresentation.js';
@@ -328,6 +329,8 @@ export default function OrbitGlobe({
   onOrbitInfo,
   onDetailReady,
   naturalEvents, eventsVisible=false, eventCategory='all', selectedEventId=null, onEventSelect,
+  cloudFrame,
+  onCloudError,
   weatherField,
   weatherVisible = false,
   weatherOpacity = .55,
@@ -336,6 +339,7 @@ export default function OrbitGlobe({
   const mountRef = useRef(null);
   const viewerRef = useRef(null);
   const placeSearchRef = useRef(null);
+  const cloudLayerRef = useRef(null);
   const temperatureLayerRef = useRef(null);
   const windLayerRef = useRef(null);
   const windFieldRef = useRef(null);
@@ -877,7 +881,7 @@ export default function OrbitGlobe({
         // Development-only browser evidence; no camera mutation or extra clock.
         if(import.meta.env.DEV) {
           const weatherLayers=Array.from({length:viewer.imageryLayers.length},(_,i)=>viewer.imageryLayers.get(i)).filter(layer=>layer.orbitwatchWeather);
-          mountRef.current?.setAttribute('data-weather-diagnostics',JSON.stringify({wind:windLayerRef.current?.diagnostics(),groundIntensity:viewer.scene.globe.atmosphereLightIntensity,groundAtmosphere:viewer.scene.globe.showGroundAtmosphere,skyAtmosphere:viewer.scene.skyAtmosphere.show,lighting:viewer.scene.globe.enableLighting,fog:viewer.scene.fog.enabled,eventSources:viewer.dataSources.length,events:naturalEventLayerRef.current?.diagnostics(),layers:weatherLayers.length,alpha:weatherLayers[0]?.alpha??0,following:followStateRef.current?.noradId??null,selected:selectedIdRef.current,tracked:entityMap.size,earth:earthActiveRef.current,mode:modeRef.current}));
+          mountRef.current?.setAttribute('data-weather-diagnostics',JSON.stringify({clouds:cloudLayerRef.current?.diagnostics(),wind:windLayerRef.current?.diagnostics(),groundIntensity:viewer.scene.globe.atmosphereLightIntensity,groundAtmosphere:viewer.scene.globe.showGroundAtmosphere,skyAtmosphere:viewer.scene.skyAtmosphere.show,lighting:viewer.scene.globe.enableLighting,fog:viewer.scene.fog.enabled,eventSources:viewer.dataSources.length,events:naturalEventLayerRef.current?.diagnostics(),layers:weatherLayers.length,alpha:weatherLayers[0]?.alpha??0,following:followStateRef.current?.noradId??null,selected:selectedIdRef.current,tracked:entityMap.size,earth:earthActiveRef.current,mode:modeRef.current}));
         }
         const cameraCartographic = viewer.scene.globe.ellipsoid.cartesianToCartographic(viewer.camera.positionWC);
         onViewTelemetryRef.current?.({
@@ -916,6 +920,7 @@ export default function OrbitGlobe({
     return () => {
       destroyed = true;
       windLayerRef.current?.destroy();windLayerRef.current=null;
+      cloudLayerRef.current?.destroy();cloudLayerRef.current=null;
       temperatureLayerRef.current?.destroy();temperatureLayerRef.current=null;
       removeWeatherComparison();
       removeWindReview();
@@ -1036,8 +1041,14 @@ export default function OrbitGlobe({
     const viewer=viewerRef.current;if(!viewer||viewer.isDestroyed())return;
     temperatureLayerRef.current ||= createTemperatureLayer(viewer);
     temperatureLayerRef.current.update({field:weatherField,visible:weatherVisible&&mode==='live'&&selectedCelestialBody==='earth',
-      opacity:weatherOpacity,compatible:weatherCompatible,immediate:mode!=='live'||selectedCelestialBody!=='earth'});
+      opacity:weatherOpacity,compatible:weatherCompatible,immediate:mode!=='live'||selectedCelestialBody!=='earth'||!weatherField});
   },[weatherField,weatherVisible,weatherOpacity,weatherCompatible,mode,selectedCelestialBody]);
+
+  useEffect(()=>{
+    const viewer=viewerRef.current;if(!viewer||viewer.isDestroyed())return;
+    cloudLayerRef.current ||= createCloudLayer(viewer,{onError:onCloudError});
+    cloudLayerRef.current.update({frame:cloudFrame,visible:weatherVisible&&mode==='live'&&selectedCelestialBody==='earth',compatible:weatherCompatible,alpha:weatherOpacity});
+  },[cloudFrame,onCloudError,weatherVisible,weatherCompatible,weatherOpacity,mode,selectedCelestialBody]);
 
   useEffect(()=>{
     const viewer=viewerRef.current;if(!viewer||viewer.isDestroyed())return;

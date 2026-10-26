@@ -102,3 +102,25 @@ for (const quality of ['performance','balanced','quality']) test(`wind ${quality
   }
   owner.destroy();assert.equal(timers.size,0);assert.equal(primitives.length,0);
 });
+
+test('wind adaptive recovery is gradual, hysteretic, bounded and resets on real restarts',()=>{
+  const doc={...target(),hidden:false},media={...target(),matches:false},canvas={...target(),clientWidth:1000,clientHeight:700};
+  const preRender=new Event(),primitives=[],timers=new Set();let clock=100,picks=0;
+  const viewer={isDestroyed:()=>false,camera:{positionCartographic:{height:20000000},pickEllipsoid(){picks++;return Cartesian3.fromDegrees(70,10);}},scene:{canvas,preRender,requestRender(){},primitives:{add(p){primitives.push(p);return p;},remove(p){primitives.splice(primitives.indexOf(p),1);}}}};
+  const owner=createWindLayer(viewer,{doc,media,now:()=>clock,random:()=>.4,schedule:fn=>{timers.add(fn);return fn;},cancel:fn=>timers.delete(fn),makePrimitive:n=>({data:new Float32Array(n*8)})});
+  const options={field:field(),visible:true,compatible:true,opacity:.55,quality:'balanced'};
+  owner.update(options);const first=primitives[0];
+  const run=(n,ms)=>{for(let i=0;i<n;i++){clock+=ms;preRender.raiseEvent();}};
+  run(35,100);const low=owner.diagnostics().qualityScale;assert.ok(low<1);
+  run(100,40);assert.equal(owner.diagnostics().qualityScale,low,'brief relief does not recover');
+  run(225,40);const rising=owner.diagnostics().qualityScale;assert.ok(rising>low&&rising<1,'sustained relief recovers only a small step');
+  const before=picks;run(1,40);assert.ok(picks-before<=WIND_STYLE.reseedPerUpdate);
+  run(35,100);assert.ok(owner.diagnostics().qualityScale<rising,'renewed overload wins during recovery');
+  run(2000,40);assert.equal(owner.diagnostics().qualityScale,1,'healthy performance eventually restores full budget');
+  assert.equal(primitives[0],first);assert.equal(timers.size,1);assert.equal(preRender.numberOfListeners,1);
+  run(35,100);assert.ok(owner.diagnostics().qualityScale<1);
+  owner.update({...options,quality:'performance'});assert.equal(owner.diagnostics().qualityScale,1);assert.equal(owner.diagnostics().particles,1800);
+  run(35,100);assert.ok(owner.diagnostics().qualityScale<1);
+  owner.update({...options,visible:false});owner.update(options);assert.equal(owner.diagnostics().qualityScale,1);
+  owner.destroy();assert.equal(timers.size,0);assert.equal(primitives.length,0);assert.equal(preRender.numberOfListeners,0);
+});

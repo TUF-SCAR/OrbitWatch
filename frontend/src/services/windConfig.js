@@ -26,6 +26,12 @@ export const WIND_STYLE = Object.freeze({
   overloadMs: 12,
   overloadFrames: 30,
   minimumScale: .35,
+  recoveryCpuMs: 6,
+  recoveryFrameFactor: 1.75,
+  recoveryHealthyMs: 8000,
+  recoveryCooldownMs: 12000,
+  recoveryStepMs: 2000,
+  recoveryStep: .05,
 });
 export const WIND_PROFILES = Object.freeze({
   performance: { particles: 1800, fps: 24 },

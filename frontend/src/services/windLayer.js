@@ -15,6 +15,7 @@ export function createWindLayer(viewer, {
   let primitive = null, particles = [], timer = null, removeFrame = null, destroyed = false, lost = false;
   let last = 0, clock = 0, nextSample = 0, scale = 1, overload = 0, fps = 0, frames = 0, frameStart = 0, cost = 0;
   let generation = 0, refreshes = 0, pending = 0, refreshHeight = 0, observedHeight = 0, zoomChangedAt = 0, refreshedAt = 0;
+  let healthySince=null,lastReduction=0,lastRecovery=0,previousCount=0;
   const step = [0,0], scratch = [0,0], point = new Cartesian2(), geo = new Cartographic();
   const historySize = WIND_STYLE.trailSegments + 1;
   function warmHistory(p, budget) {
@@ -55,6 +56,10 @@ export function createWindLayer(viewer, {
     clock+=media.matches?0:dt;
     const budget=windBudget(quality,canvas.clientWidth,viewer.camera.positionCartographic.height);
     const count=Math.min(particles.length,Math.round(budget.particles*scale));
+    // Inactive tails must return through the existing bounded warm-seed path,
+    // rather than reappearing at an old camera position with stale history.
+    for(let i=count;i<previousCount;i++){particles[i].valid=false;particles[i].generation=-1;}
+    previousCount=count;
     const height=Math.max(WIND_STYLE.zoomHeightFloor,viewer.camera.positionCartographic.height);
     if(Math.abs(height-observedHeight)>observedHeight*.01){observedHeight=height;zoomChangedAt=start;}
     const ratio=Math.max(height/refreshHeight,refreshHeight/height);
@@ -97,11 +102,19 @@ export function createWindLayer(viewer, {
     // Sustained CPU or whole-scene pressure sheds particles without adding work
     // to other renderers. Never simulate a hidden-tab catch-up jump.
     if(elapsed>WIND_STYLE.overloadMs||interval>2/budget.fps)overload++;else overload=Math.max(0,overload-1);
-    if(overload>=WIND_STYLE.overloadFrames){scale=Math.max(WIND_STYLE.minimumScale,scale*.75);overload=0;}
+    if(overload>=WIND_STYLE.overloadFrames){
+      scale=Math.max(WIND_STYLE.minimumScale,scale*.75);overload=0;healthySince=null;lastReduction=start;
+    }else if(!media.matches&&elapsed<=WIND_STYLE.recoveryCpuMs&&interval<=WIND_STYLE.recoveryFrameFactor/budget.fps&&!pending){
+      healthySince??=start;
+      if(scale<1&&start-healthySince>=WIND_STYLE.recoveryHealthyMs&&start-lastReduction>=WIND_STYLE.recoveryCooldownMs&&start-lastRecovery>=WIND_STYLE.recoveryStepMs){
+        scale=Math.min(1,scale+WIND_STYLE.recoveryStep);lastRecovery=start;
+      }
+    }else healthySince=null;
     frames++;if(start-frameStart>2000){fps=frames*1000/(start-frameStart);frameStart=start;frames=0;}
   }
   function reconcile() {
     release();
+    scale=1;overload=0;healthySince=null;lastReduction=lastRecovery=now();previousCount=0;cost=0;
     if(destroyed||!visible||!field||opacity<=0||doc.hidden||lost||viewer.isDestroyed())return;
     const capacity=windBudget(quality,1000,0).particles;
     primitive=scene.primitives.add(makePrimitive(capacity*historySize));

@@ -170,3 +170,7 @@ status, or404 if absent/hard-expired; it does **zero** upstream HTTP. IDs use
 contains all supported details; clicks do not fan out to source detail services.
 All endpoints return private,no-store. No arbitrary URL, bbox, pagination or
 provider credential can be supplied by a client. See [contracts and budgets](NATURAL_EVENTS.md).
+
+## Observed cloud visualization (26 October 2026)
+
+The Live browser accesses the public EUMETView WMS without credentials. This is separate from NOAA forecast retrieval. Metadata:15-minute cache; images:one sequential request per advertised three-hourly frame;2/3/4 frame cache by quality. Repeated playback, camera motion and opacity make no new cloud requests. Per-session cap24attempts/15min,60s timeout,minimum120s backoff and longer Retry-After. Hidden/layer/travel/Time/logout cancel work. No new backend account/lease/database writes. These are client-session safeguards, not a durable multi-user upstream quota. See [OBSERVED_CLOUDS.md](OBSERVED_CLOUDS.md) for source terms and coverage; actual request accounting and limitations are recorded in the ignored evidence/checkpoint.

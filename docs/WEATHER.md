@@ -1,4 +1,6 @@
-> Surface Wind now uses animated, depth-tested flow instead of baked arrows. See [WIND_FLOW.md](WIND_FLOW.md) for scientific limitations, tuning, library evaluation and native validation. Other fields retain their approved renderer.
+> Live Earth now offers **Observed clouds · infrared** (EUMETSAT real composite slots) separately from **Modeled cloud coverage** (GFS). See [OBSERVED_CLOUDS.md](OBSERVED_CLOUDS.md) for source research, scientific limitations, playback, budgets and validation.
+
+> Surface Wind now uses animated, depth-tested flow instead of baked arrows. See [WIND_FLOW.md](WIND_FLOW.md) for scientific limitations, tuning, library evaluation and native validation. Temperature, precipitation and modeled cloud coverage retain their approved renderer.
 
 # Live Earth weather
 
@@ -22,7 +24,7 @@ Each scalar has65,160 NW-ordered nodes; wind has signed eastward `u` and northwa
 | Temperature |2t,heightAboveGround2,K,instant |°C |
 | Clouds |tcc,atmosphere0,%,instant |Model total cloud coverage,%,white/gray alpha |
 | Precipitation |prate,surface0,kg m^-2 s^-1,instant |Liquid-equivalent **rate**,mm/h,source×3600; includes frozen precipitation, **not accumulation** |
-| Wind |10u/10v,heightAboveGround10,m s^-1,instant |10m speed,m/s,and static arrows pointing **toward** the flow |
+| Wind |10u/10v,heightAboveGround10,m s^-1,instant |10m speed,m/s,and animated geographic flow; see WIND_FLOW.md |
 
 The official live NOAA inventory was checked before implementing. It contains
 both instant and averaged PRATE/TCDC; these are not interchangeable. The grouped
@@ -31,10 +33,7 @@ and averaged fields are ignored, never selected instead of the required fields.
 Bundle bound16MB/16messages; no change to NOAA30min/4hour/32day budget.
 
 A single dominant field is visible. Pixel interpolation does not add resolution.
-Wind is a sparse canvas vector field from the actual east/north components;
-equirectangular longitude displacement accounts for cos(latitude). Arrow length
-is symbolic speed emphasis, not an air-parcel trajectory; no particle animation.
-Clouds are **GFS forecast cloud fraction**, never called satellite observations.
+Wind uses the approved bounded particle renderer from the actual east/north components; see WIND_FLOW.md for WGS84 advection and accelerated visual time. Modeled Cloud Coverage is **GFS forecast cloud fraction**, never called satellite observations. The separate Observed Clouds infrared choice is documented in OBSERVED_CLOUDS.md.
 
 ### Readability and reversible presentation
 

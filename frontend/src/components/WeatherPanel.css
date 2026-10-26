@@ -60,3 +60,8 @@
 .event-report-link { color:var(--accent); font-size:var(--ui-font-sm); display:inline-block; min-height:36px; }
 .event-provider { border-top:1px solid var(--line); padding:12px 0; }
 .event-timeline { padding-left:20px; max-height:200px; overflow:auto; }
+
+.cloud-playback { display:flex; flex-wrap:wrap; gap:10px; align-items:center; margin:12px 0; }
+.cloud-playback label { display:flex; flex-direction:column; gap:6px; flex:1; min-width:100px; color:var(--ui-text-muted); font-size:var(--ui-font-sm); }
+.cloud-playback input { width:100%; }
+.observed-clouds > .secondary-action { margin:4px 6px 8px 0; }

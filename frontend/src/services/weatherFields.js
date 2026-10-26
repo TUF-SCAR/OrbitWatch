@@ -2,7 +2,8 @@ import { sampleTemperature, temperaturePixels, TEMPERATURE_GRADIENT } from './te
 
 export const WEATHER_FIELDS={
   temperature:{label:'Temperature',title:'2 m AIR TEMPERATURE',units:'°C',ticks:['≤−60','−30','0','30','≥60'],gradient:TEMPERATURE_GRADIENT},
-  clouds:{label:'Cloud coverage',title:'MODEL CLOUD COVERAGE',units:'%',ticks:['0','25','50','75','100'],gradient:'linear-gradient(90deg,transparent,#b9c5d0,#ffffff)'},
+  observedClouds:{label:'Observed clouds · infrared'},
+  clouds:{label:'Modeled cloud coverage',title:'MODEL CLOUD COVERAGE',units:'%',ticks:['0','25','50','75','100'],gradient:'linear-gradient(90deg,transparent,#b9c5d0,#ffffff)'},
   precipitation:{label:'Precipitation rate',title:'PRECIPITATION RATE',units:'mm/h',ticks:['0.1','1','5','20','≥50'],gradient:'linear-gradient(90deg,#244b93,#309ee1,#64eeec,#d4ffff)'},
   wind:{label:'Surface wind',title:'10 m WIND · TOWARD',units:'m/s',ticks:['0','5','15','30','≥60'],gradient:'linear-gradient(90deg,#26395d,#398c9d,#91e0d9)'},
 };

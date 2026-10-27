@@ -1,13 +1,15 @@
 import { Credit, Rectangle, SingleTileImageryProvider } from 'cesium';
+import { rainBudget } from './precipitationStyle.js';
 import { weatherPixels } from './weatherFields.js';
 import { createWeatherPresentation } from './weatherPresentation.js';
 import { prefersReducedMotion } from '../utils/motionPreferences.js';
 
-export function temperatureProvider(field) {
-  const canvas=document.createElement('canvas');canvas.width=720;canvas.height=360;
-  const context=canvas.getContext('2d'),image=context.createImageData(720,360);
-  image.data.set(weatherPixels(field));context.putImageData(image,0,0);
-  return new SingleTileImageryProvider({url:canvas.toDataURL('image/png'),tileWidth:720,tileHeight:360,rectangle:Rectangle.MAX_VALUE,
+export function temperatureProvider(field,quality) {
+  const width=field.display_variable==='precipitation'?rainBudget(quality).width:720,height=width/2;
+  const canvas=document.createElement('canvas');canvas.width=width;canvas.height=height;
+  const context=canvas.getContext('2d'),image=context.createImageData(width,height);
+  image.data.set(weatherPixels(field,width,height));context.putImageData(image,0,0);
+  return new SingleTileImageryProvider({url:canvas.toDataURL('image/png'),tileWidth:width,tileHeight:height,rectangle:Rectangle.MAX_VALUE,
     credit:new Credit('<a href="https://nomads.ncep.noaa.gov/">NOAA/NCEP GFS · model weather</a>')});
 }
 
@@ -35,11 +37,12 @@ export function createTemperatureLayer(viewer,{makeProvider=temperatureProvider,
     removeFrame=viewer.scene.preRender.addEventListener(tick);viewer.scene.requestRender();
   }
   return {
-    update({field,visible,opacity=.55,compatible=true,immediate=false}) {
+    update({field,visible,opacity=.55,compatible=true,immediate=false,quality='auto'}) {
       if(destroyed||viewer.isDestroyed())return;
       if(!visible||!field||!compatible){if(immediate||!compatible)remove();else fade(0);return;}
-      if(!layer||!viewer.imageryLayers.contains(layer)||key!==field.id) {
-        remove();layer=viewer.imageryLayers.addImageryProvider(makeProvider(field));key=field.id;
+      const nextKey=field.display_variable==='precipitation'?`${field.id}:${quality}`:field.id;
+      if(!layer||!viewer.imageryLayers.contains(layer)||key!==nextKey) {
+        remove();layer=viewer.imageryLayers.addImageryProvider(makeProvider(field,quality));key=nextKey;
         layer.orbitwatchWeather=true;layer.alpha=0;
       }
       fade(Math.max(0,Math.min(.8,Number(opacity)||0)));

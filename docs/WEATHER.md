@@ -349,3 +349,9 @@ same15min retrieval/30min valid stale thresholds and3h hard expiry as the backen
 using original timestamps and no automatic point-provider request. Boundary tests
 cover these cases. Development HMR reset the panel afterward; final normal field
 rendering was rechecked after that reload.
+# Cloud and precipitation refinement
+
+The current single Clouds mode, observed/model fallback disclosure, regional
+imagery sampling and symbolic precipitation streaks are described in
+[WEATHER_VISUALS.md](WEATHER_VISUALS.md). Earlier implementation notes below
+remain useful background; the refinement document defines the current controls.

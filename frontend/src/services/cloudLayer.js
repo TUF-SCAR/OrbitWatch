@@ -3,7 +3,7 @@ import { CLOUD_SOURCE, CLOUD_STYLE } from './cloudConfig.js';
 import { prefersReducedMotion } from '../utils/motionPreferences.js';
 
 export async function cloudProvider(frame) {
-  return SingleTileImageryProvider.fromUrl(frame.url,{rectangle:Rectangle.MAX_VALUE,
+  return SingleTileImageryProvider.fromUrl(frame.url,{rectangle:frame.bounds?Rectangle.fromDegrees(...frame.bounds):Rectangle.MAX_VALUE,
     credit:new Credit(`<a href="${CLOUD_SOURCE.information}">${CLOUD_SOURCE.credit} · ${frame.time} · IR cloud emphasis</a>`)});
 }
 export function createCloudLayer(viewer,{makeProvider=cloudProvider,now=()=>performance.now(),reduced=prefersReducedMotion,onError=()=>{}}={}) {

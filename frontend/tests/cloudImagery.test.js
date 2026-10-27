@@ -19,7 +19,7 @@ test('cloud slots honor actual cadence, gaps, UTC and upper availability; no inv
 test('IR transfer preserves missing coverage and monotonic source structure without adding detail',()=>{
   const pixels=new Uint8ClampedArray([0,0,0,255,85,85,85,255,160,160,160,255,235,235,235,255,255,255,255,0]);
   const output=emphasizeInfrared(pixels);assert.equal(output,pixels);
-  assert.equal(output[3],0);assert.equal(output[7],0);assert.ok(output[11]>0&&output[11]<255);assert.equal(output[15],255);assert.equal(output[19],0);
+  assert.equal(output[3],0);assert.equal(output[7],0);assert.ok(output[11]>0&&output[11]<255);assert.ok(output[15]>output[11]&&output[15]<255);assert.ok(output[12]>output[8]);assert.equal(output[19],0);
   assert.equal(cloudBudget('auto').width,2048);
 });
 test('all cloud quality profiles cache bounded real frames; repeated playback has zero requests',async()=>{

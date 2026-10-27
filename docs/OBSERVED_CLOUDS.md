@@ -1,8 +1,9 @@
 # Live Earth observed clouds — 26 October 2026
 
-Observed Clouds is a separate, explicitly infrared visualization. Modeled Cloud
-Coverage remains the unchanged NOAA GFS total-cloud-fraction field. Neither is
-silently substituted for the other. Both retain their source times.
+The Clouds selector uses explicitly labeled infrared observations, with an
+explicitly labeled NOAA GFS modeled-cloud fallback when observations fail and
+no cached observation exists. Both retain their source times. See
+[WEATHER_VISUALS.md](WEATHER_VISUALS.md) for the current regional rendering pass.
 
 ## Source evaluation and decision
 
@@ -38,7 +39,7 @@ Only advertised slots at or before the current clock are accepted. Unsupported
 cadences fail closed. No forecast time, scan interval or source epoch is invented.
 
 The real grayscale infrared visualization is transferred to white opacity:
-`alpha = sourceAlpha * clamp((brightness - 85) / 150, 0, 1)^1.15`.
+`alpha = sourceAlpha * clamp((brightness - 85) / 170, 0, 1)^1.05`.
 This is **cold-cloud emphasis, not a cloud mask or calibrated temperature**.
 Warm low clouds can be omitted; cold land, snow and ice can remain visible.
 Alpha is not cloud fraction. No synthetic noise, cloud placement, advection,
@@ -82,15 +83,15 @@ table above; it is not a total VRAM or whole-app FPS guarantee.
 - Play starts at the oldest loaded slot, advances every 2.4 seconds, and stops
   at the newest. The 650 ms crossfade is explicitly a display transition between
   actual images. There is no fictional intermediate observation or orbit-clock change.
-- Replaying resident frames makes no HTTP calls. Camera movement/zoom/opacity
-  do not request new cloud imagery. Re-entering with fresh metadata reuses blobs.
+- Replaying resident frames makes no HTTP calls. Opacity does not request new imagery. Settled regional camera changes can
+  request bounded same-slot detail; global playback makes no regional requests. Re-entering with fresh metadata reuses blobs.
 - Metadata is cached for 15 minutes; refresh does not bypass that cache. At most
   24 attempted requests per 15-minute Live session window. Failed requests get
   at least 120 seconds backoff, respecting longer Retry-After. Timeout is 60 seconds.
   No automatic endless provider retry loop. Requests omit credentials.
 - On a provider failure, a successfully loaded frame retains its original time.
-  Without a usable observation, the UI reports unavailability and offers the
-  separate modeled choice. A local display/decode failure clears the misleading
+  Without a usable observation, the UI reports unavailability and explicitly identifies the
+  automatic modeled fallback. A local display/decode failure clears the misleading
   observation display and reports the error. No silent alternate-date substitution.
 - Hidden pages pause playback and abort preparation. Layer disable/switch,
   incompatible Google 3D, travel and Time Explorer stop activity and remove cloud

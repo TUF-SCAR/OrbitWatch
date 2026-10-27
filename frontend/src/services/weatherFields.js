@@ -1,10 +1,11 @@
+import { rainColor, RAIN_GRADIENT } from './precipitationStyle.js';
 import { sampleTemperature, temperaturePixels, TEMPERATURE_GRADIENT } from './temperatureGrid.js';
 
 export const WEATHER_FIELDS={
   temperature:{label:'Temperature',title:'2 m AIR TEMPERATURE',units:'°C',ticks:['≤−60','−30','0','30','≥60'],gradient:TEMPERATURE_GRADIENT},
-  observedClouds:{label:'Observed clouds · infrared'},
-  clouds:{label:'Modeled cloud coverage',title:'MODEL CLOUD COVERAGE',units:'%',ticks:['0','25','50','75','100'],gradient:'linear-gradient(90deg,transparent,#b9c5d0,#ffffff)'},
-  precipitation:{label:'Precipitation rate',title:'PRECIPITATION RATE',units:'mm/h',ticks:['0.1','1','5','20','≥50'],gradient:'linear-gradient(90deg,#244b93,#309ee1,#64eeec,#d4ffff)'},
+  observedClouds:{label:'Clouds'},
+  clouds:{label:'Clouds · model fallback',hidden:true,title:'MODEL CLOUD COVERAGE',units:'%',ticks:['0','25','50','75','100'],gradient:'linear-gradient(90deg,transparent,#b9c5d0,#ffffff)'},
+  precipitation:{label:'Precipitation rate',title:'PRECIPITATION RATE',units:'mm/h',ticks:['0.1','1','5','12','25','50+'],gradient:RAIN_GRADIENT},
   wind:{label:'Surface wind',title:'10 m WIND · TOWARD',units:'m/s',ticks:['0','5','15','30','≥60'],gradient:'linear-gradient(90deg,#26395d,#398c9d,#91e0d9)'},
 };
 export function selectWeatherField(bundle,variable='temperature') {
@@ -25,11 +26,7 @@ export function sampleModel(values,longitude,latitude){return sampleTemperature(
 export function modelColor(variable,value) {
   if(value===null||!Number.isFinite(value))return [0,0,0,0];
   if(variable==='clouds')return [232,240,248,Math.round(Math.pow(value/100,1.3)*235)];
-  if(variable==='precipitation'){
-    if(value<.1)return [0,0,0,0];
-    const t=Math.min(1,Math.log1p(value)/Math.log(51));
-    return [Math.round(40+160*t),Math.round(115+140*t),245,Math.round(120+135*t)];
-  }
+  if(variable==='precipitation')return rainColor(value);
   const t=Math.min(1,value/60);return [Math.round(38+110*t),Math.round(75+150*t),Math.round(105+120*t),100];
 }
 export function weatherPixels(field,width=720,height=360) {

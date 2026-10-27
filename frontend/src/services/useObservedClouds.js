@@ -51,7 +51,7 @@ export function useObservedClouds(active,quality) {
     }),CLOUD_STYLE.frameDurationMs);
     return()=>clearInterval(timer);
   },[active,hidden,reduced,playing,frames.length]);
-  return {frame:frames[index]||null,frames,index,status,error,playing,reduced,diagnostics,clock,
+  return {service,frame:frames[index]||null,frames,index,status,error,playing,reduced,diagnostics,clock,
     select(value){setPlaying(false);setIndex(Number(value));},
     toggle(){if(playing){setPlaying(false);return;}if(reduced||frames.length<2)return;setIndex(0);setPlaying(true);},
     refresh(){setRevision(value=>value+1);},

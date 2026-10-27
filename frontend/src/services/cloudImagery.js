@@ -27,10 +27,10 @@ export function parseCloudCapabilities(xml) {
   if (!cloudSlots(values, 1).length) throw Error('No advertised cloud observations');
   return values;
 }
-export function cloudMapUrl(time, width) {
+export function cloudMapUrl(time, width, bounds=null, height=width/2) {
   const p = new URLSearchParams({service:'WMS',version:'1.1.1',request:'GetMap',layers:CLOUD_SOURCE.layer,
-    styles:'',format:'image/jpeg',bgcolor:'0x000000',srs:'EPSG:4326',bbox:'-180,-90,180,90',
-    width:String(width),height:String(width/2),time});
+    styles:'',format:'image/jpeg',bgcolor:'0x000000',srs:'EPSG:4326',bbox:bounds?bounds.join(','):'-180,-90,180,90',
+    width:String(width),height:String(height),time});
   return `${CLOUD_SOURCE.url}?${p}`;
 }
 export function emphasizeInfrared(pixels) {
@@ -38,18 +38,18 @@ export function emphasizeInfrared(pixels) {
     const value=(pixels[i]+pixels[i+1]+pixels[i+2])/3;
     const t=Math.max(0,Math.min(1,(value-CLOUD_STYLE.blackPoint)/(CLOUD_STYLE.whitePoint-CLOUD_STYLE.blackPoint)));
     pixels[i+3]=Math.round(pixels[i+3]*Math.pow(t,CLOUD_STYLE.gamma));
-    pixels[i]=pixels[i+1]=pixels[i+2]=245;
+    pixels[i]=pixels[i+1]=pixels[i+2]=Math.round(210+45*t);
   }
   return pixels;
 }
-async function decodeFrame(blob, width, signal) {
+async function decodeFrame(blob, width, signal, height=width/2) {
   const image=await createImageBitmap(blob);
   try {
     if(signal.aborted)throw abort();
-    if(image.width!==width||image.height!==width/2)throw Error('Unexpected cloud image dimensions');
-    const canvas=document.createElement('canvas');canvas.width=width;canvas.height=width/2;
+    if(image.width!==width||image.height!==height)throw Error('Unexpected cloud image dimensions');
+    const canvas=document.createElement('canvas');canvas.width=width;canvas.height=height;
     const context=canvas.getContext('2d',{willReadFrequently:true});context.drawImage(image,0,0);
-    const pixels=context.getImageData(0,0,width,width/2);emphasizeInfrared(pixels.data);context.putImageData(pixels,0,0);
+    const pixels=context.getImageData(0,0,width,height);emphasizeInfrared(pixels.data);context.putImageData(pixels,0,0);
     const result=await new Promise(resolve=>canvas.toBlob(resolve,'image/png'));
     canvas.width=canvas.height=1;
     if(!result)throw Error('Cloud image conversion failed');
@@ -63,7 +63,7 @@ async function decodeFrame(blob, width, signal) {
 export function createCloudImageryService({fetcher=fetch,now=Date.now,parse=parseCloudCapabilities,
   decode=decodeFrame,revoke=url=>URL.revokeObjectURL(url)}={}) {
   let values=null,checkedAt=0,retryAt=0,closed=false,pendingMetadata=null,metadataSignal=null,requests=0,hits=0;
-  const cache=new Map(),pending=new Map(),controllers=new Set(),attempts=[];
+  const cache=new Map(),regions=new Map(),pending=new Map(),pendingSignals=new Map(),controllers=new Set(),attempts=[];
   async function request(url, signal) {
     if(closed||signal.aborted)throw abort();
     if(now()<retryAt)throw Error('Cloud provider cooling down');
@@ -99,21 +99,25 @@ export function createCloudImageryService({fetcher=fetch,now=Date.now,parse=pars
     async frame(time,budget,signal) {
       if(closed||signal.aborted)throw abort();
       if(!values||!cloudSlots(values,Math.max(4,budget.frames),now()).includes(time))throw Error('Cloud time not advertised');
-      const key=`${budget.width}:${time}`;
-      if(cache.has(key)){hits++;return cache.get(key);}
+      const storage=budget.bounds?regions:cache,height=budget.height||budget.width/2;
+      const key=`${budget.width}:${time}${budget.bounds?':'+budget.bounds.join(','):''}`;
+      if(storage.has(key)){hits++;return storage.get(key);}
+      if(pending.has(key)&&pendingSignals.get(key)?.aborted){try{await pending.get(key);}catch{/* finish cancelled prior view */}}
+      if(closed||signal.aborted)throw abort();
       if(pending.has(key))return pending.get(key);
+      pendingSignals.set(key,signal);
       const task=(async()=>{
-        const response=await request(cloudMapUrl(time,budget.width),signal);
+        const response=await request(cloudMapUrl(time,budget.width,budget.bounds,height),signal);
         if(!response.headers.get('Content-Type')?.startsWith('image/jpeg'))throw Error('Cloud image unavailable');
-        const url=await decode(await response.blob(),budget.width,signal);
+        const url=await decode(await response.blob(),budget.width,signal,height);
         if(closed||signal.aborted){revoke(url);throw abort();}
-        const frame={id:key,url,time,width:budget.width,height:budget.width/2};cache.set(key,frame);
-        while(cache.size>budget.frames){const [old,entry]=cache.entries().next().value;revoke(entry.url);cache.delete(old);}
+        const frame={id:key,url,time,width:budget.width,height,bounds:budget.bounds};storage.set(key,frame);
+        while(storage.size>budget.frames){const [old,entry]=storage.entries().next().value;revoke(entry.url);storage.delete(old);}
         return frame;
-      })().catch(error=>{if(!signal.aborted)retryAt=Math.max(retryAt,now()+CLOUD_STYLE.retryMs);throw error;}).finally(()=>pending.delete(key));
+      })().catch(error=>{if(!signal.aborted)retryAt=Math.max(retryAt,now()+CLOUD_STYLE.retryMs);throw error;}).finally(()=>{pending.delete(key);pendingSignals.delete(key);});
       pending.set(key,task);return task;
     },
-    diagnostics:()=>({requests,hits,cachedFrames:cache.size,pending:pending.size,retryAt}),
-    destroy(){closed=true;controllers.forEach(c=>c.abort());cache.forEach(f=>revoke(f.url));cache.clear();},
+    diagnostics:()=>({requests,hits,cachedFrames:cache.size,regionalFrames:regions.size,pending:pending.size,retryAt}),
+    destroy(){closed=true;controllers.forEach(c=>c.abort());cache.forEach(f=>revoke(f.url));cache.clear();regions.forEach(f=>revoke(f.url));regions.clear();},
   };
 }

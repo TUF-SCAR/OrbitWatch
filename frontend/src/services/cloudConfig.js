@@ -17,6 +17,6 @@ export const CLOUD_STYLE = Object.freeze({
   // A brightness transfer of the provider's IR visualization, NOT a cloud mask
   // or calibrated temperature retrieval. Warm low clouds can be missed; cold
   // terrain/snow can remain visible. Do not interpret alpha as cloud fraction.
-  blackPoint: 85, whitePoint: 235, gamma: 1.15,
+  blackPoint: 85, whitePoint: 255, gamma: 1.05,
 });
 export function cloudBudget(quality) { return CLOUD_PROFILES[quality] || CLOUD_PROFILES.balanced; }

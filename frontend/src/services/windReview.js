@@ -4,9 +4,13 @@ export function mountWindReview(viewer, mount, getField, touch) {
   const bar=document.createElement('div');bar.setAttribute('aria-label','Wind verification');
   bar.style.cssText='position:absolute;z-index:99;bottom:120px;right:16px;display:flex;flex-wrap:wrap;max-width:330px;gap:4px;padding:6px;background:#07101e';
   let recorder=null,stream=null,stopTimer=null,disposed=false,url=null;
+  // Review-only: retain the chosen camera while waiting for provider imagery.
+  const holdView=setInterval(touch,1000);
   const add=(label,action)=>{const b=document.createElement('button');b.textContent=label;b.style.cssText='font:11px sans-serif;padding:6px;background:#102c39;color:white;border:1px solid #427484';b.onclick=action;bar.append(b);return b;};
   const view=(lon,lat,height)=>{touch();viewer.camera.lookAtTransform(Matrix4.IDENTITY);viewer.camera.flyTo({destination:Cartesian3.fromDegrees(lon,lat,height),orientation:{heading:0,pitch:-Math.PI/2,roll:0},duration:.6});};
   add('Indian Ocean',()=>view(78,4,3000000));
+  add('Bay of Bengal',()=>view(85,15,1100000));
+  add('North Atlantic',()=>view(-65,40,3000000));
   add('Dateline',()=>view(180,15,3500000));
   add('Whole Earth',()=>view(78,4,22000000));
   for(const high of [true,false])add(high?'High wind':'Low wind',()=>{
@@ -32,5 +36,5 @@ export function mountWindReview(viewer, mount, getField, touch) {
     stopTimer=setTimeout(()=>{if(recorder?.state==='recording')recorder.stop();stopTimer=null;},8000);
   });
   mount.append(bar);
-  return()=>{disposed=true;if(stopTimer)clearTimeout(stopTimer);if(recorder?.state==='recording')recorder.stop();stream?.getTracks().forEach(t=>t.stop());if(url)URL.revokeObjectURL(url);bar.remove();};
+  return()=>{disposed=true;clearInterval(holdView);if(stopTimer)clearTimeout(stopTimer);if(recorder?.state==='recording')recorder.stop();stream?.getTracks().forEach(t=>t.stop());if(url)URL.revokeObjectURL(url);bar.remove();};
 }

@@ -23,7 +23,7 @@ export function TemperatureLegend({field,state}) {
   const style=WEATHER_FIELDS[field.display_variable||'temperature'];
   return <aside className="weather-legend" aria-label="Weather legend"><div><strong>{style.title} · {style.units}</strong><span>{state==='stale'?'CACHED · STALE':'GFS · 1°'}</span></div><i style={{background:style.gradient}}/><div className="weather-legend__ticks">{style.ticks.map(tick=><span key={tick}>{tick}</span>)}</div><small>{field.kind==='analysis'?'Analysis':'Forecast'} valid {weatherTime(field.valid_at)} · <a href="https://nomads.ncep.noaa.gov/" target="_blank" rel="noreferrer">NOAA/NCEP</a></small></aside>;
 }
-export default function WeatherPanel({observedClouds,tab,onTab,events,eventsEnabled,onEventsEnabled,eventCategory,onEventCategory,selectedEventId,onEventSelect,open,onClose,weather,variable='temperature',onVariable,enabled,onEnabled,opacity,onOpacity,compatible,onCompatibleMap,onRefresh,refreshCooling,onViewCenter}) {
+export default function WeatherPanel({cloudFallback=false,observedClouds,tab,onTab,events,eventsEnabled,onEventsEnabled,eventCategory,onEventCategory,selectedEventId,onEventSelect,open,onClose,weather,variable='temperature',onVariable,enabled,onEnabled,opacity,onOpacity,compatible,onCompatibleMap,onRefresh,refreshCooling,onViewCenter}) {
   const [latitude,setLatitude]=useState(''),[longitude,setLongitude]=useState(''),[point,setPoint]=useState(null),[pointError,setPointError]=useState(''),[pointBusy,setPointBusy]=useState(false);
   const request=useRef(null),lastAttempt=useRef(0);
   const [pointClock,setPointClock]=useState(Date.now);
@@ -55,8 +55,8 @@ export default function WeatherPanel({observedClouds,tab,onTab,events,eventsEnab
   const pointState=weatherFreshness(point,Math.max(weather.clock,pointClock),'location');
   const field=weather.field;
   const availability=weather.availability;
-  const observed=variable==='observedClouds';
-  const style=WEATHER_FIELDS[variable];
+  const observed=variable==='observedClouds'&&!cloudFallback;
+  const style=WEATHER_FIELDS[cloudFallback?'clouds':variable];
   const working=['preparing','downloading','decoding'].includes(weather.state);
   const retryAt=Date.parse(availability?.next_attempt_at);
   const waiting=weather.state!=='available'&&Number.isFinite(retryAt)&&retryAt>weather.clock;
@@ -70,15 +70,16 @@ export default function WeatherPanel({observedClouds,tab,onTab,events,eventsEnab
     <div className="hud-panel__body weather-panel__body" ref={bodyRef}>
       {tab==='events'?<NaturalEventsPanel data={events} enabled={eventsEnabled} onEnabled={onEventsEnabled} category={eventCategory} onCategory={onEventCategory} selectedId={selectedEventId} onSelect={onEventSelect}/>:<>
       <section aria-labelledby="global-weather-title"><div className="weather-section-heading"><h3 id="global-weather-title">Global weather</h3><span className={`weather-status is-${weather.state}`}>{observed?observedClouds.status.toUpperCase():stateLabel}</span></div>
-        <label className="weather-field-picker">Weather field<select aria-label="Weather field" value={variable} onChange={e=>onVariable(e.target.value)}>{Object.entries(WEATHER_FIELDS).map(([key,value])=><option key={key} value={key}>{value.label}</option>)}</select></label>
+        <label className="weather-field-picker">Weather field<select aria-label="Weather field" value={variable} onChange={e=>onVariable(e.target.value)}>{Object.entries(WEATHER_FIELDS).filter(([,value])=>!value.hidden).map(([key,value])=><option key={key} value={key}>{value.label}</option>)}</select></label>
         <label className="weather-toggle"><input type="checkbox" checked={enabled} onChange={event=>onEnabled(event.target.checked)}/><span>Weather layer</span></label>
         {!observed&&enabled&&!field&&<p className="weather-source">Enabled · waiting for this model field</p>}
         {!observed&&!field&&weather.bundle&&<p className="weather-source">This variable is not in the usable cache yet. Temperature remains available; the shared NOAA retry deadline is preserved.</p>}
         {!observed&&!field&&working&&availability?.data_state==='hard_expired'&&<p className="weather-source">The previous field expired and has been hidden.</p>}
         {!compatible&&<div className="inline-warning" role="status">Weather imagery cannot be draped on Google 3D Tiles.<button className="secondary-action" onClick={onCompatibleMap}>USE ESRI FOR WEATHER</button></div>}
         <label className="weather-opacity">Opacity <output>{Math.round(opacity*100)}%</output><input aria-label="Weather opacity" type="range" min="0" max="80" step="5" value={Math.round(opacity*100)} onChange={e=>onOpacity(Number(e.target.value)/100)}/></label>
-        {observed?<ObservedClouds clouds={observedClouds} enabled={enabled} onModeled={()=>onVariable('clouds')}/>:<>
-        {field?<><div className="weather-palette" style={{background:style.gradient}}/><div className="weather-legend__ticks">{style.ticks.map(tick=><span key={tick}>{tick}</span>)}</div><p className="weather-valid">{field.kind==='analysis'?'Analysis':'Forecast'} valid <strong>{weatherTime(field.valid_at)}</strong></p><p className="weather-source">NOAA/NCEP GFS · 1° grid · {style.units}</p>{variable==='precipitation'&&<p className="weather-source">Instantaneous liquid-equivalent rate; includes frozen precipitation. Not an accumulation.</p>}{variable==='clouds'&&<p className="weather-source">Forecast cloud fraction, not satellite-observed clouds.</p>}{variable==='wind'&&<p className="weather-source">Animated flow follows modeled 10 m winds, with accelerated visual time. Interpolation adds no detail to the 1° source. Not tracked air parcels; motion is still when reduced motion is enabled.</p>}</>:<p role="status">{message}</p>}
+        {observed?<ObservedClouds clouds={observedClouds} enabled={enabled}/>:<>
+        {cloudFallback&&<p className="inline-warning" role="status">Observed imagery unavailable. Showing GFS modeled cloud fraction when available; this is not satellite imagery. <button className="secondary-action" onClick={observedClouds.refresh} disabled={observedClouds.clock<(observedClouds.diagnostics.retryAt||0)}>RETRY OBSERVATIONS</button></p>}
+        {field?<><div className="weather-palette" style={{background:style.gradient}}/><div className="weather-legend__ticks">{style.ticks.map(tick=><span key={tick}>{tick}</span>)}</div><p className="weather-valid">{field.kind==='analysis'?'Analysis':'Forecast'} valid <strong>{weatherTime(field.valid_at)}</strong></p><p className="weather-source">NOAA/NCEP GFS · 1° grid · {style.units}</p>{variable==='precipitation'&&<p className="weather-source">Instantaneous liquid-equivalent rate, including frozen precipitation. Streaks symbolize modeled activity, not falling-drop speed or rain/snow classification. The 1° source limits local detail; not radar or accumulation.</p>}{variable==='clouds'&&<p className="weather-source">Forecast cloud fraction, not satellite-observed clouds.</p>}{variable==='wind'&&<p className="weather-source">Animated flow follows modeled 10 m winds, with accelerated visual time. Interpolation adds no detail to the 1° source. Not tracked air parcels; motion is still when reduced motion is enabled.</p>}</>:<p role="status">{message}</p>}
         {weather.state==='stale'&&availability?.state==='cooldown'&&<p className="weather-source">Cached field retained. NOAA retry at {weatherTime(availability.next_attempt_at)}.</p>}
         {!field&&failureNote&&<p className="weather-source">{failureNote}</p>}
         {weather.error&&field&&<p className="inline-warning" role="status">Refresh unavailable. The cached field retains its original valid time.</p>}

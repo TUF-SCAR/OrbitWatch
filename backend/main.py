@@ -17,6 +17,7 @@ from models.satellite_orbital_data import (
 )
 from routes.auth import router as auth_router
 from routes.satellites import router as satellite_router
+from routes.historical import router as historical_router
 from routes.weather import router as weather_router
 from routes.natural_events import router as events_router
 from services.natural_events import shutdown as shutdown_events
@@ -49,6 +50,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(lifespan=lifespan)
 app.include_router(satellite_router)
+app.include_router(historical_router)
 app.include_router(auth_router)
 app.include_router(weather_router)
 app.include_router(events_router)

@@ -3,8 +3,8 @@ import { useEffect, useRef, useState } from "react";
 import { Search, X, Plus, Trash2, Pencil } from "lucide-react";
 import SpatialSurface from "./SpatialSurface.jsx";
 
-export default function ObjectExplorer({ open, onClose, objects, trackedIds, selectedId, onSelect, onLoad, onUnload, limitMessage, userId, searchCycle = 0, coverageUnavailable = false }) {
-  const storageKey = `orbitwatch_collections_${userId}`;
+export default function ObjectExplorer({ open, onClose, objects, trackedIds, selectedId, onSelect, onLoad, onUnload, limitMessage, userId, searchCycle = 0, coverageUnavailable = false, historical = false, historicalData }) {
+  const storageKey = `orbitwatch_collections_${userId}${historical ? '_time' : ''}`;
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState("All");
   const [country, setCountry] = useState("All");
@@ -34,7 +34,7 @@ export default function ObjectExplorer({ open, onClose, objects, trackedIds, sel
   );
   const allSelected = filtered.length > 0 && filtered.every((item) => selected.has(item.noradId));
   const someSelected = filtered.some((item) => selected.has(item.noradId));
-  const selectedIds = [...selected];
+  const selectedIds = [...selected].filter(id=>objects.some(object=>object.noradId===id));
 
   useEffect(() => { if (open) searchRef.current?.focus(); }, [open, searchCycle]);
   useEffect(() => { if (allRef.current) allRef.current.indeterminate = someSelected && !allSelected; }, [someSelected, allSelected, open]);
@@ -96,7 +96,7 @@ export default function ObjectExplorer({ open, onClose, objects, trackedIds, sel
       if (event.key === "Escape" && chooser) { event.stopPropagation(); setChooser(null); }
     }}>
       <div className="object-explorer__head hud-panel__header">
-        <div><div className="eyebrow">CATALOG / {objects.length} OBJECTS</div><h2>Object Explorer</h2></div>
+        <div><div className="eyebrow">{historical ? 'PERMANENT TIME CATALOG' : 'CATALOG'} / {objects.length} OBJECTS</div><h2>Object Explorer</h2></div>
         <button type="button" className="icon-button" onClick={onClose} aria-label="Close object explorer"><X size={18} /></button>
       </div>
       <div className="explorer-body hud-panel__body">
@@ -105,24 +105,24 @@ export default function ObjectExplorer({ open, onClose, objects, trackedIds, sel
         <label>TYPE<select value={category} onChange={(event) => setCategory(event.target.value)}>{["All", ...new Set(objects.map((item) => item.category))].map((item) => <option key={item}>{item}</option>)}</select></label>
         <label>REGION<select value={country} onChange={(event) => setCountry(event.target.value)}>{["All", ...new Set(objects.map((item) => item.country))].map((item) => <option key={item}>{item}</option>)}</select></label>
       </div>
-      <div className="collection-controls">
+      {!historical && <div className="collection-controls">
         <label><span className="sr-only">Your custom collections</span><select value={collectionId} onChange={(event) => setCollectionId(event.target.value)}><option value="">ALL COLLECTIONS</option>{collections.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
         <button type="button" aria-label="Create custom filter" title="Create custom filter" onClick={() => { setName(""); openChooser({ kind: "create", ids: [] }); }}><Plus size={16} /></button>
         {collection && <><button type="button" aria-label="Rename collection" onClick={() => { setName(collection.name); openChooser({ kind: "rename", ids: [] }); }}><Pencil size={15} /></button><button type="button" aria-label="Delete collection" onClick={() => { saveCollections(collections.filter((item) => item.id !== collectionId)); setCollectionId(""); }}><Trash2 size={15} /></button></>}
-      </div>
+      </div>}
       <div className="selection-toolbar"><label><input ref={allRef} type="checkbox" checked={allSelected} disabled={!filtered.length} onChange={selectVisible} /> SELECT ALL RESULTS</label><button type="button" onClick={() => setSelected(new Set())}>CLEAR {selected.size}</button></div>
       {(limitMessage || message) && <div className="limit-message" role="status">{limitMessage || message}</div>}
       <div className="object-list">
         {!filtered.length && <p className="empty-state">No objects match these filters.</p>}
         {filtered.map((item) => <div key={item.noradId} className={`object-row ${selectedId === item.noradId ? "is-selected" : ""}`}>
           <input className="object-checkbox" type="checkbox" checked={selected.has(item.noradId)} onChange={() => toggleSelection(item.noradId)} aria-label={`Select ${item.name} for bulk actions`} />
-          <button type="button" className="object-row__main" onClick={() => onSelect(item.noradId)}><span className="object-row__copy"><strong>{item.name}</strong><small>{item.category} · {item.noradId}{tracked.has(item.noradId) ? coverageUnavailable ? " · TRACKED" : " · LOADED" : ""}</small></span></button>
-          <div className="object-row__actions"><button type="button" onClick={() => tracked.has(item.noradId) ? onUnload([item.noradId]) : onLoad([item.noradId])}>{tracked.has(item.noradId) ? coverageUnavailable ? "UNTRACK" : "UNLOAD" : coverageUnavailable ? "TRACK" : "LOAD"}</button><button type="button" aria-label={`Add ${item.name} to collection`} onClick={() => openChooser({ kind: "add", ids: [item.noradId] })}>ADD</button>{collection && <button type="button" aria-label={`Remove ${item.name} from collection`} onClick={() => saveCollections(collections.map((group) => group.id === collectionId ? { ...group, ids: group.ids.filter((id) => id !== item.noradId) } : group))}>REMOVE</button>}</div>
+          <button type="button" className="object-row__main" onClick={() => onSelect(item.noradId)}><span className="object-row__copy"><strong>{item.name}</strong><small>{item.category} · {item.noradId}{tracked.has(item.noradId) ? coverageUnavailable ? " · TRACKED" : " · LOADED" : ""}</small>{historical && <small>{historicalData?.objects?.some(value=>value.norad_id===item.noradId) ? "HISTORICAL SGP4" : historicalData?.errors?.some(value=>value.norad_id===item.noradId) ? "NO VALID HISTORY" : tracked.has(item.noradId) ? "HISTORY PENDING / UNAVAILABLE" : "SELECT TO CHECK ARCHIVE"}</small>}</span></button>
+          <div className="object-row__actions"><button type="button" onClick={() => tracked.has(item.noradId) ? onUnload([item.noradId]) : onLoad([item.noradId])}>{tracked.has(item.noradId) ? coverageUnavailable ? "UNTRACK" : "UNLOAD" : coverageUnavailable ? "TRACK" : "LOAD"}</button>{!historical && <button type="button" aria-label={`Add ${item.name} to collection`} onClick={() => openChooser({ kind: "add", ids: [item.noradId] })}>ADD</button>}{collection && <button type="button" aria-label={`Remove ${item.name} from collection`} onClick={() => saveCollections(collections.map((group) => group.id === collectionId ? { ...group, ids: group.ids.filter((id) => id !== item.noradId) } : group))}>REMOVE</button>}</div>
         </div>)}
       </div>
       </div>
-      {selected.size >= 2 && <div className="selection-actions"><button type="button" disabled={!selectedIds.every((id) => !tracked.has(id))} onClick={() => onLoad(selectedIds)}>{coverageUnavailable ? "TRACK" : "LOAD"}</button><button type="button" disabled={!selectedIds.every((id) => tracked.has(id))} onClick={() => onUnload(selectedIds)}>{coverageUnavailable ? "UNTRACK" : "UNLOAD"}</button><button type="button" onClick={() => openChooser({ kind: "add", ids: selectedIds })}>ADD</button></div>}
-      <div className="object-explorer__foot hud-panel__footer"><span>{filtered.length} results · {selected.size} selected</span><span>{trackedIds.length} {coverageUnavailable ? "tracked · data unavailable" : "loaded"}</span></div>
+      {selected.size >= 2 && <div className="selection-actions"><button type="button" disabled={!selectedIds.every((id) => !tracked.has(id))} onClick={() => onLoad(selectedIds)}>{coverageUnavailable ? "TRACK" : "LOAD"}</button><button type="button" disabled={!selectedIds.every((id) => tracked.has(id))} onClick={() => onUnload(selectedIds)}>{coverageUnavailable ? "UNTRACK" : "UNLOAD"}</button>{!historical && <button type="button" onClick={() => openChooser({ kind: "add", ids: selectedIds })}>ADD</button>}</div>}
+      <div className="object-explorer__foot hud-panel__footer"><span>{filtered.length} results · {selectedIds.length} selected</span><span>{trackedIds.length} {historical ? `enabled · ${historicalData?.state==='ready'?historicalData.objects.length:0} available` : coverageUnavailable ? "tracked · data unavailable" : "loaded"}</span></div>
       {chooser && <div ref={chooserRef} onKeyDown={chooserKeys} className="collection-chooser" role="dialog" aria-modal="true" aria-label="Manage custom filter"><button type="button" className="icon-button" aria-label="Close collection chooser" onClick={() => setChooser(null)}><X size={16} /></button><h3>{chooser.kind === "rename" ? "Rename collection" : "Add to your collection"}</h3>{chooser.kind === "add" && collections.map((item) => <button type="button" key={item.id} onClick={() => addToCollection(item.id)}>{item.name}</button>)}<form onSubmit={submitName}><label>{chooser.kind === "rename" ? "Collection name" : "Create new filter"}<input autoFocus required maxLength={48} value={name} onChange={(event) => setName(event.target.value)} /></label><button type="submit">{chooser.kind === "rename" ? "RENAME" : "CREATE"}</button></form></div>}
     </SpatialSurface>}</AnimatePresence>
   );

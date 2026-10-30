@@ -1,3 +1,4 @@
+import {timeSatelliteAllowed} from '../data/timeExplorerCatalog.js';
 const API_BASE = (import.meta.env?.VITE_API_BASE_URL ?? "http://127.0.0.1:8000").replace(/\/$/, "");
 const AUTH_TOKEN_KEY = "orbitwatch_access_token";
 let sessionToken = null;
@@ -145,6 +146,16 @@ export function fetchSatelliteOrbit(
   });
   return requestJson(`/api/satellites/${noradId}/orbit?${query}`, { signal });
 }
+
+export function fetchHistoricalTrajectories(noradIds,timestamp,{signal}={}) {
+  if(!noradIds.length || noradIds.length>15 || noradIds.some(id=>!timeSatelliteAllowed(id)) || new Set(noradIds).size!==noradIds.length)throw new Error('Select only the permanent Time Explorer satellites');
+  return requestJson('/api/historical/trajectories',{
+    method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({norad_ids:noradIds,timestamp,step_seconds:5,duration_seconds:300,orbit_samples:480}),signal,
+  });
+}
+
+export function fetchHistoricalCoverage(signal) { return requestJson('/api/historical/coverage',{signal}); }
 
 export function registerAccount({ username, email, password, signal }) {
   return requestJson("/api/auth/register", {

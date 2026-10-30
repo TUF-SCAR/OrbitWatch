@@ -39,7 +39,7 @@ class ProviderBudget:
             db.execute('BEGIN IMMEDIATE')
             row=db.execute('SELECT next_at,blocked FROM budgets WHERE name=?',(name,)).fetchone()
             if row and (row[1] or row[0]>now): raise ProviderDeferred(f'{name} refresh budget/circuit is closed')
-            if name=='spacetrack':
+            if name in ('spacetrack','spacetrack-history'):
                 minute=db.execute('SELECT COALESCE(SUM(cost),0) FROM requests WHERE stamp>?',(now-60,)).fetchone()[0]
                 hour=db.execute('SELECT COALESCE(SUM(cost),0) FROM requests WHERE stamp>?',(now-3600,)).fetchone()[0]
                 if minute+cost>=30 or hour+cost>=300: raise ProviderDeferred('Space-Track request ceiling')

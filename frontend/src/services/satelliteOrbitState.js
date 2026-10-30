@@ -89,7 +89,8 @@ export function createSatelliteOrbitState(payload) {
   const start = samples[0].time, duration = JulianDate.secondsDifference(samples.at(-1).time, start);
   const backendPeriod = Number(payload.orbital_period_seconds) || Number(payload.orbital_period_minutes) * 60;
   const period = Number.isFinite(backendPeriod) && backendPeriod > 0 ? backendPeriod : duration;
-  if (duration <= 0 || Math.abs(duration / period - 1) > .05) throw new Error("Orbit must span one propagated period");
+  const partial=payload.historical===true && payload.path_kind==='arc';
+  if (duration <= 0 || (partial ? duration>period*1.05 : Math.abs(duration / period - 1) > .05)) throw new Error("Orbit must span one propagated period or a disclosed valid historical arc");
   // Texture s is vertex index; require uniform temporal sampling for phase.
   samples.forEach((sample, i) => { if (Math.abs(JulianDate.secondsDifference(sample.time, start) - duration * i / (samples.length - 1)) > .1) throw new Error("Orbit timestamps must be uniformly sampled"); });
   return { samples, positions: samples.map(sample => sample.inertial), start, period, duration,
@@ -100,13 +101,15 @@ export function createSatelliteOrbitState(payload) {
 const delta = new Cartesian3(), edge = new Cartesian3(), nearest = new Cartesian3();
 export function satelliteOrbitPhase(state, point, time) {
   const count = state.positions.length - 1;
-  const predicted = ((JulianDate.secondsDifference(time, state.start) / state.duration % 1) + 1) % 1;
+  const partial=state.metadata?.path_kind==='arc',fraction=JulianDate.secondsDifference(time,state.start)/state.duration;
+  const predicted = partial ? Math.max(0,Math.min(1,fraction)) : ((fraction % 1) + 1) % 1;
   const centre = Math.floor(predicted * count);
   let best = Infinity, phase = predicted;
   // Timestamp predicts the phase; local projection accounts for rounded period,
   // interpolation and refresh epochs without a cosmetic independent timer.
   for (let offset = -12; offset <= 12; offset++) {
-    const index = ((centre + offset) % count + count) % count;
+    const index = partial ? centre+offset : ((centre + offset) % count + count) % count;
+    if(index<0 || index>=count)continue;
     const a = state.positions[index], b = state.positions[index + 1];
     Cartesian3.subtract(b, a, edge); Cartesian3.subtract(point, a, delta);
     const f = Math.max(0, Math.min(1, Cartesian3.dot(delta, edge) / Cartesian3.magnitudeSquared(edge)));
@@ -114,7 +117,7 @@ export function satelliteOrbitPhase(state, point, time) {
     const distance = Cartesian3.distanceSquared(point, nearest);
     if (distance < best) { best = distance; phase = (index + f) / count; }
   }
-  state.phase = phase % 1; state.distance = Math.sqrt(best);
+  state.phase = partial ? phase : phase % 1; state.distance = Math.sqrt(best);
   return state.phase;
 }
 

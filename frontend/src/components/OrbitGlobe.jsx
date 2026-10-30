@@ -56,6 +56,7 @@ import { createRainLayer } from '../services/rainLayer.js';
 import { createCloudDetail } from '../services/cloudDetail.js';
 import { createTemperatureLayer } from '../services/temperatureLayer.js';
 import { createNaturalEventLayer } from '../services/naturalEventLayer.js';
+import { timeSatelliteSelection } from '../data/timeExplorerCatalog.js';
 import { mountWeatherComparison } from '../services/weatherPresentation.js';
 const WEATHER_COMPARE=import.meta.env.DEV&&new URLSearchParams(window.location.search).has('weatherCompare');
 
@@ -303,6 +304,7 @@ function applyQuality(viewer, tileset, quality) {
 
 
 export default function OrbitGlobe({
+  historicalData = null,
   trackedIds,
   selectedId,
   selectedTime,
@@ -1101,16 +1103,21 @@ export default function OrbitGlobe({
 
     const controller = new AbortController();
     const entityMap = entityMapRef.current;
-    const permittedIds = mode === "live" ? trackedIds : [];
+    const permittedIds = mode === "live" ? trackedIds : selectedCelestialBody==='earth' ? timeSatelliteSelection(trackedIds) : [];
+    const sceneTimestamp=mode==='time' ? selectedTime.getTime() : null;
+    const historicalReady=historicalData?.state==='ready' && Date.parse(historicalData.timestamp)===sceneTimestamp;
+    const historicalObjects=historicalReady ? historicalData.objects.filter(item=>permittedIds.includes(item.norad_id)) : [];
     const refreshAll = lastRefreshRef.current !== refreshNonce;
     lastRefreshRef.current = refreshNonce;
+    let removed=false;
 
     for (const [noradId, data] of entityMap.entries()) {
-      if (!permittedIds.includes(noradId)) {
+      if (!permittedIds.includes(noradId) || data.mode!==mode || mode==='time' && (data.sceneTimestamp!==sceneTimestamp || !historicalObjects.some(item=>item.norad_id===noradId))) {
         viewer.entities.remove(data.entity);
         removeSatelliteOrbit(data, satelliteOrbitCollectionRef.current);
         if (data.orbitEntity) viewer.entities.remove(data.orbitEntity);
         entityMap.delete(noradId);
+        removed=true;
         trajectoryRetryRef.current.delete(noradId);
         orbitRetryRef.current.delete(noradId);
         orbitQueueRef.current?.cancel(noradId);
@@ -1120,8 +1127,9 @@ export default function OrbitGlobe({
       }
     }
 
+    if(removed) viewer.scene.requestRender();
     const now = Date.now();
-    const idsToLoad = permittedIds.filter(noradId => refreshAll ||
+    const idsToLoad = mode==='time' ? historicalObjects.filter(item=>entityMap.get(item.norad_id)?.historyData!==historicalData).map(item=>item.norad_id) : permittedIds.filter(noradId => refreshAll ||
       (now >= (trajectoryRetryRef.current.get(noradId) || 0) && satelliteTrajectoryRefreshDue(entityMap.get(noradId), viewer.clock.currentTime, now)));
 
     if (!idsToLoad.length) { callbacksRef.current.onRefreshComplete?.(); return () => controller.abort(); }
@@ -1132,7 +1140,7 @@ export default function OrbitGlobe({
       idsToLoad.forEach(id => trajectoryRetryRef.current.set(id, Date.now() + 30000));
       try {
         for (let offset = 0; offset < idsToLoad.length; offset += 24) {
-        const batch = await fetchSatelliteTrajectories(idsToLoad.slice(offset, offset + 24), {
+        const batch = mode==='time' ? {objects:historicalObjects.filter(item=>idsToLoad.includes(item.norad_id)).map(item=>({...item.trajectory,historical_orbit:item.orbit})),errors:historicalData.errors} : await fetchSatelliteTrajectories(idsToLoad.slice(offset, offset + 24), {
           stepSeconds: 5,
           durationSeconds: 300,
           signal: controller.signal,
@@ -1177,12 +1185,13 @@ export default function OrbitGlobe({
             existing.trajectory = trajectory;
             existing.period = period;
             existing.track = track;
+            existing.historyData=historicalData;
             continue;
           }
 
           const entity = viewer.entities.add({
             name: object?.name || trajectory.name,
-            show: earthActiveRef.current && modeRef.current === "live",
+            show: earthActiveRef.current && modeRef.current === mode,
             position: sampled,
             orientation: new VelocityOrientationProperty(sampled),
             properties: { noradId },
@@ -1222,6 +1231,7 @@ export default function OrbitGlobe({
             trajectory,
             period,
             track,
+            mode,sceneTimestamp,historyData:historicalData,
           });
         }
 
@@ -1242,7 +1252,7 @@ export default function OrbitGlobe({
 
     loadTrackedSatellites();
     return () => controller.abort();
-  }, [trackedIds, refreshNonce, automaticRefresh, mode]);
+  }, [trackedIds, refreshNonce, automaticRefresh, mode, selectedTime, selectedCelestialBody, historicalData]);
 
   useEffect(() => {
     for (const [noradId, data] of entityMapRef.current.entries()) {
@@ -1266,7 +1276,7 @@ export default function OrbitGlobe({
     satelliteModelDetailRef.current?.update(
       getSpaceObject(selectedId),
       entityMapRef.current.get(selectedId)?.entity,
-      mode === "live" && selectedCelestialBody === "earth" && earthActiveRef.current,
+      selectedCelestialBody === "earth" && earthActiveRef.current,
     );
   }, [selectedId, selectedCelestialBody, entityRevision, trackedIds, mode]);
 
@@ -1278,7 +1288,7 @@ export default function OrbitGlobe({
     const queue = orbitQueueRef.current;
     if (!queue) return undefined;
     for (const [noradId, data] of entityMapRef.current.entries()) {
-      const shouldShow = mode === "live" && shownOrbitIds.has(noradId);
+      const shouldShow = data.mode===mode && shownOrbitIds.has(noradId);
 
       if (!shouldShow) {
         queue.cancel(noradId);
@@ -1293,14 +1303,14 @@ export default function OrbitGlobe({
 
       // Trajectory overlap does not invalidate the full orbit. Refresh its
       // true propagated geometry on a bounded deadline or changed TLE epoch.
-      if (queue.has(noradId) || !satelliteOrbitRefreshDue(data) || Date.now() < (orbitRetryRef.current.get(noradId) || 0)) continue;
+      if (queue.has(noradId) || mode==='time' && data.orbitState || !satelliteOrbitRefreshDue(data) || Date.now() < (orbitRetryRef.current.get(noradId) || 0)) continue;
 
       async function loadOrbit(signal) {
         if (signal.aborted) return;
         const orbitEpoch = data.trajectory?.tle_epoch;
         orbitRetryRef.current.set(noradId, Date.now() + 30000);
         try {
-          const orbit = await fetchSatelliteOrbit(noradId, {
+          const orbit = mode==='time' ? data.trajectory.historical_orbit : await fetchSatelliteOrbit(noradId, {
             // Slow/eccentric periods need denser temporal sampling near perigee.
             // Preserve the scientific samples for both display styles.
             samples: data.period > 18 * 3600 ? 2000 : data.period > 3 * 3600 ? 960 : 480,
@@ -1311,7 +1321,7 @@ export default function OrbitGlobe({
             signal.aborted ||
             viewer.isDestroyed() ||
             !orbit?.positions?.length ||
-            (!shownOrbitIdsRef.current.has(noradId) || modeRef.current !== "live")
+            (!shownOrbitIdsRef.current.has(noradId) || modeRef.current !== mode)
           ) return;
 
           const orbitState = createSatelliteOrbitState(orbit);
@@ -1319,10 +1329,10 @@ export default function OrbitGlobe({
 
           const currentData = entityMapRef.current.get(noradId);
           if (
-            !currentData ||
+            !currentData || currentData!==data ||
             signal.aborted ||
             viewer.isDestroyed() ||
-            (!shownOrbitIdsRef.current.has(noradId) || modeRef.current !== "live")
+            (!shownOrbitIdsRef.current.has(noradId) || modeRef.current !== mode)
           ) return;
 
           const object = getSpaceObject(noradId);
@@ -1341,7 +1351,7 @@ export default function OrbitGlobe({
 
           currentData.orbitEntity = viewer.entities.add({
             name: `${object?.name || orbit.name} full orbit`,
-            show: earthActiveRef.current && modeRef.current === "live",
+            show: earthActiveRef.current && modeRef.current === mode,
             properties: { noradId },
             polyline: {
               positions: orbitPositions,

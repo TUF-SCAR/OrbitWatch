@@ -5,6 +5,7 @@ import {createElement} from 'react';
 import {renderToStaticMarkup} from 'react-dom/server';
 import {createServer} from 'vite';
 import react from '@vitejs/plugin-react';
+import {TIME_OBJECTS,TIME_DEFAULT_OBJECTS} from '../src/data/timeExplorerCatalog.js';
 
 test('Time Dock renders static reference identity, honest satellite coverage and actionable imagery failures',async()=>{
  const server=await createServer({configFile:false,plugins:[react()],server:{middlewareMode:true},appType:'custom'});
@@ -15,13 +16,20 @@ test('Time Dock renders static reference identity, honest satellite coverage and
   const ready=render({activeMap:'esri',state:'available'});
   assert.match(ready,/Esri World Imagery · Reference basemap/);
   assert.match(ready,/Not imagery from the selected time/);
-  assert.match(ready,/Satellite historical\/prediction data unavailable/);
+  assert.match(ready,/Historical archive unavailable/);
   assert.match(ready,/Scene date and time \(local\)/);
   assert.doesNotMatch(ready,/View daily observations|View reference map|NASA historical|Retry reference/);
   const failed=render({activeMap:'local-reference',state:'unavailable',message:'Esri unavailable'});
   assert.match(failed,/NASA\/JPL\/USGS · Static reference texture/);
   assert.match(failed,/Retry reference basemap/);assert.match(failed,/Esri unavailable/);
   assert.doesNotMatch(failed,/Esri World Imagery · Reference basemap/);
+  const populated=renderToStaticMarkup(createElement(TimeDock,{...props,historicalData:{state:'ready',objects:TIME_DEFAULT_OBJECTS.map(norad_id=>({norad_id})),errors:[]}}));
+  assert.match(populated,/4\/4 historical positions available/);
+  assert.doesNotMatch(populated,/Historical archive unavailable/);
+  const {default:ObjectExplorer}=await server.ssrLoadModule('/src/components/ObjectExplorer.jsx');
+  const explorer=renderToStaticMarkup(createElement(ObjectExplorer,{open:true,historical:true,objects:TIME_OBJECTS,trackedIds:TIME_DEFAULT_OBJECTS,historicalData:{state:'ready',objects:[],errors:[]}}));
+  assert.match(explorer,/PERMANENT TIME CATALOG.*15/);
+  assert.match(explorer,/ONEWEB-0012/);assert.doesNotMatch(explorer,/58990|Create custom filter|Add .* to collection/);
  } finally {await server.close();}
 });
 
@@ -33,5 +41,5 @@ test('Time Explorer keeps a single Viewer and the Live map preference out of tim
  const timeChange=app.slice(app.indexOf('function queueSceneTime'),app.indexOf('function timePrepared'));
  assert.doesNotMatch(timeChange,/setMapStyle|setTimeBusy|setTimeout/);
  assert.match(app,/onReturnLive=\{\(\) => changeMode\("live"\)\}/);
- assert.match(globe,/const permittedIds = mode === "live" \? trackedIds : \[\]/);
+ assert.match(globe,/timeSatelliteSelection\(trackedIds\)/);
 });

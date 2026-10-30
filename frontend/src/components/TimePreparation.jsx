@@ -15,7 +15,7 @@ export default function TimePreparation({time,onTimeChange}) {
       <h1>Preparing scene time</h1>
       <p role="status">{time.toLocaleString('en-GB',{timeZone:'UTC',hour12:false})} UTC</p>
       <label>Requested scene date and time (local)<input ref={input} type="datetime-local" value={formatDateTimeLocal(time)} onChange={event=>{const next=new Date(event.target.value);if(Number.isFinite(next.getTime())) onTimeChange(next);}} /></label>
-      <small>Preparing celestial positions and available Earth imagery.<br />Historical satellite and weather data remain unavailable.</small>
+      <small>Preparing celestial positions and a static Earth reference basemap.<br />Historical satellite and weather data remain unavailable.</small>
     </section>
   </motion.div>;
 }

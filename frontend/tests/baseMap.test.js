@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { Event, SceneMode } from "cesium";
 import { applyBaseMap } from "../src/services/baseMap.js";
+import { earthMapForMode } from '../src/services/earthMapProviders.js';
+import { updateSceneTime } from '../src/services/timeScenePreparation.js';
 
 function fixture() {
   const layers = ["previous map"], statuses = [], request = { current: 0 };
@@ -42,7 +44,7 @@ test('fixed NASA reference failure never substitutes current Esri imagery',async
   const f=fixture(),reference={};let esri=0;
   await f.apply('nasa-reference',{'nasa-reference':()=>{throw new Error('offline');},'local-reference':()=>reference,esri:()=>{esri++;return {};}});
   assert.equal(esri,0);assert.deepEqual(f.layers,[reference]);assert.equal(f.statuses.at(-1).observationDate,null);
-  assert.match(f.statuses.at(-1).message,/fixed reference/i);
+  assert.match(f.statuses.at(-1).message,/static.*reference/i);
 });
 test("stalled metadata has a bounded fallback and stale tile errors are detached", async () => {
   const f = fixture(), fallback = { errorEvent: new Event() };
@@ -74,11 +76,16 @@ test("map replacement waits for first tile, cancels superseded work, and reuses 
   await f.apply("osm",factories);assert.equal(calls,1);assert.equal(f.layers.length,1);
 });
 
-test("historical tile failure is explicitly reference imagery, never a different observation date",async()=>{
-  const f=fixture();
-  await f.apply("nasa-time",{"nasa-time":()=>({provider:{requestImage:()=>Promise.reject(new Error("missing"))},details:{observationDate:"2024-01-01"}}),"nasa-reference":()=>({})});
-  assert.equal(f.request.activeMap,"nasa-reference");assert.equal(f.statuses.at(-1).observationDate,null);
-  assert.match(f.statuses.at(-1).message,/Fixed NASA reference/);
+test("Esri failure uses the credited local reference once, retains weather and supports explicit retry",async()=>{
+  const f=fixture(),reference={},weather={orbitwatchWeather:true};let calls=0;
+  f.layers.push(weather);
+  const factories={esri:()=>{calls++;throw new Error('offline');},'local-reference':()=>reference};
+  await f.apply('esri',factories);await f.apply('esri',factories);
+  assert.equal(calls,1);assert.equal(f.request.activeMap,'local-reference');assert.deepEqual(f.layers,[weather,reference]);
+  assert.equal(f.statuses.at(-1).observationDate,null);assert.equal(f.statuses.at(-1).state,'unavailable');
+  assert.match(f.statuses.at(-1).message,/Static NASA\/JPL\/USGS/);
+  f.request.activeKey=null;const esri={};await f.apply('esri',{esri:()=>esri});
+  assert.equal(f.request.activeMap,'esri');assert.deepEqual(f.layers,[weather,esri]);
 });
 
 test("Google only becomes active after actual initial tiles are ready; raster switches hide it",async()=>{
@@ -99,9 +106,54 @@ test("pending replacement retains the active Google surface, avoiding a black Ea
   ready({});await replacement;assert.equal(google.show,false);assert.equal(f.viewer.scene.globe.show,true);assert.equal(f.layers.length,1);
 });
 
-test("a cached NASA choice restores real imagery after off-Earth detail released its layers",async()=>{
-  const f=fixture();let calls=0;const factories={"nasa-time":()=>{calls++;return {};}};
-  await f.apply("nasa-time",factories);assert.equal(calls,1);
-  f.viewer.imageryLayers.removeAll();await f.apply("nasa-time",factories);
+test("a cached Esri choice restores real imagery after off-Earth detail released its layers",async()=>{
+  const f=fixture();let calls=0;const factories={esri:()=>{calls++;return {};}};
+  await f.apply('esri',factories);assert.equal(calls,1);
+  f.viewer.imageryLayers.removeAll();await f.apply('esri',factories);
   assert.equal(calls,2);assert.equal(f.layers.length,1);
+});
+
+test('concurrent scene-time preparations share one pending Esri provider and tile validation',async()=>{
+  const f=fixture();let finish,calls=0,tiles=0;
+  const provider={requestImage:()=>{tiles++;return new Promise(resolve=>{finish=resolve;});}},factories={esri:()=>{calls++;return provider;}};
+  const pending=f.apply('esri',factories);await Promise.resolve();
+  const newer=f.apply('esri',factories);assert.equal(pending,newer);
+  assert.deepEqual(f.layers,['previous map']);finish({});await Promise.all([pending,newer]);
+  await applyBaseMap(f.viewer,null,false,'esri',f.request,false,factories);
+  assert.equal(calls,1);assert.equal(tiles,1);assert.deepEqual(f.layers,[provider]);
+});
+
+test('a timed-out tile request is cancelled before fallback and cannot replace it later',async()=>{
+  const f=fixture(),reference={};let request,finish;
+  await f.apply('esri',{esri:()=>({requestImage:(_x,_y,_z,tile)=>{request=tile;return new Promise(resolve=>{finish=resolve;});}}),'local-reference':()=>reference},5);
+  assert.equal(request.cancelled,true);finish({});await Promise.resolve();assert.deepEqual(f.layers,[reference]);
+});
+
+test('representative timestamp changes reuse Esri and never call the NASA factories; Live restores its preference',async()=>{
+  const f=fixture();let calls=0,nasa=0;
+  const esri={},osm={},factories={esri:()=>{calls++;return esri;},osm:()=>osm,'nasa-reference':()=>{nasa++;throw new Error('unexpected NASA request');},'nasa-time':()=>{nasa++;throw new Error('unexpected NASA request');}};
+  f.viewer.clock={};await f.apply('osm',factories);
+  for(const date of ['1990-01-01','2005-06-01','2024-06-01','2026-10-30','2035-01-01']) {
+    updateSceneTime(f.viewer,new Date(`${date}T12:00:00Z`),'time',30);
+    await f.apply(earthMapForMode('time','osm'),factories);
+    assert.deepEqual(f.layers,[esri]);
+  }
+  assert.equal(calls,1);assert.equal(nasa,0);
+  await f.apply(earthMapForMode('live','osm'),factories);assert.deepEqual(f.layers,[osm]);
+});
+
+test('total imagery failure waits for explicit retry, including when no previous basemap exists',async()=>{
+  const f=fixture();f.viewer.imageryLayers.removeAll();let calls=0;
+  const factories={esri:()=>{calls++;throw new Error('offline');},'local-reference':()=>{throw new Error('missing asset');}};
+  await f.apply('esri',factories);await f.apply('esri',factories);
+  assert.equal(calls,1);assert.equal(f.statuses.at(-1).state,'unavailable');assert.equal(f.layers.length,0);
+  f.request.activeKey=null;await f.apply('esri',factories);assert.equal(calls,2);
+});
+
+test('an immediate Earth return cannot reuse the map request cancelled by travel',async()=>{
+  const f=fixture();let finish;
+  const away=f.apply('esri',{esri:()=>new Promise(resolve=>{finish=resolve;})});
+  f.request.current++;f.request.activeKey=null;f.request.abort();f.viewer.imageryLayers.removeAll();
+  const provider={};await f.apply('esri',{esri:()=>provider});finish({});await away;
+  assert.deepEqual(f.layers,[provider]);assert.equal(f.request.activeMap,'esri');
 });

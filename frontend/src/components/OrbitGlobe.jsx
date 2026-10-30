@@ -7,7 +7,6 @@ import {
   CallbackProperty,
   Cartesian2,
   Cartesian3,
-  ClockStep,
   Color,
   DistanceDisplayCondition,
   HeightReference,
@@ -44,12 +43,11 @@ import { createSpaceBackground } from "../services/spaceBackground.js";
 import { populationQuality } from "../data/proceduralPopulations.js";
 import { createSelectedSatelliteDetail } from "../services/selectedSatelliteDetail.js";
 import { loadGoogleEarthTiles } from "../services/googleEarth.js";
-import { createNasaImageryService } from "../services/nasaImagery.js";
-import { createEarthMapFactories } from "../services/earthMapProviders.js";
+import { createEarthMapFactories, earthMapForMode } from "../services/earthMapProviders.js";
 import { applyBaseMap as updateBaseMap, providerErrorSummary, setEarthMapVisibility } from "../services/baseMap.js";
 import { createPlaceLabelLayer } from "../services/placeLabelLayer.js";
 import { createPlaceSearch } from "../services/placeSearch.js";
-import { prepareTimeScene } from "../services/timeScenePreparation.js";
+import { prepareTimeScene, updateSceneTime } from "../services/timeScenePreparation.js";
 import { cameraDuration } from "../utils/motionPreferences.js";
 import { createWindLayer } from '../services/windLayer.js';
 import { mountWindReview } from '../services/windReview.js';
@@ -326,7 +324,6 @@ export default function OrbitGlobe({
   onSatelliteStatus,
   onMapStatus,
   onTimeReady,
-  timeReference = false,
   quality = "auto",
   onOrbitInfo,
   onDetailReady,
@@ -356,13 +353,11 @@ export default function OrbitGlobe({
   const initialCountryRef = useRef(startupCountry);
   const callbacksRef = useRef({ onSceneReady, onRefreshComplete, onMapStatus, onDetailReady, onScaleChange, onSatelliteStatus, onOrbitInfo, onTimeReady });
   const mapFactoriesRef = useRef(null);
-  const selectedTimeRef = useRef(selectedTime);
-  const timeReferenceRef = useRef(timeReference);
   const googleLoaderRef = useRef(null);
   const googleEventsRef = useRef([]);
   const googleRetryNonceRef = useRef(-1);
-  const timeRetryNonceRef = useRef(mapRetryNonce);
-  const applyBaseMap = (viewer,tiles,ready,map,request,labels) => updateBaseMap(viewer,tiles,ready,modeRef.current === "time" ? timeReferenceRef.current ? "nasa-reference" : "nasa-time" : map,request,labels,mapFactoriesRef.current,(status)=>callbacksRef.current.onMapStatus?.(status),8000,modeRef.current === "time" ? timeReferenceRef.current ? "reference" : selectedTimeRef.current.getTime()>Date.now() ? "future-reference" : selectedTimeRef.current.toISOString().slice(0,10) : "");
+  const mapRetryNonceRef = useRef(mapRetryNonce);
+  const applyBaseMap = (viewer,tiles,ready,map,request,labels) => updateBaseMap(viewer,tiles,ready,earthMapForMode(modeRef.current,map),request,labels,mapFactoriesRef.current,(status)=>callbacksRef.current.onMapStatus?.(status));
   const earthActiveRef = useRef(true);
   const lastInteractionRef = useRef(0);
   const qualityRef = useRef(quality);
@@ -402,13 +397,11 @@ export default function OrbitGlobe({
   onViewTelemetryRef.current = onViewTelemetry;
   mapStyleRef.current = mapStyle;
   modeRef.current = mode;
-  selectedTimeRef.current = selectedTime;
-  timeReferenceRef.current = timeReference;
   shownOrbitIdsRef.current = shownOrbitIds;
   onCelestialSelectRef.current = onCelestialSelect;
   callbacksRef.current = { onSceneReady, onRefreshComplete, onMapStatus, onDetailReady, onScaleChange, onSatelliteStatus, onOrbitInfo, onTimeReady };
   qualityRef.current = quality;
-  }, [selectedTime, selectedId, labelsEnabled, onObjectSelect, onViewTelemetry, mapStyle, mode, shownOrbitIds, onCelestialSelect, onSceneReady, onRefreshComplete, onMapStatus, onDetailReady, onScaleChange, onSatelliteStatus, quality, onOrbitInfo, onTimeReady, timeReference]);
+  }, [selectedTime, selectedId, labelsEnabled, onObjectSelect, onViewTelemetry, mapStyle, mode, shownOrbitIds, onCelestialSelect, onSceneReady, onRefreshComplete, onMapStatus, onDetailReady, onScaleChange, onSatelliteStatus, quality, onOrbitInfo, onTimeReady]);
 
   useImperativeHandle(globeRef, () => ({
     weatherViewCenter() {
@@ -510,8 +503,7 @@ export default function OrbitGlobe({
 
     const googleEvents=googleEventsRef.current;
     const token = import.meta.env.VITE_CESIUM_ION_TOKEN;
-    const nasaService=createNasaImageryService();
-    mapFactoriesRef.current=createEarthMapFactories({ionToken:token,cartoKey:import.meta.env.VITE_CARTO_API_KEY,nasa:nasaService,selectedTime:()=>selectedTimeRef.current});
+    mapFactoriesRef.current=createEarthMapFactories({ionToken:token,cartoKey:import.meta.env.VITE_CARTO_API_KEY});
     if (token) Ion.defaultAccessToken = token;
 
     const viewer = new Viewer(mountRef.current, {
@@ -710,6 +702,7 @@ export default function OrbitGlobe({
           },
           hideEarthDetail: () => {
             earthActiveRef.current = false;
+            mapRequestRef.activeKey=null;
             mapRequestRef.current += 1;
             mapRequestRef.abort?.();
             mapRequestRef.removeError?.();
@@ -965,7 +958,6 @@ export default function OrbitGlobe({
       googleTilesRef.current = null;
       googleReadyRef.current = false;
       mapRequestRef.abort?.();
-      nasaService.destroy();
       googleLoaderRef.current=null;
       followStateRef.current = null;
 
@@ -998,18 +990,7 @@ export default function OrbitGlobe({
   useEffect(() => {
     const viewer = viewerRef.current;
     if (!viewer) return;
-    if (mode === "time") {
-      viewer.clock.currentTime = JulianDate.fromDate(selectedTime);
-      viewer.clock.shouldAnimate = false;
-      viewer.scene.maximumRenderTimeChange = Number.POSITIVE_INFINITY;
-    } else {
-      viewer.clock.currentTime = JulianDate.now();
-      viewer.clock.shouldAnimate = mode === "live";
-      if (mode === "live") viewer.clock.clockStep = ClockStep.SYSTEM_CLOCK;
-      viewer.scene.maximumRenderTimeChange =
-        mode === "live" ? 1 / ORBITWATCH_MEMORY_PROFILE.targetFrameRate : Number.POSITIVE_INFINITY;
-    }
-    viewer.scene.requestRender();
+    updateSceneTime(viewer,selectedTime,mode,ORBITWATCH_MEMORY_PROFILE.targetFrameRate);
   }, [selectedTime, mode]);
 
   useEffect(() => {
@@ -1079,6 +1060,12 @@ export default function OrbitGlobe({
   },[naturalEvents,eventsVisible,eventCategory,selectedEventId,mode,selectedCelestialBody]);
 
   useEffect(() => {
+    if(mapRetryNonceRef.current!==mapRetryNonce) {
+      mapRequestRef.activeKey=null;mapRetryNonceRef.current=mapRetryNonce;
+    }
+  },[mapRetryNonce]);
+
+  useEffect(() => {
     const viewer = viewerRef.current;
     if (!viewer || !earthActiveRef.current || mode === "time") return;
     if(mode === "live" && mapStyle === "google" && mapRequestRef.googleError && mapRetryNonce>0 && googleRetryNonceRef.current!==mapRetryNonce) {
@@ -1095,19 +1082,18 @@ export default function OrbitGlobe({
     }
     if(mode === "live" && mapStyle === "google" && !mapRequestRef.googleError) googleLoaderRef.current?.();
     applyBaseMap(viewer, googleTilesRef.current, googleReadyRef.current, mapStyle, mapRequestRef, labelsEnabled);
-  }, [mapStyle, mode, labelsEnabled, selectedTime, mapRetryNonce]);
+  }, [mapStyle, mode, labelsEnabled, mapRetryNonce]);
 
   useEffect(()=>{
     const viewer=viewerRef.current;
     if(!viewer || mode !== "time") return undefined;
-    if(timeRetryNonceRef.current!==mapRetryNonce) {mapRequestRef.activeKey=null;timeRetryNonceRef.current=mapRetryNonce;}
     const controller=new AbortController();
-    prepareTimeScene(viewer,{time:selectedTime,signal:controller.signal,earth:earthActiveRef.current,
+    prepareTimeScene(viewer,{time:selectedTime,signal:controller.signal,earth:earthActiveRef.current,waitForTiles:!mapRequestRef.activeKey || !['esri','local-reference'].includes(mapRequestRef.activeMap),
       applyMap:()=>applyBaseMap(viewer,googleTilesRef.current,googleReadyRef.current,mapStyleRef.current,mapRequestRef,labelsEnabledRef.current)})
       .then(()=>{if(!controller.signal.aborted) callbacksRef.current.onTimeReady?.({timestamp:selectedTime.getTime()});})
       .catch(error=>{if(error.name !== "AbortError" && !controller.signal.aborted) callbacksRef.current.onTimeReady?.({timestamp:selectedTime.getTime(),error:error.message});});
     return ()=>controller.abort();
-  },[mode,selectedTime,mapRetryNonce,timeReference]);
+  },[mode,selectedTime,mapRetryNonce]);
 
   useEffect(() => {
     const viewer = viewerRef.current;

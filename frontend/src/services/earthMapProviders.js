@@ -1,7 +1,11 @@
 import { createWorldImageryAsync, IonWorldImageryStyle, UrlTemplateImageryProvider } from "cesium";
 import { localEarthReferenceProvider, nasaReferenceProvider } from "./nasaImagery.js";
 
-export function createEarthMapFactories({ionToken,cartoKey,nasa,selectedTime}) {
+export function earthMapForMode(mode,map) {
+  return mode==='time' ? 'esri' : map;
+}
+
+export function createEarthMapFactories({ionToken,cartoKey}={}) {
   const ion=style=>ionToken ? createWorldImageryAsync({style}) : null;
   const carto=(path)=>cartoKey ? new UrlTemplateImageryProvider({
     url:`https://basemaps.cartocdn.com/${path}/{z}/{x}/{y}.png?key=${encodeURIComponent(cartoKey)}`,
@@ -17,6 +21,5 @@ export function createEarthMapFactories({ionToken,cartoKey,nasa,selectedTime}) {
     'carto-voyager':labels=>carto(`rastertiles/${labels ? 'voyager' : 'voyager_nolabels'}`),
     'nasa-reference':()=>({provider:nasaReferenceProvider(),details:{kind:'reference',observationDate:null,message:'NASA Blue Marble · fixed nonhistorical reference composite; not selected-date observations, live weather or current photography.'}}),
     'local-reference':()=>localEarthReferenceProvider(),
-    'nasa-time':(_labels,{signal})=>nasa.create(selectedTime(),signal),
   };
 }

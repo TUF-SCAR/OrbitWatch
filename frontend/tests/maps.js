@@ -1,21 +1,17 @@
-import {createNasaImageryService, GIBS_CAPABILITIES, parseGibsCapabilities} from "../src/services/nasaImagery.js";
+import {createEarthMapFactories} from "../src/services/earthMapProviders.js";
 const button=document.querySelector('button'),output=document.querySelector('output'),result=document.querySelector('pre');
 button.addEventListener('click',async()=>{
   button.disabled=true;const reports={};
   try {
-    output.textContent='Reading current NASA metadata';
-    const response=await fetch(GIBS_CAPABILITIES);
-    reports.http=response.status;const xml=await response.text();reports.bytes=xml.length;
-    const metadata=parseGibsCapabilities(xml);reports.metadata=metadata;result.textContent=JSON.stringify(reports,null,2);
-    const service=createNasaImageryService({fetchMetadata:async()=>metadata});
-    for(const date of ['2000-06-01','2010-06-01','2020-06-01','2024-06-01','2025-08-09','2030-01-01']) {
-      output.textContent=`Checking ${date}`;
-      const {provider,details}=await service.create(new Date(date),new AbortController().signal);
+    const factories=createEarthMapFactories();
+    for(const map of ['esri','local-reference']) {
+      output.textContent=`Checking ${map} reference imagery`;
+      const provider=await factories[map]();
       const image=await provider.requestImage(0,0,0);
       document.querySelector('canvas').getContext('2d').drawImage(image,0,0,256,256);
-      reports[date]={...details,width:image.width,height:image.height};result.textContent=JSON.stringify(reports,null,2);
+      reports[map]={credit:provider.credit.html,width:image.width,height:image.height};result.textContent=JSON.stringify(reports,null,2);
     }
-    output.textContent='NASA current metadata, historical tile and fixed reference checks passed';
+    output.textContent='Esri and local static reference checks passed';
   } catch(error) {reports.error={name:error.name,message:error.message};result.textContent=JSON.stringify(reports,null,2);output.textContent=`FAILED: ${error.message}`;}
   finally {button.disabled=false;}
 });

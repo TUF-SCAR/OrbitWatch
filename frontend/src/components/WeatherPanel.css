@@ -38,8 +38,16 @@
   .scene-dock--weather .scene-tool span { display:none; }
 }
 
-.weather-field-picker { display:flex; flex-direction:column; gap:7px; font-size:var(--ui-font-sm); color:var(--ui-text-muted); margin-bottom:14px; }
-.weather-field-picker select { width:100%; padding:10px; background:var(--ui-background); border:1px solid var(--line); color:var(--ui-text); font:inherit; }
+.weather-field-gallery.map-gallery { grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; margin:4px 0 16px; }
+.weather-field-card .map-card__preview { aspect-ratio:16/6; }
+.weather-field-card .map-card__copy { flex-direction:column; align-items:flex-start; justify-content:center; gap:3px; min-height:44px; padding:6px 34px 6px 10px; }
+.weather-field-card .map-card__copy strong { font-size:var(--ui-font-sm); letter-spacing:0; }
+.weather-field-card .map-card__copy small { color:var(--ui-text-muted); font-size:var(--ui-font-xs); letter-spacing:0; }
+.weather-field-card:focus-visible { outline:2px solid var(--accent); outline-offset:3px; }
+@media(prefers-reduced-motion:reduce) {
+  .weather-field-card,.weather-field-card .map-card__preview img { transition:none; }
+  .weather-field-card:hover,.weather-field-card:hover .map-card__preview img { transform:none; }
+}
 
 .weather-view-tabs { display:flex; border-bottom:1px solid var(--line); padding:0 16px; gap:8px; flex-shrink:0; }
 .weather-view-tabs button { flex:1; min-height:40px; border:0; border-bottom:2px solid transparent; color:var(--ui-text-muted); background:transparent; font:inherit; font-size:var(--ui-font-sm); cursor:pointer; }

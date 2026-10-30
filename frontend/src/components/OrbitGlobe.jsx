@@ -1,3 +1,4 @@
+import { mountWeatherAltitudeFade, weatherAltitudeAlpha } from '../services/weatherVisibility.js';
 import { uiNumber } from "../utils/uiConfig.js";
 import { useEffect, useImperativeHandle, useRef, useState } from "react";
 import {
@@ -876,6 +877,7 @@ export default function OrbitGlobe({
         : staleOrbits ? `${staleOrbits} orbit${staleOrbits === 1 ? " is" : "s are"} awaiting updated propagation. Moving highlights resume when aligned.` : "";
       if (status !== lastSatelliteStatus) { lastSatelliteStatus = status; callbacksRef.current.onSatelliteStatus?.(status); }
     });
+    const removeWeatherAltitude=mountWeatherAltitudeFade(viewer,()=>[temperatureLayerRef.current,cloudLayerRef.current,rainLayerRef.current,windLayerRef.current]);
     const removePreRender = viewer.scene.preRender.addEventListener((_scene, time) => {
       const now = performance.now();
       const height = viewer.camera.positionCartographic.height;
@@ -886,7 +888,7 @@ export default function OrbitGlobe({
         // Development-only browser evidence; no camera mutation or extra clock.
         if(import.meta.env.DEV) {
           const weatherLayers=Array.from({length:viewer.imageryLayers.length},(_,i)=>viewer.imageryLayers.get(i)).filter(layer=>layer.orbitwatchWeather);
-          mountRef.current?.setAttribute('data-weather-diagnostics',JSON.stringify({rain:rainLayerRef.current?.diagnostics(),clouds:cloudLayerRef.current?.diagnostics(),wind:windLayerRef.current?.diagnostics(),groundIntensity:viewer.scene.globe.atmosphereLightIntensity,groundAtmosphere:viewer.scene.globe.showGroundAtmosphere,skyAtmosphere:viewer.scene.skyAtmosphere.show,lighting:viewer.scene.globe.enableLighting,fog:viewer.scene.fog.enabled,eventSources:viewer.dataSources.length,events:naturalEventLayerRef.current?.diagnostics(),layers:weatherLayers.length,alpha:weatherLayers[0]?.alpha??0,following:followStateRef.current?.noradId??null,selected:selectedIdRef.current,tracked:entityMap.size,earth:earthActiveRef.current,mode:modeRef.current}));
+          mountRef.current?.setAttribute('data-weather-diagnostics',JSON.stringify({altitudeAlpha:weatherAltitudeAlpha(height),rain:rainLayerRef.current?.diagnostics(),clouds:cloudLayerRef.current?.diagnostics(),wind:windLayerRef.current?.diagnostics(),groundIntensity:viewer.scene.globe.atmosphereLightIntensity,groundAtmosphere:viewer.scene.globe.showGroundAtmosphere,skyAtmosphere:viewer.scene.skyAtmosphere.show,lighting:viewer.scene.globe.enableLighting,fog:viewer.scene.fog.enabled,eventSources:viewer.dataSources.length,events:naturalEventLayerRef.current?.diagnostics(),layers:weatherLayers.length,alpha:weatherLayers[0]?.alpha??0,following:followStateRef.current?.noradId??null,selected:selectedIdRef.current,tracked:entityMap.size,earth:earthActiveRef.current,mode:modeRef.current}));
         }
         const cameraCartographic = viewer.scene.globe.ellipsoid.cartesianToCartographic(viewer.camera.positionWC);
         onViewTelemetryRef.current?.({
@@ -924,6 +926,7 @@ export default function OrbitGlobe({
 
     return () => {
       destroyed = true;
+      removeWeatherAltitude();
       windLayerRef.current?.destroy();windLayerRef.current=null;
       rainLayerRef.current?.destroy();rainLayerRef.current=null;
       cloudLayerRef.current?.destroy();cloudLayerRef.current=null;

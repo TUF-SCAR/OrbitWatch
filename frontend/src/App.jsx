@@ -1,3 +1,4 @@
+import { LIVE_EARTH_DEFAULTS } from './data/liveEarthDefaults.js';
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence } from "motion/react";
 import { Aperture, Maximize2, RefreshCcw } from "lucide-react";
@@ -78,7 +79,7 @@ export default function App({ currentUser, onLogout, hudActive = true, onSceneRe
   const [timeBusy,setTimeBusy] = useState(false);
   const timeCommitRef = useRef(null);
   const [timeIssue,setTimeIssue] = useState("");
-  const [mapStyle, setMapStyle] = useState(import.meta.env.VITE_CESIUM_ION_TOKEN ? "google" : "esri");
+  const [mapStyle, setMapStyle] = useState(LIVE_EARTH_DEFAULTS.mapStyle);
   const [mapStatus, setMapStatus] = useState(null);
   const [mapRetryNonce, setMapRetryNonce] = useState(0);
   const [satelliteStatus, setSatelliteStatus] = useState("");
@@ -87,8 +88,8 @@ export default function App({ currentUser, onLogout, hudActive = true, onSceneRe
   const [cameraFollowing, setCameraFollowing] = useState(false);
   const [catalogObjects, setCatalogObjects] = useState(SPACE_OBJECTS);
   const [viewTelemetry, setViewTelemetry] = useState({});
-  const [weatherEnabled,setWeatherEnabled]=useState(false),[weatherOpacity,setWeatherOpacity]=useState(.55);
-  const [weatherVariable,setWeatherVariable]=useState('temperature');
+  const [weatherEnabled,setWeatherEnabled]=useState(LIVE_EARTH_DEFAULTS.weatherEnabled),[weatherOpacity,setWeatherOpacity]=useState(.55);
+  const [weatherVariable,setWeatherVariable]=useState(LIVE_EARTH_DEFAULTS.weatherField);
   const [weatherTab,setWeatherTab]=useState('layers'),[eventsEnabled,setEventsEnabled]=useState(false);
   const [eventCategory,setEventCategory]=useState('all'),[selectedEventId,setSelectedEventId]=useState(null);
   const [weatherRefresh,setWeatherRefresh]=useState(0),[weatherCooling,setWeatherCooling]=useState(false);
@@ -373,7 +374,7 @@ export default function App({ currentUser, onLogout, hudActive = true, onSceneRe
         <AnimatePresence>{layers.includes("celestial") && <CelestialTravelCard key="CelestialTravelCard" bodyId={celestialMarker} destinationId={selectedCelestialBody} onClose={() => closeLayer("celestial")} onTravel={(id) => selectCelestialBody(id, true)} onInspect={() => { closeLayer("celestial"); if (!atEarth) openLayer("body"); }} />}</AnimatePresence>
         <SystemMenu mode={mode} open={menu === "system"} activeBodyId={selectedCelestialBody} onSelectBody={(id)=>selectCelestialBody(id,mode === "time")} onClose={() => closeLayer("system")} />
         <MapSettings open={menu === "map"} mapStyle={mapStyle} onMapStyleChange={(id)=>{setMapStyle(id);setMapRetryNonce(value=>value+1);}} labelsEnabled={labelsEnabled} onLabelsChange={setLabelsEnabled} onClose={() => closeLayer("map")} mapStatus={mapStatus} />
-        <WeatherPanel cloudFallback={cloudFallback} observedClouds={observedClouds} tab={weatherTab} onTab={setWeatherTab} events={naturalEvents} eventsEnabled={eventsEnabled} onEventsEnabled={setEventsEnabled} eventCategory={eventCategory} onEventCategory={value=>{setEventCategory(value);setSelectedEventId(null);}} selectedEventId={selectedEventId} onEventSelect={setSelectedEventId} open={weatherActive&&layers.includes('weather')} onClose={()=>closeLayer('weather')} weather={{...weather,field:selectedWeatherField,bundle:weather.field}} variable={weatherVariable} onVariable={setWeatherVariable} enabled={weatherEnabled} onEnabled={setWeatherEnabled} opacity={weatherOpacity} onOpacity={setWeatherOpacity} compatible={weatherCompatible} onCompatibleMap={()=>{setMapStyle('esri');setMapRetryNonce(v=>v+1);}} onRefresh={refreshWeather} refreshCooling={weatherCooling} onViewCenter={()=>globeRef.current?.weatherViewCenter()}/>
+        <WeatherPanel cameraAltitudeKm={viewTelemetry.cameraAltitudeKm} cloudFallback={cloudFallback} observedClouds={observedClouds} tab={weatherTab} onTab={setWeatherTab} events={naturalEvents} eventsEnabled={eventsEnabled} onEventsEnabled={setEventsEnabled} eventCategory={eventCategory} onEventCategory={value=>{setEventCategory(value);setSelectedEventId(null);}} selectedEventId={selectedEventId} onEventSelect={setSelectedEventId} open={weatherActive&&layers.includes('weather')} onClose={()=>closeLayer('weather')} weather={{...weather,field:selectedWeatherField,bundle:weather.field}} variable={weatherVariable} onVariable={setWeatherVariable} enabled={weatherEnabled} onEnabled={setWeatherEnabled} opacity={weatherOpacity} onOpacity={setWeatherOpacity} compatible={weatherCompatible} onCompatibleMap={()=>{setMapStyle('esri');setMapRetryNonce(v=>v+1);}} onRefresh={refreshWeather} refreshCooling={weatherCooling} onViewCenter={()=>globeRef.current?.weatherViewCenter()}/>
         {weatherActive&&weatherEnabled&&weatherCompatible&&weatherVariable==='observedClouds'&&!cloudFallback&&!hidden&&!layers.includes('weather')&&!layers.includes('explorer')&&<ObservedCloudLegend clouds={observedClouds}/>}
         {weatherActive&&weatherEnabled&&weatherCompatible&&selectedWeatherField&&!hidden&&!layers.includes('weather')&&!layers.includes('explorer')&&<TemperatureLegend field={selectedWeatherField} state={weather.state}/>}
         {<SystemScaleSlider scale={sceneScale} onChange={(value) => globeRef.current?.setCelestialScale(value)} />}

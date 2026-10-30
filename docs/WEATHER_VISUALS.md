@@ -1,5 +1,20 @@
 # Live Earth clouds and precipitation — 27 October 2026
 
+Live Earth starts on Esri with Clouds selected and enabled, including when a
+Google token is configured. Other maps remain selectable. Weather uses the same
+preview-card interaction as Map Settings, with Clouds, Precipitation, Temperature
+and Wind. The thumbnails are local illustrative previews; current sources,
+timestamps and availability remain in the controls below the cards.
+
+All four weather graphics fade smoothly from full user opacity at 250 km to zero
+at 200 km camera altitude, remaining hidden below it. Zooming out restores the
+selected layer. This native render-cycle factor is separate from selection,
+enabled state and user opacity; it does not reset or rebuild particle buffers.
+Fully hidden wind/rain updates skip simulation work, and regional cloud requests
+pause. Natural Events are outside this fade and remain unchanged. Google 3D,
+Time Explorer and celestial travel retain their existing weather compatibility
+rules; returning to a compatible Live Earth restores the user's selection.
+
 The weather selector has one **Clouds** entry. It uses the existing real EUMETView
 multimission infrared composites. If no usable observation exists and the source
 fails, that entry explicitly reports a GFS modeled-cloud fallback with the GFS

@@ -1,3 +1,4 @@
+import WeatherGallery from './WeatherGallery.jsx';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { AnimatePresence } from 'motion/react';
 import { Crosshair, Thermometer, X } from 'lucide-react';
@@ -23,7 +24,7 @@ export function TemperatureLegend({field,state}) {
   const style=WEATHER_FIELDS[field.display_variable||'temperature'];
   return <aside className="weather-legend" aria-label="Weather legend"><div><strong>{style.title} · {style.units}</strong><span>{state==='stale'?'CACHED · STALE':'GFS · 1°'}</span></div><i style={{background:style.gradient}}/><div className="weather-legend__ticks">{style.ticks.map(tick=><span key={tick}>{tick}</span>)}</div><small>{field.kind==='analysis'?'Analysis':'Forecast'} valid {weatherTime(field.valid_at)} · <a href="https://nomads.ncep.noaa.gov/" target="_blank" rel="noreferrer">NOAA/NCEP</a></small></aside>;
 }
-export default function WeatherPanel({cloudFallback=false,observedClouds,tab,onTab,events,eventsEnabled,onEventsEnabled,eventCategory,onEventCategory,selectedEventId,onEventSelect,open,onClose,weather,variable='temperature',onVariable,enabled,onEnabled,opacity,onOpacity,compatible,onCompatibleMap,onRefresh,refreshCooling,onViewCenter}) {
+export default function WeatherPanel({cameraAltitudeKm,cloudFallback=false,observedClouds,tab,onTab,events,eventsEnabled,onEventsEnabled,eventCategory,onEventCategory,selectedEventId,onEventSelect,open,onClose,weather,variable='temperature',onVariable,enabled,onEnabled,opacity,onOpacity,compatible,onCompatibleMap,onRefresh,refreshCooling,onViewCenter}) {
   const [latitude,setLatitude]=useState(''),[longitude,setLongitude]=useState(''),[point,setPoint]=useState(null),[pointError,setPointError]=useState(''),[pointBusy,setPointBusy]=useState(false);
   const request=useRef(null),lastAttempt=useRef(0);
   const [pointClock,setPointClock]=useState(Date.now);
@@ -70,8 +71,9 @@ export default function WeatherPanel({cloudFallback=false,observedClouds,tab,onT
     <div className="hud-panel__body weather-panel__body" ref={bodyRef}>
       {tab==='events'?<NaturalEventsPanel data={events} enabled={eventsEnabled} onEnabled={onEventsEnabled} category={eventCategory} onCategory={onEventCategory} selectedId={selectedEventId} onSelect={onEventSelect}/>:<>
       <section aria-labelledby="global-weather-title"><div className="weather-section-heading"><h3 id="global-weather-title">Global weather</h3><span className={`weather-status is-${weather.state}`}>{observed?observedClouds.status.toUpperCase():stateLabel}</span></div>
-        <label className="weather-field-picker">Weather field<select aria-label="Weather field" value={variable} onChange={e=>onVariable(e.target.value)}>{Object.entries(WEATHER_FIELDS).filter(([,value])=>!value.hidden).map(([key,value])=><option key={key} value={key}>{value.label}</option>)}</select></label>
+        <WeatherGallery value={variable} onChange={onVariable}/>
         <label className="weather-toggle"><input type="checkbox" checked={enabled} onChange={event=>onEnabled(event.target.checked)}/><span>Weather layer</span></label>
+        {enabled&&Number.isFinite(cameraAltitudeKm)&&cameraAltitudeKm<250&&<p className="weather-source" role="status">{cameraAltitudeKm<=200?'Weather hidden below 200 km. Zoom out to restore.':'Weather fades between 250 and 200 km.'}</p>}
         {!observed&&enabled&&!field&&<p className="weather-source">Enabled · waiting for this model field</p>}
         {!observed&&!field&&weather.bundle&&<p className="weather-source">This variable is not in the usable cache yet. Temperature remains available; the shared NOAA retry deadline is preserved.</p>}
         {!observed&&!field&&working&&availability?.data_state==='hard_expired'&&<p className="weather-source">The previous field expired and has been hidden.</p>}

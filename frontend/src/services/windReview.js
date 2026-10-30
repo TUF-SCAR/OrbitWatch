@@ -10,6 +10,7 @@ export function mountWindReview(viewer, mount, getField, touch) {
   const view=(lon,lat,height)=>{touch();viewer.camera.lookAtTransform(Matrix4.IDENTITY);viewer.camera.flyTo({destination:Cartesian3.fromDegrees(lon,lat,height),orientation:{heading:0,pitch:-Math.PI/2,roll:0},duration:.6});};
   add('Indian Ocean',()=>view(78,4,3000000));
   add('Bay of Bengal',()=>view(85,15,1100000));
+  for(const km of [275,250,225,200,175])add(`${km} km`,()=>view(85,15,km*1000));
   add('North Atlantic',()=>view(-65,40,3000000));
   add('Dateline',()=>view(180,15,3500000));
   add('Whole Earth',()=>view(78,4,22000000));

@@ -26,6 +26,10 @@ test('rain streaks use wet model anchors, bounded seeding, quality counts, reduc
     for(let i=0;i<20;i++){clock+=100;preRender.raiseEvent();}
     assert.equal(owner.diagnostics().raining,rainBudget(quality).particles);assert.equal(owner.diagnostics().reseeding,false);
     assert.equal(collections.length,1);assert.equal(preRender.numberOfListeners,1);assert.equal(moveEnd.numberOfListeners,1);
+    const originalCollection=collections[0];owner.setAltitudeAlpha(0);assert.equal(originalCollection.show,false);
+    clock+=100;preRender.raiseEvent();assert.equal(collections[0],originalCollection);
+    owner.setAltitudeAlpha(.5);assert.equal(originalCollection.show,true);assert.equal(collections[0],originalCollection);
+    owner.setAltitudeAlpha(1);
     calm=true;clock+=100;preRender.raiseEvent();assert.ok(owner.diagnostics().raining>0);
     viewer.camera.positionCartographic.height=22000000;clock+=100;preRender.raiseEvent();assert.equal(owner.diagnostics().raining,0);
     viewer.camera.positionCartographic.height=3000000;

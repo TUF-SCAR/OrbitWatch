@@ -42,6 +42,10 @@ test('wind has one bounded owner, no timer in reduced/hidden/context-lost/off mo
   assert.ok(first.count>0);assert.equal(primitives[0],first);
   const moving=first.data.slice();clock+=45;preRender.raiseEvent();assert.notDeepEqual(first.data,moving);
   owner.update({...options,opacity:.3});assert.equal(primitives[0],first,'opacity does not rebuild');
+  owner.setAltitudeAlpha(.5);assert.ok(Math.abs(first.alpha-(.3/.55)*.5)<1e-9);
+  owner.setAltitudeAlpha(0);assert.equal(first.show,false);const hiddenBuffer=first.data.slice();
+  clock+=90;preRender.raiseEvent();assert.deepEqual(first.data,hiddenBuffer);assert.equal(primitives[0],first);assert.equal(timers.size,1);
+  owner.setAltitudeAlpha(1);assert.equal(first.show,true);assert.ok(Math.abs(first.alpha-.3/.55)<1e-9);assert.equal(primitives[0],first);
   canvas.clientWidth=390;clock+=45;preRender.raiseEvent();
   assert.deepEqual([...timers.values()],[1000/24],'resize applies mobile cadence');
   assert.equal(primitives[0],first,'resize preserves particle buffer');

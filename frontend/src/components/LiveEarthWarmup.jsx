@@ -1,3 +1,4 @@
+import { LIVE_EARTH_DEFAULTS } from '../data/liveEarthDefaults.js';
 import { useMemo, useRef } from "react";
 import OrbitGlobe from "./OrbitGlobe.jsx";
 import "./LiveEarthWarmup.css";
@@ -15,7 +16,7 @@ export default function LiveEarthWarmup() {
         selectedTime={selectedTime}
         mode="live"
         refreshNonce={0}
-        mapStyle="google"
+        mapStyle={LIVE_EARTH_DEFAULTS.mapStyle}
         labelsEnabled={true}
         shownOrbitIds={emptySet}
         onObjectSelect={() => {}}

@@ -13,12 +13,12 @@ function streakImage(){
 // falling-water velocities. Every anchor is sampled from the real model field.
 export function createRainLayer(viewer,{now=()=>performance.now(),doc=document,reduced=prefersReducedMotion,
   makeCollection=()=>new BillboardCollection({scene:viewer.scene}),makeImage=streakImage}={}) {
-  let field=null,quality='auto',opacity=.55,enabled=false,collection=null,items=[],removeFrame=null,removeMove=null,last=0,seed=0,refresh=true,destroyed=false;
+  let field=null,quality='auto',opacity=.55,enabled=false,collection=null,items=[],removeFrame=null,removeMove=null,last=0,seed=0,refresh=true,destroyed=false,altitudeAlpha=1;
   const screen=new Cartesian2(),world=new Cartesian3(),geo=new Cartographic(),color=new Color(.88,.96,1,0),offset=new Cartesian2();
   function release(){removeFrame?.();removeMove?.();removeFrame=removeMove=null;if(collection)viewer.scene.primitives.remove(collection);collection=null;items=[];}
   function reconcile(){
     release();if(destroyed||!enabled||doc.hidden||opacity<=0||viewer.isDestroyed())return;
-    collection=viewer.scene.primitives.add(makeCollection());const image=makeImage(),budget=rainBudget(quality);
+    collection=viewer.scene.primitives.add(makeCollection());collection.show=altitudeAlpha>0;const image=makeImage(),budget=rainBudget(quality);
     const count=Math.round(budget.particles*(viewer.scene.canvas.clientWidth<600?.55:1));
     for(let i=0;i<count;i++)items.push({billboard:collection.add({image,show:false,width:2,height:12,disableDepthTestDistance:0}),phase:(i*.61803398875)%1});
     seed=0;refresh=true;last=0;
@@ -26,6 +26,7 @@ export function createRainLayer(viewer,{now=()=>performance.now(),doc=document,r
     removeFrame=viewer.scene.preRender.addEventListener(tick);viewer.scene.requestRender();
   }
   function tick(){
+    if(altitudeAlpha===0)return;
     const time=now(),budget=rainBudget(quality);if(time-last<1000/budget.fps)return;last=time;
     const canvas=viewer.scene.canvas,height=viewer.camera.positionCartographic.height;
     // Quiet at whole-globe scale, richer at regional scales; no fictitious zoom detail.
@@ -49,7 +50,7 @@ export function createRainLayer(viewer,{now=()=>performance.now(),doc=document,r
     for(const p of items){
       if(p.rate===null||p.rate===undefined||zoom===0){p.billboard.show=false;continue;}
       const phase=(p.phase+(calm?0:time/1100))%1;
-      color.alpha=opacity*zoom*(calm?.35:Math.sin(Math.PI*phase)*.7);
+      color.alpha=opacity*altitudeAlpha*zoom*(calm?.35:Math.sin(Math.PI*phase)*.7);
       p.billboard.color=color;p.billboard.height=6+Math.min(10,Math.log1p(p.rate)*3);
       offset.x=0;offset.y=calm?0:(phase-.5)*12;p.billboard.pixelOffset=offset;p.billboard.show=true;
     }
@@ -57,6 +58,11 @@ export function createRainLayer(viewer,{now=()=>performance.now(),doc=document,r
   }
   const visibility=()=>reconcile();doc.addEventListener('visibilitychange',visibility);
   return {
+    setAltitudeAlpha(value){
+      if(value===altitudeAlpha)return;
+      const previous=altitudeAlpha;altitudeAlpha=value;if(collection)collection.show=value>0;
+      for(const p of items){if(p.billboard.color&&previous>0){const c=Color.clone(p.billboard.color);c.alpha*=value/previous;p.billboard.color=c;}}
+    },
     update(options){
       const next=options.field?.display_variable==='precipitation'?options.field:null;
       const active=Boolean(next&&options.visible&&options.compatible!==false),q=options.quality||'auto',a=options.opacity??.55;

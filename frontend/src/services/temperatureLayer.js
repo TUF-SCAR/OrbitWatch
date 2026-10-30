@@ -14,29 +14,31 @@ export function temperatureProvider(field,quality) {
 }
 
 export function createTemperatureLayer(viewer,{makeProvider=temperatureProvider,now=()=>performance.now(),reduced=prefersReducedMotion}={}) {
-  let layer=null,key=null,removeFrame=null,destroyed=false;
+  let layer=null,key=null,removeFrame=null,destroyed=false,altitudeAlpha=1,baseAlpha=0,presentationStrength=1;
   const presentation=createWeatherPresentation(viewer.scene);
+  function applyAlpha(){if(layer){layer.alpha=baseAlpha*altitudeAlpha;presentation.set(layer.alpha>0,presentationStrength*altitudeAlpha);}}
   function remove() {
     removeFrame?.();removeFrame=null;
     if(layer&&viewer.imageryLayers.contains(layer))viewer.imageryLayers.remove(layer,true);
-    layer=null;key=null;
+    layer=null;key=null;baseAlpha=0;
     presentation.set(false);
   }
   function fade(target) {
     removeFrame?.();removeFrame=null;
     if(!layer||!viewer.imageryLayers.contains(layer))return;
-    const current=layer,start=now(),from=current.alpha;
+    const current=layer,start=now(),from=baseAlpha;
     const tick=()=>{
       if(destroyed||viewer.isDestroyed()||!viewer.imageryLayers.contains(current)){removeFrame?.();removeFrame=null;return;}
       const progress=reduced()?1:Math.min(1,(now()-start)/350),ease=progress*progress*(3-2*progress);
-      current.alpha=from+(target-from)*ease;
-      presentation.set(current.alpha>0,target===0?1-ease:from===0?ease:1);
+      baseAlpha=from+(target-from)*ease;
+      presentationStrength=target===0?1-ease:from===0?ease:1;applyAlpha();
       if(progress>=1){removeFrame?.();removeFrame=null;if(target===0)remove();}
       else viewer.scene.requestRender();
     };
     removeFrame=viewer.scene.preRender.addEventListener(tick);viewer.scene.requestRender();
   }
   return {
+    setAltitudeAlpha(value){if(value===altitudeAlpha)return;altitudeAlpha=value;applyAlpha();},
     update({field,visible,opacity=.55,compatible=true,immediate=false,quality='auto'}) {
       if(destroyed||viewer.isDestroyed())return;
       if(!visible||!field||!compatible){if(immediate||!compatible)remove();else fade(0);return;}

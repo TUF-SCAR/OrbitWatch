@@ -11,7 +11,7 @@ export function createWindLayer(viewer, {
   random = Math.random,
 } = {}) {
   const scene = viewer.scene, canvas = scene.canvas;
-  let field = null, visible = false, quality = 'auto', opacity = .55;
+  let field = null, visible = false, quality = 'auto', opacity = .55, altitudeAlpha = 1;
   let primitive = null, particles = [], timer = null, removeFrame = null, destroyed = false, lost = false;
   let last = 0, clock = 0, nextSample = 0, scale = 1, overload = 0, fps = 0, frames = 0, frameStart = 0, cost = 0;
   let generation = 0, refreshes = 0, pending = 0, refreshHeight = 0, observedHeight = 0, zoomChangedAt = 0, refreshedAt = 0;
@@ -52,6 +52,7 @@ export function createWindLayer(viewer, {
   }
   function tick() {
     if(!primitive||lost||doc.hidden||destroyed)return;
+    if(altitudeAlpha===0){last=now();return;}
     const start=now(),interval=last?(start-last)/1000:0,dt=Math.min(WIND_STYLE.maxStepSeconds,interval);last=start;
     clock+=media.matches?0:dt;
     const budget=windBudget(quality,canvas.clientWidth,viewer.camera.positionCartographic.height);
@@ -97,7 +98,7 @@ export function createWindLayer(viewer, {
       }
       if(sample&&!media.matches&&!seeded){p.head=(p.head+1)%historySize;p.history.set(p.position,p.head*3);p.times[p.head]=clock;p.samples=Math.min(historySize-1,p.samples+1);}
     }
-    primitive.count=offset/8;primitive.dirty=true;primitive.alpha=Math.min(1,opacity/.55);
+    primitive.count=offset/8;primitive.dirty=true;primitive.alpha=Math.min(1,opacity/.55)*altitudeAlpha;primitive.show=altitudeAlpha>0;
     const elapsed=now()-start;cost=cost*.9+elapsed*.1;
     // Sustained CPU or whole-scene pressure sheds particles without adding work
     // to other renderers. Never simulate a hidden-tab catch-up jump.
@@ -118,6 +119,7 @@ export function createWindLayer(viewer, {
     if(destroyed||!visible||!field||opacity<=0||doc.hidden||lost||viewer.isDestroyed())return;
     const capacity=windBudget(quality,1000,0).particles;
     primitive=scene.primitives.add(makePrimitive(capacity*historySize));
+    primitive.show=altitudeAlpha>0;
     particles=Array.from({length:capacity},()=>({position:new Float64Array(3),history:new Float64Array(historySize*3),times:new Float64Array(historySize),valid:false}));
     clock=0;nextSample=0;frameStart=now();frames=0;
     generation++;pending=0;
@@ -146,12 +148,13 @@ export function createWindLayer(viewer, {
   doc.addEventListener('visibilitychange',reconcile);media.addEventListener('change',reconcile);
   canvas.addEventListener('webglcontextlost',onLost);canvas.addEventListener('webglcontextrestored',onRestored);
   return {
+    setAltitudeAlpha(value){if(value===altitudeAlpha)return;altitudeAlpha=value;if(value===0)healthySince=null;if(primitive){primitive.alpha=Math.min(1,opacity/.55)*value;primitive.show=value>0;}},
     update(options) {
       const next=options.field?.display_variable==='wind'?options.field:null;
       const nextVisible=Boolean(options.visible&&options.compatible&&next);
       const changed=next?.id!==field?.id||nextVisible!==visible||quality!==options.quality||(Number(options.opacity)>0)!==(opacity>0);
       field=next;visible=nextVisible;quality=options.quality;opacity=Number(options.opacity)||0;
-      if(changed)reconcile();else if(primitive){primitive.alpha=Math.min(1,opacity/.55);scene.requestRender();}
+      if(changed)reconcile();else if(primitive){primitive.alpha=Math.min(1,opacity/.55)*altitudeAlpha;scene.requestRender();}
     },
     diagnostics:()=>({active:!!primitive,animated:timer!==null,particles:particles.length,effectiveParticles:Math.round(windBudget(quality,canvas.clientWidth,viewer.camera.positionCartographic.height).particles*scale),segments:primitive?.count||0,gpuBytes:primitive?.data.byteLength||0,fps:+fps.toFixed(1),updateMs:+cost.toFixed(2),qualityScale:scale,zoomRefreshes:refreshes,reseedPending:pending,reduced:media.matches,contextLost:lost}),
     destroy(){if(destroyed)return;destroyed=true;release();removeMove?.();doc.removeEventListener('visibilitychange',reconcile);media.removeEventListener('change',reconcile);canvas.removeEventListener('webglcontextlost',onLost);canvas.removeEventListener('webglcontextrestored',onRestored);field=null;},

@@ -14,13 +14,13 @@ export function cloudRegion(view,quality) {
 export function createCloudDetail(viewer,options={}) {
   const owner=createCloudLayer(viewer,options);
   const doc=options.doc||(typeof document==='undefined'?null:document);
-  let state={},controller=null,timer=null,regional=null,cachedRegion=null,key=null,pendingKey=null,destroyed=false,revision=0,error=null,lastRequest=-Infinity;
+  let state={},controller=null,timer=null,regional=null,cachedRegion=null,key=null,pendingKey=null,destroyed=false,revision=0,error=null,lastRequest=-Infinity,altitudeAlpha=1;
   function paint(frame=state.frame){owner.update({...state,frame});}
   function cancel(){clearTimeout(timer);timer=null;controller?.abort();controller=null;pendingKey=null;revision++;}
   function viewBounds(){const r=viewer.camera.computeViewRectangle(viewer.scene.globe.ellipsoid);return r?[r.west,r.south,r.east,r.north].map(CesiumMath.toDegrees):null;}
   function covers(frame){const v=viewBounds(),b=frame.bounds;return v&&v[2]>v[0]&&v[0]>=b[0]&&v[1]>=b[1]&&v[2]<=b[2]&&v[3]<=b[3];}
   async function detail(){
-    timer=null;if(destroyed||doc?.hidden||!state.visible||!state.compatible||!state.ready||state.playing||!state.frame||!state.service)return;
+    timer=null;if(destroyed||altitudeAlpha===0||doc?.hidden||!state.visible||!state.compatible||!state.ready||state.playing||!state.frame||!state.service)return;
     const region=cloudRegion(viewBounds(),state.quality);
     if(!region){regional=null;paint();return;}
     if(cachedRegion?.time===state.frame.time&&cachedRegion.width===region.width&&covers(cachedRegion)){regional=cachedRegion;paint(regional);return;}
@@ -55,6 +55,11 @@ export function createCloudDetail(viewer,options={}) {
   const visibility=()=>{if(doc.hidden)cancel();else if(state.visible)end();};
   doc?.addEventListener('visibilitychange',visibility);
   return {
+    setAltitudeAlpha(value){
+      if(value===altitudeAlpha)return;
+      const wasHidden=altitudeAlpha===0;altitudeAlpha=value;owner.setAltitudeAlpha(value);
+      if(value===0)cancel();else if(wasHidden&&state.visible)end();
+    },
     update(next){
       const changed=next.frame?.id!==state.frame?.id||next.quality!==state.quality||next.visible!==state.visible||next.compatible!==state.compatible||next.playing!==state.playing||next.ready!==state.ready;
       state=next;

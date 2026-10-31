@@ -42,11 +42,19 @@ queries are not silently repeated. Original responses are retained losslessly
 in gzip with a request manifest, checksum and retrieval timestamp. Preserve the
 `.runtime/history` volume; do not re-download saved history or reset budgets.
 
-## Deployment — separate authorization required
+## Deployment and activation
 
-No production migration or import was executed. First review and authorize
-`backend/migrations/001_historical_elements.sql` against the intended Supabase
-project. The migration creates only the new table/index and enables RLS; the
+The existing configured Supabase project was activated on October 31, 2026,
+with the owner's explicit authorization: the migration and both saved imports
+succeeded, storing 86 unique element sets for 14 identities. Reimporting both
+archives inserted zero additional rows. Database storage reported 12,266,643
+bytes (11.698 MiB); the historical table and indexes occupy 122,880 bytes.
+The fixed NORAD constraint, index, RLS and FastAPI role read access were verified.
+Fingerprints confirmed that existing users and both Live orbital tables were
+unchanged. No additional Space-Track requests were made.
+
+For a new target, first review and authorize
+`backend/migrations/001_historical_elements.sql`. The migration creates only the new table/index and enables RLS; the
 server database role must have the appropriate table access. Browser access
 continues through authenticated FastAPI, without Supabase browser policies.
 
@@ -86,12 +94,17 @@ migration, real saved archives, deduplication, OMM/TLE and raw SGP4 agreement,
 protected APIs, missing coverage/schema and Live cache separation without
 orbital provider HTTP. Existing regressions use isolated fixtures.
 
-The batch's historical/backend contract checks and 140 frontend tests passed,
+The implementation batch's historical/backend contract checks and 140 frontend tests passed,
 as did frontend lint/build. Broader weather and Natural Events asynchronous
 regressions failed timing/Windows cleanup checks; those systems were not edited.
-The attempted real-app browser smoke test stalled during app startup, so visual
-historical rendering and browser Live restoration remain unverified. A direct
-real-payload Cesium conversion check supplements, but does not replace, WebGL QA.
+The October 31 activation verified the protected endpoints against the real
+Supabase table for all four defaults at 2024-06-02T16:00:00Z (61 trajectory and
+480 orbital samples per object). The real-app Cesium smoke check loaded four
+historical entities, visually verified ISS and its Orbit Trace, inspected source
+metadata, confirmed position changes with time and zero entities outside
+coverage, and restored six Live objects, all four weather cards and enabled
+cloud imagery. The fixed 15-object catalog and static Esri reference remained
+intact. This check used the existing account and real API, without fixtures.
 
 Sources: [Space-Track archive/query policy](https://www.space-track.org/documentation),
 [Skyfield OMM and element-epoch limitations](https://rhodesmill.org/skyfield/earth-satellites.html).

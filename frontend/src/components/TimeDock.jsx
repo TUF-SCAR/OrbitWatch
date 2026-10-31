@@ -1,17 +1,27 @@
-import { History, RotateCcw } from "lucide-react";
+import { useEffect, useRef, useState } from 'react';
+import { CalendarDays, ChevronUp, History, RotateCcw } from "lucide-react";
 import SpatialSurface from "./SpatialSurface.jsx";
-import { formatDateTimeLocal } from "../utils/spaceFormatters.js";
+import SceneTimePicker from './SceneTimePicker.jsx';
+import { validSceneTime } from '../utils/sceneCalendar.js';
+import { fetchHistoricalCoverage } from '../services/orbitwatchApi.js';
 
 export default function TimeDock({ selectedTime, onTimeChange, onReturnLive, trackedCount, maxTracked, imageryStatus, preparationIssue, onRetryImagery, historicalData, onRetryHistory }) {
+  const [pickerOpen,setPickerOpen]=useState(false),[coverage,setCoverage]=useState(null);
+  const trigger=useRef(null);
+  useEffect(()=>{
+    const controller=new AbortController();
+    fetchHistoricalCoverage(controller.signal).then(setCoverage).catch(()=>{if(!controller.signal.aborted)setCoverage({state:'unavailable'});});
+    return ()=>controller.abort();
+  },[]);
+  function closePicker() {setPickerOpen(false);requestAnimationFrame(()=>trigger.current?.focus());}
+  function adjust(minutes) {const next=new Date(selectedTime.getTime()+minutes*60000);if(validSceneTime(next))onTimeChange(next);}
   return (
     <SpatialSurface side="bottom" strength={3.0} className="time-dock">
       <div className="time-dock__label" data-depth="3"><History size={18} /><span>TIME EXPLORER</span><b>{trackedCount}/{maxTracked}</b></div>
-      <input type="datetime-local" aria-label="Scene date and time (local)" value={formatDateTimeLocal(selectedTime)} onChange={(event) => { const nextTime = new Date(event.target.value); if (!Number.isNaN(nextTime.getTime())) onTimeChange(nextTime); }} data-depth="5" />
+      <button ref={trigger} className="time-dock__moment" aria-label="Scene date and time (local)" aria-haspopup="dialog" aria-expanded={pickerOpen} onClick={()=>setPickerOpen(true)}><CalendarDays size={21}/><span><strong>{selectedTime.toLocaleDateString('en-GB',{day:'numeric',month:'long',year:'numeric'})} <b>{selectedTime.toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit',hour12:false})}</b></strong><small>{Intl.DateTimeFormat().resolvedOptions().timeZone} · {selectedTime.toISOString().slice(0,16).replace('T',' ')} UTC</small></span><ChevronUp size={16}/></button>
+      {pickerOpen&&<SceneTimePicker time={selectedTime} coverage={coverage} onClose={closePicker} onApply={date=>{onTimeChange(date);closePicker();}}/>}
       <div className="time-dock__scrub" data-depth="6">
-        <button onClick={() => onTimeChange(new Date(selectedTime.getTime() - 3600000))}>−1h</button>
-        <button onClick={() => onTimeChange(new Date(selectedTime.getTime() - 600000))}>−10m</button>
-        <button onClick={() => onTimeChange(new Date(selectedTime.getTime() + 600000))}>+10m</button>
-        <button onClick={() => onTimeChange(new Date(selectedTime.getTime() + 3600000))}>+1h</button>
+        {[[-1440,'−1d'],[-60,'−1h'],[-10,'−10m'],[10,'+10m'],[60,'+1h'],[1440,'+1d']].map(([minutes,label])=><button key={minutes} aria-label={`${minutes<0?'Back':'Forward'} ${Math.abs(minutes)} minutes`} disabled={!validSceneTime(new Date(selectedTime.getTime()+minutes*60000))} onClick={()=>adjust(minutes)}>{label}</button>)}
       </div>
       <p className="time-coverage" role="status">{historicalData?.state==='loading' ? 'Loading stored historical orbital elements…' : historicalData?.state==='ready' ? `${historicalData.objects.length}/${trackedCount} historical positions available · Archived SGP4 reconstruction, not observed telemetry.${historicalData.errors?.length ? ' Other selected objects have no valid archive coverage for this timestamp.' : ''}` : 'Historical archive unavailable for this timestamp. No current satellite positions are substituted.'}</p>
       {(historicalData?.state==='unavailable' || historicalData?.errors?.length>0) && <button onClick={onRetryHistory}>Retry historical data</button>}

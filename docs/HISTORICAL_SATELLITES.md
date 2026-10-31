@@ -74,6 +74,64 @@ archive. A PostgreSQL advisory lock serializes size accounting/imports. Both
 database table/index storage and downloaded archives have conservative 50 MiB
 pilot limits. Reaching a limit stops expansion; it does not delete data.
 
+For authorized expansion, `expand --start <offset-aware timestamp> --end
+<offset-aware timestamp> --allow-remote` uses all 15 fixed identities, measures
+the selected database and local disk before retrieval, validates the saved
+archive, imports transactionally, and writes a per-batch `.capacity-audit`
+alongside the original archive. Set `HISTORICAL_DATABASE_URL` explicitly as above.
+Existing archives are reused; overlapping queries and failed/ambiguous retrievals
+remain protected. Do not repeatedly invoke the command during a provider cooldown.
+
+Every import now reserves conservative row/index/write overhead plus 10 MB of
+headroom below a **275 MB** database operating target. The planning ceiling is
+300 MB, preserving at least 200 MB of the 500 MB allowance. The lower 275 MB
+target is enforced; both original 50 MiB historical caps remain in place.
+
+## Measured expansion — October 31, 2026
+
+Five successful, disjoint GP_HISTORY GETs (and five successful logins) retrieved
+the first seven days of January in these years. One early command was deferred
+locally by the saved cooldown without making an upstream request; the plan then
+waited for each existing cooldown. No budgets/circuits were reset.
+
+| Source epoch window (UTC) | Source records | New unique elements |
+| --- | ---: | ---: |
+| January 1–7, 2000 | 39 | 39 |
+| January 1–7, 2010 | 97 | 91 |
+| January 1–7, 2020 | 226 | 211 |
+| January 1–7, 2022 | 342 | 312 |
+| January 1–7, 2025 | 290 | 280 |
+
+The database now holds **1,019** elements (86 original + 933 new), covering 14
+of the permanent 15 identities. TESS still has no returned elements. This is
+sampled multi-year coverage, not continuous 2000–2025 coverage. Gaps between
+these windows, pre-launch dates and per-object gaps exceeding 24 hours remain
+unavailable. June 1–2, 2024 remains preserved. `/api/historical/coverage` exposes
+merged per-object validity windows and representative, verified instants in all
+six years, rather than treating min/max epochs as continuous availability.
+
+Fresh PostgreSQL measurements: database **12,266,643 → 12,979,347 bytes**;
+historical table **90,112 → 630,784 bytes**; indexes **32,768 → 221,184 bytes**.
+Combined history is 851,968 bytes. **487.020653 MB remains** of the decimal
+500 MB allowance, comfortably above the 200 MB requirement. Measurements and
+conservative projections were checked for every batch. Supabase dashboard/disk
+and WAL metrics were not exposed by connected tools; no physical-disk usage
+claim is made. Expansion stopped after the planned useful windows, not because
+capacity was exhausted.
+
+Original gzip responses, checksums/manifests, per-batch measurements and final
+audit are preserved under `.runtime/history`. Reimporting the final archive
+inserted zero rows; original history and user/Live table fingerprints were
+unchanged. Real authenticated FastAPI propagation passed at all six coverage
+shortcuts; unsupported identities were rejected and a future date stayed empty.
+
+The Time dock uses a draft calendar with direct year/month entry, calendar and
+24-hour time controls, local/UTC presentation, explicit Apply and verified-history
+shortcuts. Zone switching preserves the instant; nonexistent local DST times
+are rejected. Idle camera motion uses the existing frame update and each body's
+local camera controls in both modes, after 30 seconds. Follow, travel, gestures,
+hidden tabs and reduced motion suspend it; scientific scene time never advances.
+
 ## Verified pilot
 
 Two disjoint-ID GP_HISTORY queries retrieved June 1–2, 2024: 88 source records,

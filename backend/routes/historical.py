@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import AwareDatetime
 from core.security import get_current_user
-from repositories.historical_elements import HistoricalArchiveUnavailable, historical_coverage
+from repositories.historical_elements import HistoricalArchiveUnavailable, historical_coverage, coverage_shortcuts
 from routes.satellites import convert_satellite_error
 from schemas.historical import HistoricalRequest, check_timestamp
 from services.historical_catalog import HISTORICAL_IDS, check_historical_ids
@@ -22,7 +22,8 @@ def run_history(request):
 @router.get('/coverage')
 def coverage():
     try:
-        return {'norad_ids':HISTORICAL_IDS, 'objects':historical_coverage()}
+        objects = historical_coverage()
+        return {'norad_ids':HISTORICAL_IDS, 'objects':objects, 'shortcuts':coverage_shortcuts(objects)}
     except HistoricalArchiveUnavailable:
         raise HTTPException(status_code=503, detail='Historical archive is not deployed. Live Mode remains available.') from None
     except Exception as error:

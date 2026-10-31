@@ -589,16 +589,50 @@ export default function OrbitGlobe({
     let googleLoading = false;
     const removeReady = viewer.scene.postRender.addEventListener(() => { removeReady(); callbacksRef.current.onSceneReady?.(); });
     const idleEarthSpeed=uiNumber("--ui-idle-earth-speed",.00204);
-    let idleState = "waiting", pointerHeld = false, lastIdleFrame = performance.now(), lastIdleInteraction = lastInteractionRef.current;
+    let idleState = "waiting", pointerHeld = false, lastIdleFrame = performance.now(), lastIdleInteraction = lastInteractionRef.current, idleDestination = '', idleSettlingUntil = 0;
     const touchCamera = () => { lastInteractionRef.current = performance.now(); if (idleState === "framing") viewer.camera.cancelFlight(); idleState = "waiting"; };
+    const heldPointers = new Set();
     let pointerStart = null, cameraDragged = false;
-    const pointerDown = (event) => { pointerHeld = true; pointerStart = { x: event.clientX, y: event.clientY }; cameraDragged = false; touchCamera(); };
+    const pointerDown = (event) => { heldPointers.add(event.pointerId);pointerHeld = true; pointerStart = { x: event.clientX, y: event.clientY }; cameraDragged = false; touchCamera(); };
     const pointerMove = (event) => { if (pointerHeld && pointerStart && Math.hypot(event.clientX - pointerStart.x, event.clientY - pointerStart.y) > 5) cameraDragged = true; };
-    const pointerUp = () => { if (pointerHeld) { pointerHeld = false; touchCamera(); } };
+    const pointerUp = event => { heldPointers.delete(event.pointerId);if(pointerHeld) {pointerHeld=heldPointers.size>0;touchCamera();} };
     viewer.scene.canvas.addEventListener("pointerdown", pointerDown);
     viewer.scene.canvas.addEventListener("pointermove", pointerMove);
     window.addEventListener("pointerup", pointerUp);
+    window.addEventListener('pointercancel',pointerUp);
     viewer.scene.canvas.addEventListener("wheel", touchCamera, { passive: true });
+    // HUD gestures reset inactivity without initiating any camera operation.
+    const uiInteraction = event => { if (!viewer.scene.canvas.contains(event.target)) touchCamera(); };
+    const resetVisibility = () => { heldPointers.clear();pointerHeld=false; lastIdleFrame=performance.now(); touchCamera(); };
+    document.addEventListener('pointerdown',uiInteraction,true);
+    document.addEventListener('keydown',touchCamera,true);
+    document.addEventListener('wheel',uiInteraction,{passive:true,capture:true});
+    document.addEventListener('visibilitychange',resetVisibility);
+    window.addEventListener('blur',resetVisibility);
+    function updateIdleCamera() {
+      const now=performance.now(), layer=solarSystemLayerRef.current;
+      const target=layer?.idleTarget(), destination=`${modeRef.current}:${target?.id}`;
+      const seconds=Math.max(0,Math.min(100,now-lastIdleFrame))/1000;
+      lastIdleFrame=now;
+      if(lastIdleInteraction!==lastInteractionRef.current || destination!==idleDestination) {
+        idleState='waiting';lastIdleInteraction=lastInteractionRef.current;idleDestination=destination;
+      }
+      const eligible=!document.hidden && !window.matchMedia('(prefers-reduced-motion: reduce)').matches &&
+        target?.ready && !followStateRef.current && !pointerHeld && now-lastInteractionRef.current>30000 &&
+        (target.local || (earthActiveRef.current && controllerIdle(viewer))) &&
+        (idleState==='framing' || viewer.scene.tweens.length===0);
+      if(!eligible) {if(idleState==='framing')viewer.camera.cancelFlight();idleState='waiting';return;}
+      if(target.local) {
+        if(idleState==='waiting') {idleState='rotating';idleSettlingUntil=now+3000;}
+        layer.idleOrbit(seconds,idleEarthSpeed,now<idleSettlingUntil);
+      } else if(idleState==='waiting') {
+        idleState='framing';
+        const location=viewer.camera.positionCartographic, interaction=lastInteractionRef.current;
+        viewer.camera.flyTo({destination:Cartesian3.fromRadians(location.longitude,location.latitude,27_000_000),orientation:{heading:0,pitch:-CesiumMath.PI_OVER_TWO,roll:0},duration:2,
+          complete:()=>{if(interaction===lastInteractionRef.current&&destination===idleDestination)idleState='rotating';},cancel:()=>{idleState='waiting';}});
+        viewer.scene.requestRender();
+      } else if(idleState==='rotating') {viewer.camera.rotate(Cartesian3.UNIT_Z,seconds*idleEarthSpeed);viewer.scene.requestRender();}
+    }
     viewer.cesiumWidget.screenSpaceEventHandler.removeInputAction(ScreenSpaceEventType.LEFT_DOUBLE_CLICK);
     async function loadGoogleEarth() {
       if (googleLoading || destroyed || !earthActiveRef.current || modeRef.current !== "live" || mapStyleRef.current !== "google" || googleTilesRef.current || !token) return;
@@ -851,6 +885,7 @@ export default function OrbitGlobe({
     // Before Primitive.update copies model matrices into this frame's commands.
     // preRender would leave orbit transforms one frame behind entity positions.
     const removeSatelliteUpdate = viewer.scene.preUpdate.addEventListener((_scene, time) => {
+      updateIdleCamera();
       let stale = 0, staleOrbits = 0;
       for (const data of entityMap.values()) {
         updateSatelliteOrbit(data, time);
@@ -882,6 +917,7 @@ export default function OrbitGlobe({
         lastViewTelemetryAtRef.current = now;
         // Development-only browser evidence; no camera mutation or extra clock.
         if(import.meta.env.DEV) {
+          mountRef.current?.setAttribute('data-camera-diagnostics',JSON.stringify({state:idleState,target:solarSystemLayerRef.current?.idleTarget(),local:solarSystemLayerRef.current?.cameraDiagnostics(),position:[viewer.camera.positionWC.x,viewer.camera.positionWC.y,viewer.camera.positionWC.z],sceneTime:JulianDate.toIso8601(viewer.clock.currentTime),mode:modeRef.current}));
           const weatherLayers=Array.from({length:viewer.imageryLayers.length},(_,i)=>viewer.imageryLayers.get(i)).filter(layer=>layer.orbitwatchWeather);
           mountRef.current?.setAttribute('data-weather-diagnostics',JSON.stringify({altitudeAlpha:weatherAltitudeAlpha(height),rain:rainLayerRef.current?.diagnostics(),clouds:cloudLayerRef.current?.diagnostics(),wind:windLayerRef.current?.diagnostics(),groundIntensity:viewer.scene.globe.atmosphereLightIntensity,groundAtmosphere:viewer.scene.globe.showGroundAtmosphere,skyAtmosphere:viewer.scene.skyAtmosphere.show,lighting:viewer.scene.globe.enableLighting,fog:viewer.scene.fog.enabled,eventSources:viewer.dataSources.length,events:naturalEventLayerRef.current?.diagnostics(),layers:weatherLayers.length,alpha:weatherLayers[0]?.alpha??0,following:followStateRef.current?.noradId??null,selected:selectedIdRef.current,tracked:entityMap.size,earth:earthActiveRef.current,mode:modeRef.current}));
         }
@@ -894,16 +930,6 @@ export default function OrbitGlobe({
       }
 
       const follow = followStateRef.current;
-      if (lastIdleInteraction !== lastInteractionRef.current) { idleState = "waiting"; lastIdleInteraction = lastInteractionRef.current; }
-      const idleEligible = !solarSystemLayerRef.current?.isSystemScale() && !follow && !pointerHeld && viewer.camera.positionCartographic.height > 100_000 && modeRef.current === "live" && earthActiveRef.current && controllerIdle(viewer) && now - lastInteractionRef.current > 30000 && !window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-      if (idleEligible) {
-        if (idleState === "waiting") {
-          idleState = "framing";
-          const location = viewer.camera.positionCartographic;
-          viewer.camera.flyTo({ destination: Cartesian3.fromRadians(location.longitude, location.latitude, 27_000_000), orientation: { heading: 0, pitch: -CesiumMath.PI_OVER_TWO, roll: 0 }, duration: 2, complete: () => { idleState = "rotating"; }, cancel: () => { idleState = "waiting"; } });
-        } else if (idleState === "rotating") viewer.camera.rotate(Cartesian3.UNIT_Z, Math.min(100, now - lastIdleFrame) / 1000 * idleEarthSpeed);
-      }
-      lastIdleFrame = now;
       if (!follow) return;
       const data = entityMapRef.current.get(follow.noradId);
       const target = data?.entity?.position?.getValue?.(time);
@@ -937,7 +963,13 @@ export default function OrbitGlobe({
       viewer.scene.canvas.removeEventListener("pointerdown", pointerDown);
       viewer.scene.canvas.removeEventListener("pointermove", pointerMove);
       window.removeEventListener("pointerup", pointerUp);
+      window.removeEventListener('pointercancel',pointerUp);
       viewer.scene.canvas.removeEventListener("wheel", touchCamera);
+      document.removeEventListener('pointerdown',uiInteraction,true);
+      document.removeEventListener('keydown',touchCamera,true);
+      document.removeEventListener('wheel',uiInteraction,true);
+      document.removeEventListener('visibilitychange',resetVisibility);
+      window.removeEventListener('blur',resetVisibility);
       removePreRender();
       removeSatelliteUpdate();
       placeLabels.destroy();

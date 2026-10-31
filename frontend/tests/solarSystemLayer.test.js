@@ -54,6 +54,27 @@ function harness(context) {
   return { viewer, actions, primitives, models, listeners, timers, start, dispose, symbol, failModels: () => { failModel = true; }, failFlights: () => { failFlight = true; } };
 }
 
+test('idle local camera uses each destination frame, suspends for drag/travel, and never advances scene time',async context=>{
+  const fixture=harness(context),{viewer,actions}=fixture;
+  const layer=createSolarSystemLayer(viewer);
+  context.after(()=>{layer.destroy();fixture.dispose();});
+  for(const id of ['sun','mars','saturn','phobos','ceres']) {
+    const flight=layer.focus(id);
+    assert.equal(layer.idleTarget().ready,false);
+    assert.equal(layer.idleOrbit(.1,.00204,true),false);
+    await flight;
+    const before={...viewer.camera.offset},time=JulianDate.clone(viewer.clock.currentTime);
+    for(let i=0;i<100;i++)layer.idleOrbit(.1,.00204,true);
+    assert.ok(Math.abs(viewer.camera.offset.heading-before.heading-.0204)<1e-10,id);
+    assert.ok(Math.abs(viewer.camera.offset.range-before.range)<.01,id);
+    assert.ok(JulianDate.equals(time,viewer.clock.currentTime));
+    actions.get(ScreenSpaceEventType.LEFT_DOWN)();
+    assert.equal(layer.idleTarget().ready,false);assert.equal(layer.idleOrbit(.1,.00204,true),false);
+    actions.get(ScreenSpaceEventType.LEFT_UP)();
+    assert.equal(layer.idleTarget().ready,true);
+  }
+});
+
 test("Time Explorer paused dates survive Earth/Mars/Jupiter/Earth and retain scene-time ephemerides and LOD",async context=>{
   const fixture=harness(context),{viewer}=fixture;
   const layer=createSolarSystemLayer(viewer,{isLive:()=>true});

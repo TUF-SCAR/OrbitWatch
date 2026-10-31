@@ -420,6 +420,22 @@ export function createSolarSystemLayer(viewer, options = {}) {
     options.onScaleChange?.(publishedScale);
     viewer.scene.requestRender(); return true;
   }
+  // The local camera remains the sole owner of its transform. Idle motion only
+  // adjusts the same heading/range/pan used by drag and zoom controls.
+  function idleOrbit(seconds, speed, settling) {
+    if (!localView || travelling || drag) return false;
+    if (settling) {
+      const blend = 1-Math.exp(-seconds*2.5);
+      const range = placeholders.get(localBody).radius * framingScale(localBody);
+      localView.range += (range-localView.range)*blend;
+      localView.pitch += (-0.24-localView.pitch)*blend;
+      Cartesian3.multiplyByScalar(localView.pan, 1-blend, localView.pan);
+    }
+    localView.heading += seconds*speed;
+    updatePositions();
+    viewer.scene.requestRender();
+    return true;
+  }
   async function focus(id = "earth") {
     if (!alive() || travelling || !placeholders.has(id)) return { cancelled: true };
     const reduced = prefersReducedMotion();
@@ -541,7 +557,9 @@ export function createSolarSystemLayer(viewer, options = {}) {
     destroyed = true;
     placeholders.clear(); pending.clear();
   }
-  return { focus, setSelected, updatePositions, setScale, canonicalPosition,
+  return { focus, setSelected, updatePositions, setScale, canonicalPosition, idleOrbit,
+    idleTarget: () => ({id:selectedId, local:!!localView, ready:!travelling && !drag && (selectedId==='earth'||!!localView)}),
+    cameraDiagnostics: () => localView ? {heading:localView.heading,pitch:localView.pitch,range:localView.range} : null,
     selectMarker: (id) => { markerId = placeholders.has(id) ? id : null; updateLod(true); viewer.scene.requestRender(); },
     isWide: () => lod.solar > 0,
     isSystemScale: () => lod.local > 0,

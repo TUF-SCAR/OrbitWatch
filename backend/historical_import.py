@@ -56,6 +56,9 @@ def main():
     migrate = commands.add_parser('migrate'); migrate.add_argument('--allow-remote',action='store_true')
     importer = commands.add_parser('import'); importer.add_argument('archive',type=Path)
     importer.add_argument('--allow-remote',action='store_true')
+    expand = commands.add_parser('expand', help='Measure capacity, retrieve one disjoint batch, validate and import')
+    expand.add_argument('--start',required=True); expand.add_argument('--end',required=True)
+    expand.add_argument('--allow-remote',action='store_true')
     args = parser.parse_args()
     engine = None
     try:
@@ -66,6 +69,22 @@ def main():
         if args.command == 'inspect':
             _,report = inspect_archive(args.archive);print(json.dumps(report,indent=2));return
         engine = target_engine(args.allow_remote)
+        if args.command == 'expand':
+            from services.historical_archive import ARCHIVE_ROOT, download_history
+            from services.historical_catalog import HISTORICAL_IDS
+            from services.historical_capacity import retrieval_capacity, storage_snapshot
+            from repositories.historical_elements import import_historical_records
+            before = retrieval_capacity(engine, ARCHIVE_ROOT)
+            manifest, path = download_history(HISTORICAL_IDS, args.start, args.end)
+            values, report = inspect_archive(path)
+            report.update(archive=path.name, before=before,
+                          inserted=import_historical_records(values, engine))
+            with engine.connect() as connection:
+                report['after'] = storage_snapshot(connection)
+            report['remaining_mb'] = (500_000_000-report['after']['database_bytes'])/1_000_000
+            audit_path = ARCHIVE_ROOT / (path.name.removesuffix('.json.gz') + '.capacity-audit')
+            audit_path.write_text(json.dumps(report,indent=2))
+            print(json.dumps(report,indent=2));return
         if args.command == 'migrate':
             sql = (Path(__file__).parent/'migrations/001_historical_elements.sql').read_text()
             with engine.connect() as connection:

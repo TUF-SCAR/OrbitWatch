@@ -8,6 +8,7 @@ export function LocationWeatherDetails({weather}) {
   if(state==='loading')return <p className="weather-source" role="status">{waitingUntil>clock?'Waiting for the weather service retry window…':'Loading weather for this location…'}</p>;
   if(!data)return <div role="status"><p className="weather-source">{error||'This location reading has expired. Request an update.'}</p><button className="secondary-action" onClick={retry} disabled={Number.isFinite(retryAt)&&retryAt>clock}>Retry weather</button></div>;
   return <div className="location-weather-details" role="status">
+    {selection.kind==='state'&&<p className="weather-source">{selection.country ? `State / province · ${selection.country}. ` : 'State / province. '}Weather at the representative label coordinate, not an average of the administrative area.</p>}
     <p className="weather-condition">{weatherCondition(data.values.weather_code)} <small>{freshness==='stale'?'CACHED · STALE':'CURRENT MODEL'}</small></p>
     <dl className="weather-measurements">
       {[['Temperature','temperature_2m'],['Feels like','apparent_temperature'],['Humidity','relative_humidity_2m'],['Wind speed','wind_speed_10m']].map(([label,key])=><div key={key}><dt>{label}</dt><dd>{weatherMeasurement(data,key)}</dd></div>)}
@@ -23,7 +24,7 @@ export default function LocationWeatherCard({weather}) {
   if(!selection)return null;
   const coordinates=`${selection.latitude.toFixed(2)}°, ${selection.longitude.toFixed(2)}°`;
   return <SpatialSurface as="aside" side="left" strength={1} className="location-weather-card" aria-label="Location weather inspector" onKeyDown={event=>{if(event.key==='Escape'){event.preventDefault();event.stopPropagation();weather.clear();}}}>
-    <header><div><span className="eyebrow"><MapPin size={14}/> EARTH WEATHER</span><h2>{selection.name||coordinates}</h2>{selection.name&&<small>{coordinates}</small>}</div><button className="icon-button" aria-label="Close location weather" onClick={weather.clear}><X size={18}/></button></header>
+    <header><div><span className="eyebrow"><MapPin size={14}/> EARTH WEATHER</span><h2>{selection.name||coordinates}</h2>{selection.name&&<small>{coordinates}{selection.country?` · ${selection.country}`:''}</small>}</div><button className="icon-button" aria-label="Close location weather" onClick={weather.clear}><X size={18}/></button></header>
     <LocationWeatherDetails weather={weather}/>
   </SpatialSurface>;
 }

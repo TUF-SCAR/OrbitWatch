@@ -31,8 +31,8 @@ export function validateModelField(variable,field) {
     if(values?.length!==65160||values.some(v=>v!==null&&(!Number.isFinite(v)||v<spec[0]||v>spec[1])))throw Error('Invalid model nodes');
   }
 }
-export function needsModelWeather(variable,cloudFallback,windEnabled) {
-  return variable!=='observedClouds'||cloudFallback||windEnabled;
+export function needsModelWeather(variable,cloudFallback,windEnabled,labelWeather=false) {
+  return variable!=='observedClouds'||cloudFallback||windEnabled||labelWeather;
 }
 export function sampleModel(values,longitude,latitude){return sampleTemperature({values_c:values},longitude,latitude);}
 export function modelColor(variable,value) {

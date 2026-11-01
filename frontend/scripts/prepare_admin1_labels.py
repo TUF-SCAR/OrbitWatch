@@ -1,0 +1,97 @@
+"""Build offline labels from Natural Earth's original Admin-1 label-point ZIP.
+
+Usage: python scripts/prepare_admin1_labels.py path/to/ne_10m_admin_1_label_points.zip
+No network, polygon centres, inferred membership or third-party dependencies.
+"""
+import hashlib
+import json
+import math
+import re
+import struct
+import sys
+import zipfile
+from collections import Counter
+from pathlib import Path
+
+SOURCE_URL = 'https://naciscdn.org/naturalearth/10m/cultural/ne_10m_admin_1_label_points.zip'
+
+
+def read_points(archive):
+    data = archive.read('ne_10m_admin_1_label_points.shp')
+    if struct.unpack_from('>I',data)[0] != 9994 or struct.unpack_from('<I',data,32)[0] != 1:
+        raise ValueError('Expected provider-supplied Point shapefile')
+    if b'WGS_1984' not in archive.read('ne_10m_admin_1_label_points.prj'):
+        raise ValueError('Expected geographic WGS84 coordinates')
+    points=[];offset=100
+    while offset<len(data):
+        _,words=struct.unpack_from('>II',data,offset);offset+=8
+        record=data[offset:offset+words*2];offset+=words*2
+        points.append(struct.unpack_from('<dd',record,4) if struct.unpack_from('<I',record)[0]==1 else None)
+    return points
+
+
+def read_attributes(archive):
+    data=archive.read('ne_10m_admin_1_label_points.dbf')
+    encoding=archive.read('ne_10m_admin_1_label_points.cpg').decode().strip()
+    count=struct.unpack_from('<I',data,4)[0];header,length=struct.unpack_from('<HH',data,8)
+    fields=[];offset=32
+    while data[offset]!=13:
+        field=data[offset:offset+32];offset+=32
+        fields.append((field[:11].split(b'\0')[0].decode('ascii'),field[16]))
+    rows=[]
+    for index in range(count):
+        record=data[header+index*length:header+(index+1)*length]
+        if record[:1]==b'*': rows.append(None);continue
+        row={};offset=1
+        for key,size in fields:
+            row[key]=record[offset:offset+size].decode(encoding).strip();offset+=size
+        rows.append(row)
+    return rows
+
+
+def prepare(path):
+    raw=Path(path).read_bytes()
+    if len(raw)>5_000_000: raise ValueError('Unexpected archive size')
+    with zipfile.ZipFile(path) as archive:
+        points,attributes=read_points(archive),read_attributes(archive)
+        version=archive.read('ne_10m_admin_1_label_points.VERSION.txt').decode().strip()
+    if len(points)!=len(attributes): raise ValueError('Point/attribute count mismatch')
+    chosen={};excluded=Counter();duplicates=0
+    for point,props in zip(points,attributes):
+        if not point or not props: excluded['missing_point_or_deleted_record']+=1;continue
+        name,identity,country,code=(props[key] for key in ('name','adm1_code','admin','iso_a2'))
+        if not name or not identity or not country or name.startswith(identity) or re.match(r'^[A-Z0-9]{3}-(?:00|99)\b',name) or name.lower() in ('unknown','unassigned'):
+            excluded['missing_or_placeholder_name_or_parent']+=1;continue
+        if not re.fullmatch(r'[A-Z0-9]+-\d+',identity):
+            excluded['uncertain_provider_id']+=1;continue
+        if not re.fullmatch(r'[A-Z]{2}',code): code=props['sr_adm0_a3']
+        if not re.fullmatch(r'[A-Z0-9]{2,3}',code): excluded['missing_country_code']+=1;continue
+        lon,lat=point
+        if not all(math.isfinite(v) for v in point) or not -180<=lon<=180 or not -90<=lat<=90 or point==(0,0):
+            excluded['invalid_geography']+=1;continue
+        try: rank=int(props['scalerank'])
+        except ValueError: excluded['invalid_rank']+=1;continue
+        if not 0<=rank<=11: excluded['invalid_rank']+=1;continue
+        # Multiple supplied label points can represent the same multipart unit.
+        # Keep the provider's lowest admin-0 scale rank, then source record ID.
+        priority=(int(props['adm0_sr']),rank,int(props['datarank']),int(props['OBJECTID_1']))
+        row=[identity,name,round(lon,6),round(lat,6),rank,country,code]
+        if identity in chosen:
+            duplicates+=1
+            if priority>=chosen[identity][0]:continue
+        chosen[identity]=(priority,row)
+    labels=sorted((value[1] for value in chosen.values()),key=lambda row:(row[4],row[6],row[1],row[0]))
+    metadata=dict(provider='Natural Earth',dataset='1:10m Admin-1 Label Points',
+        source_url=SOURCE_URL,portal_version='5.1.0',archive_version=version,
+        sha256=hashlib.sha256(raw).hexdigest(),source_records=len(points),labels=len(labels),
+        duplicate_points=duplicates,excluded=dict(excluded),countries=len({row[6] for row in labels}),
+        processing='Original WGS84 points; deduplicated by adm1_code using provider admin-0 scale rank, scale rank, data rank, record ID. Coded placeholders and uncertain IDs omitted. Provider parent/ISO2, falling back to provider admin-0 code. No polygon centres or inferred parents.')
+    output=Path(__file__).resolve().parents[1]/'src/data/admin1Labels.js'
+    output.write_text('// Natural Earth public domain. Generated by scripts/prepare_admin1_labels.py.\n'
+        +'export const ADMIN1_SOURCE = '+json.dumps(metadata,ensure_ascii=False,indent=2)+';\n'
+        +'// [stable ID, name, longitude, latitude, source scale rank, parent country, country code]\n'
+        +'export const ADMIN1_LABELS = [\n'+',\n'.join('  '+json.dumps(row,ensure_ascii=False) for row in labels)+'\n];\n',encoding='utf-8')
+    print(json.dumps(metadata,indent=2))
+
+
+if __name__=='__main__':prepare(sys.argv[1])

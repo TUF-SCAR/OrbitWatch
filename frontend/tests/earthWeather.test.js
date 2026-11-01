@@ -24,6 +24,10 @@ test('raster/terrain and verified Google tile depth resolve real Earth coordinat
   assert.ok(Math.abs(pickEarthLocation(viewer,{x:100,y:100},tileset).latitude+33.8)<1e-9);assert.equal(depth,1);
   picked={id:{properties:{noradId:25544}}};depthPoint=Cartesian3.fromDegrees(10,10,410000);
   assert.ok(Math.abs(pickEarthLocation(viewer,{x:100,y:100},tileset).latitude-37.7)<1e-9);assert.equal(depth,1);
+  ground=Cartesian3.fromDegrees(71.67,-2.57,-13532.6416);
+  assert.ok(Math.abs(pickEarthLocation(viewer,{x:590,y:460}).longitude-71.67)<1e-9,'trusted globe ocean intersection survives wide-view mesh chord error');
+  picked={tileset};depthPoint=Cartesian3.fromDegrees(10,10,410000);
+  assert.ok(Math.abs(pickEarthLocation(viewer,{x:590,y:460},tileset).latitude+2.57)<1e-9,'invalid tile depth falls back to globe');
   ground=null;assert.equal(pickEarthLocation(viewer,{x:0,y:0}),null);
 });
 

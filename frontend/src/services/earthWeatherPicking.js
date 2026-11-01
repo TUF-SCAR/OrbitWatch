@@ -9,6 +9,7 @@ export function pickEarthLocation(viewer,position,tileset=null) {
     const picked=scene.pick(position);
     if(picked?.tileset===tileset||picked?.primitive===tileset||picked?.content?.tileset===tileset) {
       try {point=scene.pickPosition(position);} catch { /* Fall back to terrain. */ }
+      if(point){const coordinate=scene.globe.ellipsoid.cartesianToCartographic(point);if(!coordinate||coordinate.height < -15000||coordinate.height>15000)point=null;}
     }
   }
   if(!point) {
@@ -18,7 +19,10 @@ export function pickEarthLocation(viewer,position,tileset=null) {
   }
   if(!point)return null;
   const coordinate=scene.globe.ellipsoid.cartesianToCartographic(point);
-  if(!coordinate||!Number.isFinite(coordinate.height)||coordinate.height < -1500||coordinate.height>15000)return null;
+  // globe.pick is authoritative for terrain, including bathymetry and the
+  // ellipsoid chord error of coarse wide-view meshes. Height is not a useful
+  // physical rejection threshold for this trusted surface ray intersection.
+  if(!coordinate||!Number.isFinite(coordinate.height))return null;
   const latitude=CesiumMath.toDegrees(coordinate.latitude),longitude=CesiumMath.toDegrees(coordinate.longitude);
   return Number.isFinite(latitude)&&Number.isFinite(longitude)&&Math.abs(latitude)<=90 ? {latitude,longitude,height:coordinate.height} : null;
 }

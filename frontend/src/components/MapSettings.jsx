@@ -45,7 +45,7 @@ export default function MapSettings({ open, mapStyle, onMapStyleChange, labelsEn
 
       <button className={`setting-toggle ${labelsEnabled || fixedLabels ? "is-active" : ""}`} disabled={fixedLabels} onClick={() => onLabelsChange(!labelsEnabled)} aria-pressed={labelsEnabled || fixedLabels} data-depth="5">
         <Tags size={19} />
-        <span><strong>Place labels</strong><small>{fixedLabels ? "Names are part of this provider’s map. Choose satellite imagery to hide them." : "Country and city names appear as you zoom in. For streets, choose Bing Labels or OpenStreetMap."}</small></span>
+        <span><strong>Place labels</strong><small>{fixedLabels ? "Names are part of this provider’s map. Choose satellite imagery to hide them." : "Country, city and state names appear as you zoom in. Live model readings use the shared GFS grid when Weather is enabled; native map text stays unchanged."}</small></span>
         <i>{labelsEnabled || fixedLabels ? "ON" : "OFF"}</i>
       </button>
       </div>

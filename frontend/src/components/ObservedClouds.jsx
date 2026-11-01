@@ -1,9 +1,9 @@
 import { CLOUD_SOURCE } from '../services/cloudConfig.js';
 
 const time=value=>new Date(value).toLocaleString('en-GB',{timeZone:'UTC',day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit',hour12:false})+' UTC';
-export function ObservedCloudLegend({clouds}) {
+export function ObservedCloudLegend({clouds,labelWeatherNote}) {
   if(!clouds.frame)return null;
-  return <aside className="weather-legend" aria-label="Observed cloud legend"><strong>OBSERVED CLOUDS · INFRARED</strong><small>Composite slot {time(clouds.frame.time)}</small><small>Cold-cloud emphasis · not cloud fraction. Polar gaps and cold-surface ambiguity.</small><small><a href={CLOUD_SOURCE.information} target="_blank" rel="noreferrer">EUMETSAT / NOAA / JMA</a>{clouds.error?' · CACHED FRAME':''}</small></aside>;
+  return <aside className="weather-legend" aria-label="Observed cloud legend"><strong>OBSERVED CLOUDS · INFRARED</strong><small>Composite slot {time(clouds.frame.time)}</small><small>Cold-cloud emphasis · not cloud fraction. Polar gaps and cold-surface ambiguity.</small><small><a href={CLOUD_SOURCE.information} target="_blank" rel="noreferrer">EUMETSAT / NOAA / JMA</a>{clouds.error?' · CACHED FRAME':''}</small>{labelWeatherNote&&<small>{labelWeatherNote}</small>}</aside>;
 }
 export default function ObservedClouds({clouds,enabled}) {
   const {frame,frames,index,status,error,playing,reduced,diagnostics}=clouds;

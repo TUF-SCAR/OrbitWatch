@@ -338,6 +338,7 @@ export default function OrbitGlobe({
   cloudReady,
   onCloudError,
   weatherField,
+  placeWeather,
   locationPickingEnabled=false,onLocationSelect,locationSelection,
   windField,
   windVisible = false,
@@ -348,6 +349,8 @@ export default function OrbitGlobe({
   const mountRef = useRef(null);
   const viewerRef = useRef(null);
   const placeSearchRef = useRef(null);
+  const placeWeatherRef=useRef(placeWeather);
+  useEffect(()=>{placeWeatherRef.current=placeWeather;viewerRef.current?.scene.requestRender();},[placeWeather]);
   const locationInteractionRef=useRef({enabled:locationPickingEnabled,onSelect:onLocationSelect});
   const surfaceClicksRef=useRef(null),weatherMarkerRef=useRef(null);
   useEffect(()=>{
@@ -833,8 +836,8 @@ export default function OrbitGlobe({
     const handler = new ScreenSpaceEventHandler(viewer.scene.canvas);
     const pickSceneObject = (position) => pickSolarSystemObject(viewer.scene, position, solarSystemLayerRef.current?.isWide());
     handler.setInputAction((movement) => {
-      if(cameraDragged||weatherGestureBlocked)return;
-      routeEarthWeatherClick(movement.position,{
+      if(cameraDragged||weatherGestureBlocked){if(import.meta.env.DEV)mountRef.current?.setAttribute('data-place-pick',JSON.stringify({result:'gesture',cameraDragged,weatherGestureBlocked}));return;}
+      const result=routeEarthWeatherClick(movement.position,{
         eventPick:()=>naturalEventLayerRef.current?.pick(viewer.scene.pick(movement.position)),
         pickObject:()=>pickSceneObject(movement.position),
         onCelestial:id=>onCelestialSelectRef.current?.(id,solarSystemLayerRef.current?.isWide()),
@@ -843,6 +846,7 @@ export default function OrbitGlobe({
         pickSurface:position=>pickEarthLocation(viewer,position,googleTilesRef.current),
         onLocation:value=>locationInteractionRef.current.onSelect?.(value),gate:surfaceClicks,
       });
+      if(import.meta.env.DEV)mountRef.current?.setAttribute('data-place-pick',JSON.stringify({result,x:movement.position.x,y:movement.position.y,enabled:locationInteractionRef.current.enabled,earth:earthActiveRef.current,mode:modeRef.current}));
     }, ScreenSpaceEventType.LEFT_CLICK);
 
     handler.setInputAction((movement) => {
@@ -919,14 +923,14 @@ export default function OrbitGlobe({
       const now = performance.now();
       const height = viewer.camera.positionCartographic.height;
       for (const [id, data] of entityMap) styleSatelliteOrbit(data, CATEGORY_COLORS[getSpaceObject(id)?.category] || Color.WHITE, id === selectedIdRef.current, shownOrbitIdsRef.current.size, height);
-      placeLabels.update(now, labelsEnabledRef.current && earthActiveRef.current, mapRequestRef.activeMap);
+      placeLabels.update(now, labelsEnabledRef.current && earthActiveRef.current, mapRequestRef.activeMap,placeWeatherRef.current);
       if (now - lastViewTelemetryAtRef.current > 500) {
         lastViewTelemetryAtRef.current = now;
         // Development-only browser evidence; no camera mutation or extra clock.
         if(import.meta.env.DEV) {
           mountRef.current?.setAttribute('data-camera-diagnostics',JSON.stringify({state:idleState,target:solarSystemLayerRef.current?.idleTarget(),local:solarSystemLayerRef.current?.cameraDiagnostics(),position:[viewer.camera.positionWC.x,viewer.camera.positionWC.y,viewer.camera.positionWC.z],sceneTime:JulianDate.toIso8601(viewer.clock.currentTime),mode:modeRef.current}));
           const weatherLayers=Array.from({length:viewer.imageryLayers.length},(_,i)=>viewer.imageryLayers.get(i)).filter(layer=>layer.orbitwatchWeather);
-          mountRef.current?.setAttribute('data-weather-diagnostics',JSON.stringify({altitudeAlpha:weatherAltitudeAlpha(height),rain:rainLayerRef.current?.diagnostics(),clouds:cloudLayerRef.current?.diagnostics(),wind:windLayerRef.current?.diagnostics(),groundIntensity:viewer.scene.globe.atmosphereLightIntensity,groundAtmosphere:viewer.scene.globe.showGroundAtmosphere,skyAtmosphere:viewer.scene.skyAtmosphere.show,lighting:viewer.scene.globe.enableLighting,fog:viewer.scene.fog.enabled,eventSources:viewer.dataSources.length,events:naturalEventLayerRef.current?.diagnostics(),layers:weatherLayers.length,alpha:weatherLayers[0]?.alpha??0,following:followStateRef.current?.noradId??null,selected:selectedIdRef.current,tracked:entityMap.size,earth:earthActiveRef.current,mode:modeRef.current}));
+          mountRef.current?.setAttribute('data-weather-diagnostics',JSON.stringify({labels:placeLabels.diagnostics(),altitudeAlpha:weatherAltitudeAlpha(height),rain:rainLayerRef.current?.diagnostics(),clouds:cloudLayerRef.current?.diagnostics(),wind:windLayerRef.current?.diagnostics(),groundIntensity:viewer.scene.globe.atmosphereLightIntensity,groundAtmosphere:viewer.scene.globe.showGroundAtmosphere,skyAtmosphere:viewer.scene.skyAtmosphere.show,lighting:viewer.scene.globe.enableLighting,fog:viewer.scene.fog.enabled,eventSources:viewer.dataSources.length,events:naturalEventLayerRef.current?.diagnostics(),layers:weatherLayers.length,alpha:weatherLayers[0]?.alpha??0,following:followStateRef.current?.noradId??null,selected:selectedIdRef.current,tracked:entityMap.size,earth:earthActiveRef.current,mode:modeRef.current}));
         }
         const cameraCartographic = viewer.scene.globe.ellipsoid.cartesianToCartographic(viewer.camera.positionWC);
         onViewTelemetryRef.current?.({

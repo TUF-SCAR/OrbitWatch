@@ -10,11 +10,11 @@ import ObservedClouds from './ObservedClouds.jsx';
 import NaturalEventsPanel from './NaturalEventsPanel.jsx';
 import './WeatherPanel.css';
 
-export function TemperatureLegend({field,state}) {
+export function TemperatureLegend({field,state,labelWeatherNote}) {
   const style=WEATHER_FIELDS[field.display_variable||'temperature'];
-  return <aside className="weather-legend" aria-label="Weather legend"><div><strong>{style.title} · {style.units}</strong><span>{state==='stale'?'CACHED · STALE':'GFS · 1°'}</span></div><i style={{background:style.gradient}}/><div className="weather-legend__ticks">{style.ticks.map(tick=><span key={tick}>{tick}</span>)}</div><small>{field.kind==='analysis'?'Analysis':'Forecast'} valid {weatherTime(field.valid_at)} · <a href="https://nomads.ncep.noaa.gov/" target="_blank" rel="noreferrer">NOAA/NCEP</a></small></aside>;
+  return <aside className="weather-legend" aria-label="Weather legend"><div><strong>{style.title} · {style.units}</strong><span>{state==='stale'?'CACHED · STALE':'GFS · 1°'}</span></div><i style={{background:style.gradient}}/><div className="weather-legend__ticks">{style.ticks.map(tick=><span key={tick}>{tick}</span>)}</div><small>{field.kind==='analysis'?'Analysis':'Forecast'} valid {weatherTime(field.valid_at)} · <a href="https://nomads.ncep.noaa.gov/" target="_blank" rel="noreferrer">NOAA/NCEP</a></small>{labelWeatherNote&&<small>{labelWeatherNote}</small>}</aside>;
 }
-export default function WeatherPanel({windEnabled=false,onWindEnabled,windField,cameraAltitudeKm,cloudFallback=false,observedClouds,tab,onTab,events,eventsEnabled,onEventsEnabled,eventCategory,onEventCategory,selectedEventId,onEventSelect,open,onClose,weather,variable='temperature',onVariable,enabled,onEnabled,opacity,onOpacity,compatible,onCompatibleMap,onRefresh,refreshCooling,onViewCenter,locationWeather}) {
+export default function WeatherPanel({windEnabled=false,onWindEnabled,windField,cameraAltitudeKm,cloudFallback=false,observedClouds,tab,onTab,events,eventsEnabled,onEventsEnabled,eventCategory,onEventCategory,selectedEventId,onEventSelect,open,onClose,weather,variable='temperature',onVariable,enabled,onEnabled,opacity,onOpacity,compatible,onCompatibleMap,onRefresh,refreshCooling,onViewCenter,locationWeather,labelWeatherNote}) {
   const bodyRef=useRef(null);
   useLayoutEffect(()=>{
     if(!open||!bodyRef.current)return;
@@ -38,7 +38,7 @@ export default function WeatherPanel({windEnabled=false,onWindEnabled,windField,
     <div className="hud-panel__body weather-panel__body" ref={bodyRef}>
       {tab==='events'?<NaturalEventsPanel data={events} enabled={eventsEnabled} onEnabled={onEventsEnabled} category={eventCategory} onCategory={onEventCategory} selectedId={selectedEventId} onSelect={onEventSelect}/>:<>
       <section aria-labelledby="global-weather-title"><div className="weather-section-heading"><h3 id="global-weather-title">Global weather</h3><span className={`weather-status is-${weather.state}`}>{observed?observedClouds.status.toUpperCase():stateLabel}</span></div>
-        <WeatherGallery value={variable} onChange={onVariable}/>
+        <WeatherGallery value={variable} onChange={onVariable}/>{labelWeatherNote&&<p className="weather-source" role="note">{labelWeatherNote}</p>}
         <label className="weather-toggle"><input type="checkbox" checked={enabled} onChange={event=>onEnabled(event.target.checked)}/><span>Weather layer</span></label>
         <div className="weather-wind-control">
           <label className="weather-toggle"><input type="checkbox" aria-label="Wind Flow" checked={windEnabled} onChange={event=>onWindEnabled(event.target.checked)}/><span>Wind Flow</span><b>{windEnabled?'ON':'OFF'}</b></label>
@@ -65,7 +65,7 @@ export default function WeatherPanel({windEnabled=false,onWindEnabled,windField,
         {weather.error&&field&&<p className="inline-warning" role="status">Refresh unavailable. The cached field retains its original valid time.</p>}
         <button className="secondary-action" onClick={onRefresh} disabled={refreshCooling||working||waiting}>{working?'PREPARING DATA':waiting?`RETRY AT ${weatherTime(availability.next_attempt_at)}`:refreshCooling?'REFRESH COOLDOWN':'CHECK FOR UPDATE'}</button></>}
       </section>
-      <section aria-labelledby="point-weather-title"><h3 id="point-weather-title">Weather at a location</h3><p className="weather-source">Click anywhere on Earth to inspect the weather. Visible city labels snap to their known location.</p><button className="secondary-action weather-here" onClick={onViewCenter}><Crosshair size={16}/> WEATHER AT VIEW CENTRE</button>
+      <section aria-labelledby="point-weather-title"><h3 id="point-weather-title">Weather at a location</h3><p className="weather-source">Click anywhere on Earth to inspect the weather. Visible city and state labels snap to their representative location.</p><button className="secondary-action weather-here" onClick={onViewCenter}><Crosshair size={16}/> WEATHER AT VIEW CENTRE</button>
         {locationWeather?.selection&&<><p className="weather-valid">{locationWeather.selection.name||`${locationWeather.selection.latitude.toFixed(2)}°, ${locationWeather.selection.longitude.toFixed(2)}°`}</p><LocationWeatherDetails weather={locationWeather}/></>}
       </section>
       <details><summary>Modeled weather accuracy</summary><p>Model estimates, not station observations. The global 2 m field has 1° grid spacing; colour interpolation adds no resolution. Local GFS data is processed by Open-Meteo, with elevation adjustment. Coordinates are rounded to 0.1° for caching.</p>{field&&(!field.display_variable||field.display_variable==='temperature')&&<p>GFS initialized {weatherTime(field.model_initialized_at)}. Retrieved {weatherTime(field.retrieved_at)}. Range {field.minimum_c} to {field.maximum_c} °C.</p>}</details>

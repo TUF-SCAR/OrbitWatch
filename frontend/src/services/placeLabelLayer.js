@@ -1,5 +1,5 @@
 import { Cartesian2, Cartesian3, Color, EllipsoidalOccluder, HorizontalOrigin, LabelCollection, LabelStyle, SceneMode, SceneTransforms, VerticalOrigin } from "cesium";
-import { OVERVIEW_LABELS, labelAltitudeRange, selectLabelBoxes } from "./placeLabelLayout.js";
+import { OVERVIEW_LABELS, labelAltitudeRange, selectLabelBoxes, nearestSelectablePlace } from "./placeLabelLayout.js";
 
 const NATIVE_LABEL_MAPS = new Set(["bing-labels", "bing-road", "osm", "carto-dark", "carto-voyager"]);
 
@@ -17,7 +17,7 @@ export function createPlaceLabelLayer(viewer) {
       horizontalOrigin: HorizontalOrigin.CENTER, verticalOrigin: VerticalOrigin.CENTER,
       fillColor: kind === "country" ? Color.fromCssColorString("#cde4e9") : Color.WHITE,
       outlineColor: Color.BLACK.withAlpha(0.9), outlineWidth: 3, style: LabelStyle.FILL_AND_OUTLINE });
-    return { label, position, width: measure.measureText(name).width, range: labelAltitudeRange(kind, rank) };
+    return { name, longitude:lon, latitude:lat, kind, label, position, width: measure.measureText(name).width, range: labelAltitudeRange(kind, rank) };
   });
   let lastLayout = -Infinity;
   return {
@@ -39,6 +39,18 @@ export function createPlaceLabelLayer(viewer) {
       // Avoid dirtying the glyph buffers twice on every layout when a label
       // remains visible. Cesium ignores assignments that retain the same value.
       for (const entry of entries) entry.label.show = visible.has(entry.label);
+    },
+    pickLocation(point) {
+      if(!collection.show)return null;
+      occluder.cameraPosition=viewer.camera.positionWC;
+      const candidates=[],altitude=viewer.camera.positionCartographic.height;
+      for(const entry of entries) {
+        if(!entry.label.show||!['city','state'].includes(entry.kind)||altitude<entry.range[0]||altitude>entry.range[1])continue;
+        if(scene.mode===SceneMode.SCENE3D&&!occluder.isPointVisible(entry.position))continue;
+        const screenPoint=SceneTransforms.worldToWindowCoordinates(scene,entry.position,screen);
+        if(screenPoint)candidates.push({...entry,x:screenPoint.x,y:screenPoint.y});
+      }
+      return nearestSelectablePlace(candidates,point);
     },
     destroy() { scene.primitives.remove(collection); },
   };

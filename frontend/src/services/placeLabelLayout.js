@@ -13,6 +13,18 @@ export function labelAltitudeRange(kind, rank) {
     : [10_000, 7_000_000 / Math.pow(1.5, Math.max(0, rank - 1))];
 }
 
+// Only actually rendered, selectable places participate. Future state labels
+// can use this same interface; countries never become weather coordinates.
+export function nearestSelectablePlace(candidates, point, radius=24) {
+  let nearest=null,distance=radius;
+  for(const item of candidates) {
+    if(!['city','state'].includes(item.kind)||item.label?.show===false)continue;
+    const next=Math.hypot(item.x-point.x,item.y-point.y);
+    if(Number.isFinite(next)&&next<=distance) {nearest=item;distance=next;}
+  }
+  return nearest ? {name:nearest.name,kind:nearest.kind,latitude:nearest.latitude,longitude:nearest.longitude} : null;
+}
+
 // Priority-ordered screen rectangles. A hard cap bounds dense urban views.
 export function selectLabelBoxes(candidates, width, height, limit = 45) {
   const accepted = [];

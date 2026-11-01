@@ -11,6 +11,7 @@ import threading
 import time
 from datetime import datetime, timezone, timedelta
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import ExitStack, contextmanager
 from unittest.mock import patch
 import httpx
 import numpy as np
@@ -44,8 +45,18 @@ def fixture_bundle(now):
     return b''.join(messages)
 
 
+@contextmanager
+def finish_weather_worker(module, release=None):
+    try:
+        yield
+    finally:
+        if release is not None: release.set()
+        if module.pending is not None:
+            module.pending.exception(timeout=30)
+
+
 def run():
-    with tempfile.TemporaryDirectory(dir=ROOT/'.orbitwatch-backups') as tmp,patch('dotenv.load_dotenv',return_value=False),patch.dict(os.environ,{'DATABASE_URL':f'sqlite:///{Path(tmp).as_posix()}/accounts.db','JWT_SECRET_KEY':'weather-isolated-test-secret-with-sufficient-length','ORBITWATCH_INGESTION_ENABLED':'false'}):
+    with tempfile.TemporaryDirectory(dir=ROOT/'.orbitwatch-backups') as tmp,patch('dotenv.load_dotenv',return_value=False),patch.dict(os.environ,{'DATABASE_URL':f'sqlite:///{Path(tmp).as_posix()}/accounts.db','JWT_SECRET_KEY':'weather-isolated-test-secret-with-sufficient-length','ORBITWATCH_INGESTION_ENABLED':'false'}),ExitStack() as resources:
         from services.weather_grid import decode_temperature,iso
         from services.weather_cache import WeatherCache,WeatherDeferred
         from services import weather as w
@@ -55,6 +66,10 @@ def run():
         from services.auth import hash_password,create_access_token
         from main import app
         from fastapi.testclient import TestClient
+        # Drain workers while their patched cache/HTTP dependencies still exist,
+        # before TemporaryDirectory removes Windows lease/database files.
+        resources.callback(database_engine.dispose)
+        resources.callback(w.executor.shutdown,wait=True,cancel_futures=True)
         DatabaseBase.metadata.create_all(database_engine)
         now=w.utcnow().replace(minute=0,second=0,microsecond=0)
         grib=fixture_grib(now);field=decode_temperature(grib,'TEST GENERATED GRID',now)
@@ -130,6 +145,7 @@ def run():
             user=User(username='weather_test',email='weather@example.invalid',password_hash=hash_password('isolated-weather-test'))
             session.add(user);session.commit();token=create_access_token(user.id)
         client=TestClient(app);headers={'Authorization':f'Bearer {token}'}
+        resources.callback(client.close)
         for path in ['/temperature','/status','/location?latitude=17.4&longitude=78.5']:
             assert client.get('/api/weather'+path).status_code==401
             response=client.get('/api/weather'+path,headers=headers)
@@ -147,10 +163,11 @@ def run():
         # blocked. Concurrent clients share one download and then the real grid.
         test_file=f'gfs.t{now:%H}z.pgrb2.1p00.f000'
         entered,release=threading.Event(),threading.Event()
+        cold_bundle=fixture_bundle(now)
         def slow_download(*args):
-            entered.set();assert release.wait(5);return fixture_bundle(now)
+            entered.set();assert release.wait(30);return cold_bundle
         cold=WeatherCache(Path(tmp)/'cold')
-        with patch.object(w,'cache',cold),patch.object(w,'target',return_value=(now,0,test_file)),patch.object(w,'download',side_effect=slow_download) as download:
+        with patch.object(w,'cache',cold),patch.object(w,'target',return_value=(now,0,test_file)),patch.object(w,'download',side_effect=slow_download) as download,finish_weather_worker(w,release):
             started=time.monotonic();response=client.get('/api/weather/temperature',headers=headers)
             assert response.status_code==202 and time.monotonic()-started<2
             assert entered.wait(3)
@@ -158,7 +175,7 @@ def run():
                 responses=list(pool.map(lambda _:client.get('/api/weather/temperature',headers=headers),range(24)))
             assert all(r.status_code==202 and r.json()['state']=='downloading' for r in responses)
             assert download.call_count==1 and not w.weather_status()['availability']['has_field']
-            release.set();w.pending.result(timeout=5)
+            release.set();w.pending.result(timeout=30)
             response=client.get('/api/weather/temperature',headers=headers)
             assert response.status_code==200 and len(response.json()['values_c'])==65160
             for _ in range(12):assert client.get('/api/weather/temperature',headers=headers).status_code==200
@@ -174,9 +191,9 @@ def run():
         # No retry storm during a legitimate persisted cooldown; time advances
         # only in this disposable store, never in normal provider state.
         retry_clock=[time.time()];failure_cache=WeatherCache(Path(tmp)/'failed',clock=lambda:retry_clock[0])
-        with patch.object(w,'cache',failure_cache),patch.object(w,'target',return_value=(now,0,test_file)),patch.object(w,'download',side_effect=httpx.ReadTimeout('private raw diagnostic must not escape')) as download:
+        with patch.object(w,'cache',failure_cache),patch.object(w,'target',return_value=(now,0,test_file)),patch.object(w,'download',side_effect=httpx.ReadTimeout('private raw diagnostic must not escape')) as download,finish_weather_worker(w):
             client.get('/api/weather/temperature',headers=headers)
-            try:w.pending.result(timeout=5)
+            try:w.pending.result(timeout=30)
             except WeatherDeferred:pass
             response=client.get('/api/weather/temperature',headers=headers)
             assert response.status_code==503 and response.json()['state']=='cooldown'
@@ -190,21 +207,20 @@ def run():
             assert restarted.event('noaa')['category']=='timeout'
             retry_clock[0]+=1900
             download.side_effect=None;download.return_value=fixture_bundle(now)
-            client.get('/api/weather/temperature',headers=headers);w.pending.result(timeout=5)
+            client.get('/api/weather/temperature',headers=headers);w.pending.result(timeout=30)
             assert client.get('/api/weather/temperature',headers=headers).status_code==200
             assert download.call_count==2 and failure_cache.gate('noaa')['failures']==0
         # An absent local decoder must not spend a NOAA reservation or be
         # incorrectly presented as an upstream HTTP/network failure.
         missing=WeatherCache(Path(tmp)/'missing-decoder')
-        with patch.object(w,'cache',missing),patch.dict(sys.modules,{'eccodes':None}),patch.object(w,'download') as download:
+        with patch.object(w,'cache',missing),patch.dict(sys.modules,{'eccodes':None}),patch.object(w,'download') as download,finish_weather_worker(w):
             client.get('/api/weather/temperature',headers=headers)
-            try:w.pending.result(timeout=5)
+            try:w.pending.result(timeout=30)
             except WeatherDeferred:pass
             response=client.get('/api/weather/temperature',headers=headers)
             assert response.json()['last_failure']['category']=='decoder_unavailable'
             assert missing.gate('noaa')['failures']==0 and not download.called
         print('PASS: nonblocking cold202-to-200,24 concurrent clients/one download; persisted503/Retry-After/no retry storm, timed recovery, missing decoder spends0 HTTP')
-        client.close();database_engine.dispose();w.executor.shutdown(wait=True)
         print('PASS: protected global/status/location routes, safe503 and coordinate validation; real provider HTTP0')
 
 

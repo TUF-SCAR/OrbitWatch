@@ -25,6 +25,22 @@
 .weather-coordinates input { width:100%; min-width:0; border:1px solid var(--line); background:var(--ui-background); color:var(--ui-text); padding:8px; font-size:var(--ui-font-regular); }
 .weather-coordinates button { grid-column:1/-1; }
 .weather-point { margin-top:16px; }
+.location-weather-card { position:absolute; z-index:32; left:var(--ui-content-left,90px); bottom:calc(var(--hud-dock-height,64px) + 28px); width:330px; max-width:calc(100vw - var(--ui-content-left,90px) - 24px); max-height:calc(100dvh - var(--hud-dock-height,64px) - 210px); overflow:auto; overscroll-behavior:contain; padding:16px; border:1px solid var(--line-strong); border-radius:12px; background:var(--panel); box-shadow:0 14px 40px #0008; }
+.location-weather-card header { display:flex; align-items:flex-start; justify-content:space-between; gap:12px; }
+.location-weather-card .eyebrow { display:flex; align-items:center; gap:6px; font-size:10px; color:var(--accent); }
+.location-weather-card h2 { margin:8px 0 4px; font-size:18px; font-weight:500; overflow-wrap:anywhere; }
+.location-weather-card .weather-measurements { margin:12px 0; }
+.location-weather-card .weather-measurements dd { font-size:17px; }
+.location-weather-card .weather-condition { font-size:15px; margin:12px 0; }
+.location-weather-details .weather-condition small { display:block; margin-top:5px; font-size:10px; color:var(--ui-text-muted); }
+.location-weather-details small,.location-weather-card details,.location-weather-card .weather-source,.location-weather-card .weather-valid { font-size:11px; line-height:1.5; color:var(--ui-text-muted); }
+.location-weather-details a { color:var(--accent); }
+.location-weather-details summary { cursor:pointer; padding:6px 0; min-height:32px; color:var(--accent); }
+.location-weather-card :focus-visible { outline:2px solid var(--accent); outline-offset:3px; }
+@media(max-width:1100px) {
+  .has-weather-panel .location-weather-card { display:none; }
+  .location-weather-card { width:300px; padding:13px; }
+}
 .weather-condition { color:var(--ui-text); font-size:var(--ui-font-large); margin:10px 0; }
 .weather-measurements { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
 .weather-measurements div { padding-top:9px; border-top:1px solid var(--line); }

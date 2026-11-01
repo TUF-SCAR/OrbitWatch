@@ -125,3 +125,108 @@ stopped and the browser tab closed. Only this approved Markdown file was
 created/modified. Next agent: preserve independent wind ownership and optional
 field isolation; keep all source/display units explicit. Earth click-to-inspect,
 label snapping and location-aware labels are deliberately left for Batch 02.
+
+## Batch 02 — Earth Weather Inspection
+
+Starting tree was clean at `5edc168`. Scope: Live Earth location picking and one
+shared location-weather inspector, plus the explicitly requested legacy test fix.
+Batch 01's fields, independent Wind Flow and renderer/provider lifecycle remain
+intact. No production backend service, migration, historical data, authentication,
+Natural Events ingestion, satellite propagation or planetary travel was changed.
+
+### Files and interaction design
+
+- `frontend/src/components/OrbitGlobe.jsx`, `services/earthWeatherPicking.js`:
+  extend the existing Cesium LEFT_CLICK handler; no second click handler or
+  Viewer. Events, celestial objects and satellites retain priority. Terrain/globe
+  ray picking supplies ordinary surface coordinates; depth is accepted only from
+  the current Google tileset feature, never a satellite/label/marker. An ellipsoid
+  fallback handles missing terrain. Nonfinite/non-Earth heights are rejected.
+  Empty space clears the selection. Active satellite Follow is retained for
+  surface inspection. View Centre uses this same surface-picking helper.
+- The existing pointer tracking suppresses drag, wheel, cancelled/pinch gestures.
+  One 350 ms surface-click gate disambiguates mouse double-click/touch double-tap;
+  UI gestures, travel/mode eligibility changes and teardown cancel pending clicks.
+  Existing celestial double-click behavior remains in its original handler.
+- `services/placeLabelLayer.js`, `placeLabelLayout.js`: selectable metadata and
+  current screen projection of actually shown, unobscured city labels; snap
+  radius 24 CSS px. Countries and hidden labels never snap. The interface accepts
+  `state` for the next batch, without adding any state/province dataset. Native
+  raster map text has no selectable metadata; ordinary surface coordinates are
+  used there rather than guessing which labels the provider rendered.
+- `services/weatherLocationMarker.js`: one small depth-tested point entity,
+  updated in place and removed on deselection/teardown. It owns no camera or
+  click listener and is not treated as satellite geometry.
+- `utils/useLocationWeather.js`, `services/locationWeatherSelection.js`,
+  `services/orbitwatchApi.js`: one request/selection owner in App. New locations
+  clear previous readings immediately; AbortController plus generation checks
+  reject superseded responses even if the transport ignores cancellation.
+  Responses must match selected coordinates within the backend's 0.1° cache
+  rounding. A 250 ms debounce and 2.1 s spacing bound rapid requests. Location
+  429/503 Retry-After is retained, with explicit waiting/unavailable UI and
+  user-triggered retry. No automatic location poller or NOAA refresh is added.
+- `App.jsx`, `components/LocationWeatherCard.jsx`, `components/WeatherPanel.jsx`,
+  `components/WeatherPanel.css`, `utils/weatherFormatters.js`: floating card and
+  Weather panel read the same owner and content. Removed coordinate editing/GET
+  WEATHER; kept View Centre through the shared owner. Card includes condition,
+  temperature/feels-like, humidity, km/h wind, expandable cloud/rain/direction/MSL
+  pressure, source/UTC validity and missing-value handling. Marker and transient
+  requests clear on leaving Live Earth or presentation. Closing Weather preserves
+  selection; on compact widths the panel shows the shared reading and closing it
+  reveals the independent card. Escape/Close dismiss it. New weather selections
+  free the left search/explorer area; the Weather panel stays open. Left weather
+  legends temporarily yield their occupied space to the card.
+
+### Legacy test fix and verification
+
+- `tests/check_weather.py`: measured generated GRIB fixture construction at
+  1.480 s and decoding at 1.280 s before cache work, making the old five-second
+  combined worker deadline fragile under load. Prebuild the fixture outside the
+  blocked worker; preserve all cold-response latency, concurrent-one-download,
+  quota, failure, cooldown and recovery assertions. Bounded 30 s Future/Event
+  synchronization replaces the five-second worker waits; no sleeps were added.
+  Workers drain before mocked dependencies are restored, and ExitStack closes
+  TestClient/executor/engine before TemporaryDirectory removes Windows files.
+  The full affected test **passed twice**, including the final cleanup version;
+  HTTP0, no Windows lock-file cleanup failure. Production weather code unchanged.
+- Added `frontend/tests/earthWeather.test.js` and `locationWeatherUi.test.js`.
+  Final focused command: `node --test tests/earthWeather.test.js
+  tests/locationWeatherUi.test.js tests/placeLabels.test.js
+  tests/weatherControls.test.js tests/weatherUi.test.js tests/orbitwatchApi.test.js`:
+  **22/22 PASS**. Covers raster/Google-depth selection, 24 px city/state versus
+  country/hidden labels, object priority/Follow, gesture cancellation, replacement,
+  late/mismatched responses, closing/destroy, debounce, Retry-After, marker reuse,
+  zero/missing values, km/h/UTC, shared rendered card/panel and removed inputs.
+  Existing Batch 01 owner, altitude fade, incompatible-map and auth tests pass.
+- Build passed; React purity lint initially rejected clock reads during render.
+  Moved event timestamps into owner notifications and retained the effect-driven
+  clock. Targeted lint passed after this correction; final full lint/build status
+  is recorded below. No rules were disabled.
+
+### Actual runtime evidence and limits
+
+The temporary real FastAPI app ran from `.venv` with process-only ingestion OFF,
+and real Vite ran at 127.0.0.1:5173. The existing signed-in session restored Live
+Earth, six satellite entities and observed Clouds. Two browser gesture attempts
+failed in the automation connection (CDP dispatch/frame-tree timeouts). A fresh
+screenshot confirmed no location had been selected. Therefore real click-to-API,
+city snapping, Google tiles and mobile input/overflow are **not claimed as
+browser-verified**; their focused tests/code checks passed. No fixture was
+substituted into the real browser. Responsive bounds and shared-panel behavior
+are implemented but still need a real-device smoke check when input is available.
+
+Next agent/reviewer: first run real raster clicks, visible-city snapping,
+double-click/drag, replacement and close/panel persistence; then Google depth
+and mobile touch. Preserve the shared owner, existing-handler priority and label
+metadata interface when adding worldwide states/weather-aware labels in Batch
+03. No state dataset or weather measurements on map labels were added here.
+Only this Markdown file was modified. No commits or pushes were made.
+
+Final Batch 02 checks: **full ESLint PASS, production build PASS, 22 focused
+frontend tests PASS, complete legacy backend weather test PASS, diff whitespace
+check PASS**. The existing large-bundle build warning remains. Real browser input
+verification is the outstanding limitation described above. The provider audit
+stayed NOAA **1 → 1**, Open-Meteo **1 → 1**, with local weather cache unchanged
+at **6,463,489 bytes**; no new NOAA/Open-Meteo requests or storage writes were
+needed for this batch's checks. Temporary API/Vite servers were stopped and
+their ports verified closed; the verification browser tab was closed.

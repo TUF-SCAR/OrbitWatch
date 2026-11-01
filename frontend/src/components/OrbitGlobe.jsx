@@ -46,6 +46,8 @@ import { loadGoogleEarthTiles } from "../services/googleEarth.js";
 import { createEarthMapFactories, earthMapForMode } from "../services/earthMapProviders.js";
 import { applyBaseMap as updateBaseMap, providerErrorSummary, setEarthMapVisibility } from "../services/baseMap.js";
 import { createPlaceLabelLayer } from "../services/placeLabelLayer.js";
+import {pickEarthLocation,createSurfaceClickGate,routeEarthWeatherClick} from '../services/earthWeatherPicking.js';
+import {createWeatherLocationMarker} from '../services/weatherLocationMarker.js';
 import { createPlaceSearch } from "../services/placeSearch.js";
 import { prepareTimeScene, updateSceneTime } from "../services/timeScenePreparation.js";
 import { cameraDuration } from "../utils/motionPreferences.js";
@@ -336,6 +338,7 @@ export default function OrbitGlobe({
   cloudReady,
   onCloudError,
   weatherField,
+  locationPickingEnabled=false,onLocationSelect,locationSelection,
   windField,
   windVisible = false,
   weatherVisible = false,
@@ -345,6 +348,12 @@ export default function OrbitGlobe({
   const mountRef = useRef(null);
   const viewerRef = useRef(null);
   const placeSearchRef = useRef(null);
+  const locationInteractionRef=useRef({enabled:locationPickingEnabled,onSelect:onLocationSelect});
+  const surfaceClicksRef=useRef(null),weatherMarkerRef=useRef(null);
+  useEffect(()=>{
+    locationInteractionRef.current={enabled:locationPickingEnabled,onSelect:onLocationSelect};
+    if(!locationPickingEnabled)surfaceClicksRef.current?.cancel(true);
+  },[locationPickingEnabled,onLocationSelect]);
   const cloudLayerRef = useRef(null);
   const rainLayerRef = useRef(null);
   const temperatureLayerRef = useRef(null);
@@ -411,10 +420,7 @@ export default function OrbitGlobe({
     weatherViewCenter() {
       const viewer=viewerRef.current;if(!viewer||!earthActiveRef.current)return null;
       const canvas=viewer.scene.canvas;
-      const point=viewer.camera.pickEllipsoid(new Cartesian2(canvas.clientWidth/2,canvas.clientHeight/2),viewer.scene.globe.ellipsoid);
-      if(!point)return null;
-      const coordinate=viewer.scene.globe.ellipsoid.cartesianToCartographic(point);
-      return {latitude:CesiumMath.toDegrees(coordinate.latitude),longitude:CesiumMath.toDegrees(coordinate.longitude)};
+      return pickEarthLocation(viewer,new Cartesian2(canvas.clientWidth/2,canvas.clientHeight/2),googleTilesRef.current);
     },
     focusSelected() {
       lastInteractionRef.current = performance.now();
@@ -591,21 +597,26 @@ export default function OrbitGlobe({
     let googleLoading = false;
     const removeReady = viewer.scene.postRender.addEventListener(() => { removeReady(); callbacksRef.current.onSceneReady?.(); });
     const idleEarthSpeed=uiNumber("--ui-idle-earth-speed",.00204);
+    const locationEligible=()=>locationInteractionRef.current.enabled&&modeRef.current==='live'&&earthActiveRef.current;
+    const surfaceClicks=createSurfaceClickGate({eligible:locationEligible,onSelect:value=>locationInteractionRef.current.onSelect?.(value)});
+    surfaceClicksRef.current=surfaceClicks;
     let idleState = "waiting", pointerHeld = false, lastIdleFrame = performance.now(), lastIdleInteraction = lastInteractionRef.current, idleDestination = '', idleSettlingUntil = 0;
     const touchCamera = () => { lastInteractionRef.current = performance.now(); if (idleState === "framing") viewer.camera.cancelFlight(); idleState = "waiting"; };
     const heldPointers = new Set();
-    let pointerStart = null, cameraDragged = false;
-    const pointerDown = (event) => { heldPointers.add(event.pointerId);pointerHeld = true; pointerStart = { x: event.clientX, y: event.clientY }; cameraDragged = false; touchCamera(); };
-    const pointerMove = (event) => { if (pointerHeld && pointerStart && Math.hypot(event.clientX - pointerStart.x, event.clientY - pointerStart.y) > 5) cameraDragged = true; };
+    let pointerStart = null, cameraDragged = false, weatherGestureBlocked=false;
+    const pointerDown = (event) => { heldPointers.add(event.pointerId);pointerHeld = true; pointerStart = { x: event.clientX, y: event.clientY }; cameraDragged = heldPointers.size>1;weatherGestureBlocked=cameraDragged;surfaceClicks.cancel();touchCamera(); };
+    const pointerMove = (event) => { if (pointerHeld && pointerStart && Math.hypot(event.clientX - pointerStart.x, event.clientY - pointerStart.y) > 5) {cameraDragged=true;weatherGestureBlocked=true;surfaceClicks.cancel(true);} };
     const pointerUp = event => { heldPointers.delete(event.pointerId);if(pointerHeld) {pointerHeld=heldPointers.size>0;touchCamera();} };
     viewer.scene.canvas.addEventListener("pointerdown", pointerDown);
     viewer.scene.canvas.addEventListener("pointermove", pointerMove);
     window.addEventListener("pointerup", pointerUp);
     window.addEventListener('pointercancel',pointerUp);
     viewer.scene.canvas.addEventListener("wheel", touchCamera, { passive: true });
+    const cancelSurfaceGesture=()=>{weatherGestureBlocked=true;surfaceClicks.cancel(true);};
+    viewer.scene.canvas.addEventListener('wheel',cancelSurfaceGesture,{passive:true});
     // HUD gestures reset inactivity without initiating any camera operation.
-    const uiInteraction = event => { if (!viewer.scene.canvas.contains(event.target)) touchCamera(); };
-    const resetVisibility = () => { heldPointers.clear();pointerHeld=false; lastIdleFrame=performance.now(); touchCamera(); };
+    const uiInteraction = event => { if (!viewer.scene.canvas.contains(event.target)) {surfaceClicks.cancel(true);touchCamera();} };
+    const resetVisibility = () => { heldPointers.clear();pointerHeld=false;surfaceClicks.cancel(true); lastIdleFrame=performance.now(); touchCamera(); };
     document.addEventListener('pointerdown',uiInteraction,true);
     document.addEventListener('keydown',touchCamera,true);
     document.addEventListener('wheel',uiInteraction,{passive:true,capture:true});
@@ -822,26 +833,20 @@ export default function OrbitGlobe({
     const handler = new ScreenSpaceEventHandler(viewer.scene.canvas);
     const pickSceneObject = (position) => pickSolarSystemObject(viewer.scene, position, solarSystemLayerRef.current?.isWide());
     handler.setInputAction((movement) => {
-      if (cameraDragged) return;
-      if(naturalEventLayerRef.current?.pick(viewer.scene.pick(movement.position)))return;
-      const picked = pickSceneObject(movement.position);
-
-      const celestialId =
-        picked?.id?.properties?.celestialId?.getValue?.();
-
-      if (celestialId) {
-        const bodyId = String(celestialId);
-        onCelestialSelectRef.current?.(bodyId, solarSystemLayerRef.current?.isWide());
-        return;
-      }
-
-      const noradId =
-        picked?.id?.properties?.noradId?.getValue?.();
-
-      if (earthActiveRef.current) onObjectSelectRef.current?.(noradId ? Number(noradId) : null);
+      if(cameraDragged||weatherGestureBlocked)return;
+      routeEarthWeatherClick(movement.position,{
+        eventPick:()=>naturalEventLayerRef.current?.pick(viewer.scene.pick(movement.position)),
+        pickObject:()=>pickSceneObject(movement.position),
+        onCelestial:id=>onCelestialSelectRef.current?.(id,solarSystemLayerRef.current?.isWide()),
+        onSatellite:id=>onObjectSelectRef.current?.(id),atEarth:earthActiveRef.current,following:Boolean(followStateRef.current||viewer.trackedEntity),
+        eligible:locationEligible,snap:position=>placeLabels.pickLocation(position),
+        pickSurface:position=>pickEarthLocation(viewer,position,googleTilesRef.current),
+        onLocation:value=>locationInteractionRef.current.onSelect?.(value),gate:surfaceClicks,
+      });
     }, ScreenSpaceEventType.LEFT_CLICK);
 
     handler.setInputAction((movement) => {
+      surfaceClicks.doubleClick();
       if (cameraDragged) return;
       const picked = pickSceneObject(movement.position);
 
@@ -967,6 +972,7 @@ export default function OrbitGlobe({
       window.removeEventListener("pointerup", pointerUp);
       window.removeEventListener('pointercancel',pointerUp);
       viewer.scene.canvas.removeEventListener("wheel", touchCamera);
+      viewer.scene.canvas.removeEventListener("wheel",cancelSurfaceGesture);
       document.removeEventListener('pointerdown',uiInteraction,true);
       document.removeEventListener('keydown',touchCamera,true);
       document.removeEventListener('wheel',uiInteraction,true);
@@ -977,6 +983,8 @@ export default function OrbitGlobe({
       placeLabels.destroy();
       placeSearchRef.current?.destroy();
       placeSearchRef.current = null;
+      surfaceClicks.destroy();surfaceClicksRef.current=null;
+      weatherMarkerRef.current?.destroy();weatherMarkerRef.current=null;
       handler.destroy();
 
       const solarLayer = solarSystemLayerRef.current;
@@ -1062,6 +1070,12 @@ export default function OrbitGlobe({
     }, cameraDuration(0.47) * 1000);
     return () => window.clearTimeout(timer);
   }, [mode]);
+
+  useEffect(()=>{
+    const viewer=viewerRef.current;if(!viewer||viewer.isDestroyed())return;
+    weatherMarkerRef.current ||= createWeatherLocationMarker(viewer);
+    weatherMarkerRef.current.update(mode==='live'&&selectedCelestialBody==='earth'?locationSelection:null);
+  },[locationSelection,mode,selectedCelestialBody]);
 
   useEffect(()=>{
     const viewer=viewerRef.current;if(!viewer||viewer.isDestroyed())return;

@@ -77,12 +77,17 @@ async function requestJson(path, options = {}) {
     const serverMessage = response.status === 503
       ? code === "database_unavailable" ? "OrbitWatch's database is temporarily unavailable. Please try again shortly." : "OrbitWatch is temporarily unavailable. Please try again shortly."
       : "OrbitWatch encountered a server error. Please try again.";
-    throw new OrbitWatchApiError(
+    const error = new OrbitWatchApiError(
       response.status >= 500 ? serverMessage : typeof detail === "string" ? detail : `Request failed (${response.status}). Please try again.`,
       response.status,
       response.status < 500 && typeof detail === "string" ? detail : null,
       response.status === 401 ? "unauthorized" : response.status === 503 ? "unavailable" : response.status >= 500 ? "server" : "validation", code,
     );
+    if(path.startsWith('/api/weather/location?')&&[429,503].includes(response.status)) {
+      const retry=Number(response.headers.get('Retry-After'));
+      error.retryAfterSeconds=Number.isFinite(retry)&&retry>0?Math.min(86400,retry):30;
+    }
+    throw error;
   }
 
   if (response.status === 204) return null;

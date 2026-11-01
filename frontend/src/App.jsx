@@ -25,6 +25,7 @@ import PlaceSearch from "./components/PlaceSearch.jsx";
 import WeatherPanel, { TemperatureLegend } from './components/WeatherPanel.jsx';
 import LocationWeatherCard from './components/LocationWeatherCard.jsx';
 import {useLocationWeather} from './utils/useLocationWeather.js';
+import {useAccountSettings} from './utils/useAccountSettings.js';
 import { useObservedClouds } from './services/useObservedClouds.js';
 import { ObservedCloudLegend } from './components/ObservedClouds.jsx';
 import { useLiveWeather } from './utils/useLiveWeather.js';
@@ -60,6 +61,7 @@ export default function App({ currentUser, onLogout, hudActive = true, onSceneRe
   const [timeShownOrbitIds, setTimeShownOrbitIds] = useState(new Set(TIME_DEFAULT_OBJECTS));
   const [selectedId, setSelectedId] = useState(null);
   const [layers, setLayers] = useState([]);
+  const account=useAccountSettings(currentUser?.id,layers.includes('profile'));
   const [searchCycle, setSearchCycle] = useState(0);
   const [selectedCelestialBody, setSelectedCelestialBody] = useState("earth");
   const [sceneScale, setSceneScale] = useState({ visible: false, value: 0, range: 0, stage: "close" });
@@ -385,12 +387,12 @@ export default function App({ currentUser, onLogout, hudActive = true, onSceneRe
         {navigation.explorer && !layers.includes("explorer") && <CinematicStage active={hudActive} side="left" loaderAnchor="left-upper" zIndex={32}><SpatialSurface as="button" type="button" side="left" className="explorer-trigger" onClick={() => openLayer("explorer")} title="Object search (/)" aria-label="Open object explorer"><Aperture size={18} /><span>OBJECTS</span><b>{activeCatalog.length}</b></SpatialSurface></CinematicStage>}
         {(navigation.map || navigation.camera || navigation.system) && <CinematicStage active={hudActive} side="right" loaderAnchor="right-upper" zIndex={31}><SceneDock controls={navigation} mapOpen={menu === "map"} cameraOpen={menu === "camera"} systemOpen={menu === "system"} onToggleMap={() => toggleLayer("map")} onToggleCamera={() => toggleLayer("camera")} onToggleSystem={() => toggleLayer("system")} weatherAvailable={mode==="live"&&atEarth} weatherOpen={layers.includes("weather")} onToggleWeather={()=>toggleLayer("weather")} /></CinematicStage>}
         {atEarth && <CinematicStage active={hudActive} loaderAnchor="place" zIndex={36}><PlaceSearch open={layers.includes("place")} onOpen={() => openLayer("place")} onClose={() => closeLayer("place")} onVisit={(destination) => { releaseCamera(); globeRef.current?.flyToPlace(destination); }} globeRef={globeRef} /></CinematicStage>}
-        <ProfilePanel open={layers.includes("profile")} user={currentUser} onClose={() => closeLayer("profile")} onLogout={onLogout} settings={settings} onSettingsChange={changeSettings} />
+        <ProfilePanel account={account} open={layers.includes("profile")} user={currentUser} onClose={() => closeLayer("profile")} onLogout={onLogout} settings={settings} onSettingsChange={changeSettings} />
         <CameraMenu open={menu === "camera"} hasSelected={selectedRendered} onPreset={(preset) => { globeRef.current?.setCameraPreset(preset); setCameraFollowing(false); closeLayer("camera"); }} onClose={() => closeLayer("camera")} />
         <AnimatePresence>{layers.includes("celestial") && <CelestialTravelCard key="CelestialTravelCard" bodyId={celestialMarker} destinationId={selectedCelestialBody} onClose={() => closeLayer("celestial")} onTravel={(id) => selectCelestialBody(id, true)} onInspect={() => { closeLayer("celestial"); if (!atEarth) openLayer("body"); }} />}</AnimatePresence>
         <SystemMenu mode={mode} open={menu === "system"} activeBodyId={selectedCelestialBody} onSelectBody={(id)=>selectCelestialBody(id,mode === "time")} onClose={() => closeLayer("system")} />
         <MapSettings open={menu === "map"} mapStyle={mapStyle} onMapStyleChange={(id)=>{setMapStyle(id);setMapRetryNonce(value=>value+1);}} labelsEnabled={labelsEnabled} onLabelsChange={setLabelsEnabled} onClose={() => closeLayer("map")} mapStatus={mapStatus} />
-        {locationWeather.selection&&<LocationWeatherCard weather={locationWeather}/>}
+        {locationWeather.selection&&<LocationWeatherCard weather={locationWeather} onSaveLocation={currentUser?point=>{account.owner.startNew(point);locationWeather.clear();openLayer('profile');}:undefined}/>}
         <WeatherPanel labelWeatherNote={labelWeatherNote} locationWeather={locationWeather} windEnabled={windEnabled} onWindEnabled={setWindEnabled} windField={selectedWindField} cameraAltitudeKm={viewTelemetry.cameraAltitudeKm} cloudFallback={cloudFallback} observedClouds={observedClouds} tab={weatherTab} onTab={setWeatherTab} events={naturalEvents} eventsEnabled={eventsEnabled} onEventsEnabled={setEventsEnabled} eventCategory={eventCategory} onEventCategory={value=>{setEventCategory(value);setSelectedEventId(null);}} selectedEventId={selectedEventId} onEventSelect={setSelectedEventId} open={weatherActive&&layers.includes('weather')} onClose={()=>closeLayer('weather')} weather={{...weather,field:selectedWeatherField,bundle:weather.field}} variable={weatherVariable} onVariable={setWeatherVariable} enabled={weatherEnabled} onEnabled={setWeatherEnabled} opacity={weatherOpacity} onOpacity={setWeatherOpacity} compatible={weatherCompatible} onCompatibleMap={()=>{setMapStyle('esri');setMapRetryNonce(v=>v+1);}} onRefresh={refreshWeather} refreshCooling={weatherCooling} onViewCenter={()=>{const point=globeRef.current?.weatherViewCenter();if(point)selectWeatherLocation(point);else locationWeather.clear();}}/>
         {weatherActive&&weatherEnabled&&weatherCompatible&&weatherVariable==='observedClouds'&&!cloudFallback&&!hidden&&!locationWeather.selection&&!layers.includes('weather')&&!layers.includes('explorer')&&<ObservedCloudLegend clouds={observedClouds} labelWeatherNote={labelWeatherNote}/>}
         {weatherActive&&weatherEnabled&&weatherCompatible&&selectedWeatherField&&!hidden&&!locationWeather.selection&&!layers.includes('weather')&&!layers.includes('explorer')&&<TemperatureLegend field={selectedWeatherField} state={weather.state} labelWeatherNote={labelWeatherNote}/>}

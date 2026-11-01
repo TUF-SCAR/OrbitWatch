@@ -1,6 +1,7 @@
 import { AnimatePresence } from "motion/react";
 import { CalendarDays, Clock3, LogOut, Mail, ShieldCheck, UserRound, X } from "lucide-react";
 import SpatialSurface from "./SpatialSurface.jsx";
+import AccountNotificationSettings from './AccountNotificationSettings.jsx';
 
 function dateText(value) {
   if (!value) return "—";
@@ -8,7 +9,7 @@ function dateText(value) {
   return Number.isNaN(date.getTime()) ? "—" : date.toLocaleDateString(undefined, { day: "2-digit", month: "short", year: "numeric" });
 }
 
-export default function ProfilePanel({ open, user, onClose, onLogout, settings, onSettingsChange }) {
+export default function ProfilePanel({ open, user, onClose, onLogout, settings, onSettingsChange, account }) {
   if (!user) return null;
   return <AnimatePresence>{open && <SpatialSurface as="aside" side="right" strength={3} className="profile-panel hud-panel hud-panel--right" aria-label="Profile and settings">
     <header className="profile-panel__header hud-panel__header" data-depth="4">
@@ -28,6 +29,7 @@ export default function ProfilePanel({ open, user, onClose, onLogout, settings, 
           <div><dt><Clock3 size={14} /> Session</dt><dd className="profile-panel__online">Active</dd></div>
         </dl>
       </section>
+      {account&&<AccountNotificationSettings account={account}/>}
       <section className="profile-panel__section profile-settings" aria-labelledby="profile-settings-title" data-depth="4">
         <h3 id="profile-settings-title">Display settings</h3>
         <div className="profile-setting">

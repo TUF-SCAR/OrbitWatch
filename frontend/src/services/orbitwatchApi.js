@@ -75,7 +75,7 @@ async function requestJson(path, options = {}) {
     }
 
     const serverMessage = response.status === 503
-      ? code === "database_unavailable" ? "OrbitWatch's database is temporarily unavailable. Please try again shortly." : "OrbitWatch is temporarily unavailable. Please try again shortly."
+      ? code === 'account_feature_unavailable' ? 'Saved locations and alert preferences are not available yet. Your account and Live Mode are still available.' : code === "database_unavailable" ? "OrbitWatch's database is temporarily unavailable. Please try again shortly." : "OrbitWatch is temporarily unavailable. Please try again shortly."
       : "OrbitWatch encountered a server error. Please try again.";
     const error = new OrbitWatchApiError(
       response.status >= 500 ? serverMessage : typeof detail === "string" ? detail : `Request failed (${response.status}). Please try again.`,
@@ -190,3 +190,11 @@ export function fetchNaturalEvents(signal) { return requestJson('/api/events',{s
 export function fetchLocationWeather(latitude,longitude,signal) {
   return requestJson(`/api/weather/location?${new URLSearchParams({latitude:String(latitude),longitude:String(longitude)})}`,{signal});
 }
+
+export function fetchAccountLocations(signal) {return requestJson('/api/account/locations',{signal});}
+export function fetchNotificationPreferences(signal) {return requestJson('/api/account/notification-preferences',{signal});}
+const accountWrite=(path,method,body,signal)=>requestJson(path,{method,headers:{'Content-Type':'application/json'},body:JSON.stringify(body),signal});
+export function addAccountLocation(body,signal) {return accountWrite('/api/account/locations','POST',body,signal);}
+export function updateAccountLocation(id,body,signal) {return accountWrite(`/api/account/locations/${encodeURIComponent(id)}`,'PUT',body,signal);}
+export function deleteAccountLocation(id,version,signal) {return requestJson(`/api/account/locations/${encodeURIComponent(id)}?expected_version=${version}`,{method:'DELETE',signal});}
+export function saveNotificationPreferences(body,signal) {return accountWrite('/api/account/notification-preferences','PUT',body,signal);}

@@ -396,3 +396,195 @@ No Time Explorer weather, notifications or Natural Events expansion was started.
 Temporary `.venv` API/Vite servers were stopped, ports 8000/5173 verified closed,
 viewport reset and temporary browser tab closed. Only `docs/FINAL_DAY_DEVLOG.md`
 was changed among Markdown files. **No commits or pushes. Stop after Batch 03.**
+
+## Batch 04 — Account Notification Foundation
+
+Starting commit `5a3545d10fa1a8d1a4c7b161e5f432327d146b28`; completed 2026-11-01.
+This batch adds persistent saved observation locations and future alert
+preferences only. Auth implementation, historical propagation, worldwide labels,
+shared weather sampling, independent Wind and existing object/event interactions
+are preserved. No scheduler, visibility predictions, subscriptions, inbox,
+notification delivery or browser push permission flow was implemented.
+
+### Persistence, isolation and API
+
+- Added SQLAlchemy `ObservationLocation` and `NotificationPreferences` in
+  `backend/models/account.py`, strict schemas in `backend/schemas/account.py`,
+  and authenticated routes in `backend/routes/account.py`. Ownership comes only
+  from the existing `get_current_user`; submitted owner IDs/extra fields are
+  rejected. Foreign location IDs return the same 404 as missing IDs. Existing
+  `models/user.py`, auth routes, security and database/session implementation
+  were not edited.
+- Endpoints: `GET/POST /api/account/locations`,
+  `PUT/DELETE /api/account/locations/{uuid}`, and
+  `GET/PUT /api/account/notification-preferences`. Updates require
+  `expected_version`; deletion takes that version in the query string. CORS
+  adds only PUT and DELETE to existing methods, preserving explicit origins.
+  Account responses use `Cache-Control: no-store`.
+- Location IDs are backend-generated UUIDs. Names trim to 1–80 characters and
+  reject control characters. Coordinates must be finite JSON numbers in inclusive
+  ±90/±180 bounds and are stored as fixed six-decimal numerics. IANA timezones
+  are validated with `ZoneInfo`; Windows deployment explicitly requires the
+  already-locked `tzdata==2026.5`. No timezone, parent or coordinates are guessed.
+- A private slot 1–5 plus unique `(owner_id,slot)` enforces five locations in
+  the database. Unique owner/coordinate pairs prevent duplicates; an identical
+  POST retry returns the existing row (200) without resetting its default.
+  A conflicting name/timezone at those coordinates returns 409 for explicit edit.
+  A partial unique owner index enforces at most one default. First location
+  becomes default automatically; deleting it selects oldest `created_at`, then
+  UUID. The current default cannot simply be unchecked; select another instead.
+- Mutations lock the existing owner row with PostgreSQL `FOR UPDATE`, serializing
+  caps/default changes and preference writes across processes. Versions reject
+  stale edits rather than silently overwriting concurrent changes. User foreign
+  keys cascade only the new account data when a user is removed. Numeric/rank,
+  text length, warning/radius, quiet-hour and version constraints are also in SQL.
+- Preference defaults are all OFF; GET returns virtual safe defaults without
+  inserting a row. Fields include master, satellite, planet/Moon and natural-event
+  categories, 10/30/60-minute warning, bounded event radius, optional local quiet
+  times, timezone source and timestamps. Default API radius cap is 500 km;
+  `ORBITWATCH_MAX_EVENT_RADIUS_KM` may set 1–2000 km, within the SQL hard ceiling.
+  Previously stored values remain visible if the API cap is later tightened,
+  but new writes must satisfy the configured cap.
+- Quiet hours follow the default saved location timezone or an explicit valid
+  IANA timezone. Overnight times may be stored; no evaluator runs yet. Enabled
+  quiet hours require different valid start/end times and a usable timezone.
+  Deleting the last default-source location disables quiet hours and increments
+  preference version; explicit-timezone quiet hours remain independent. Disabled
+  quiet hours can retain an incomplete optional draft without guessing a timezone.
+- Missing/partially applied account tables produce a sanitized 503
+  `account_feature_unavailable`. Account SQL failures are caught before the shared
+  database dependency can poison existing auth/Live readiness. No SQL/coordinate
+  payloads or credentials are logged by these routes.
+
+### Frontend behavior
+
+`AccountNotificationSettings.jsx`/`.css` integrate into the current Profile &
+Settings scrolling panel, with location list, explicit add/edit/default/remove
+actions, removal confirmation, four toggles, warning/radius and quiet-hour controls.
+The UI explicitly says scheduling/live delivery are not active and these choices
+do not grant push permission. No fake unread badge or notification bell was added.
+
+`accountSettings.js` owns single-flight writes, loading/saved/error/unavailable
+states, version conflicts and retries. Drafts stay in memory through profile
+close/reopen and failed requests; reloading versions merges untouched fields with
+server changes while retaining edited fields. In particular, a server-side quiet
+hours reset is reflected without discarding an unrelated unsaved preference.
+New place/edit intents cannot silently replace an existing editor. Each
+authenticated App gets a separate owner via `useAccountSettings.js`; logout
+aborts pending work, clears private state and ignores late results. These values
+are not stored in browser localStorage. Refresh/login restore them through the API.
+
+The Live weather card's **Save this location** copies the chosen point into the
+same account editor, closes the weather card, and requires an explicit timezone
+and Save action. It does not persist on globe click. The five-location bound is
+shown in the list and also applies to a weather-seeded form. Existing transport
+authentication is reused, including preserving valid sessions on feature 503s.
+
+### Migration, production status and storage
+
+Migration: `backend/migrations/002_account_notification_foundation.sql` is explicit,
+transactional and idempotent, following migration 001. It creates only the two
+new tables/indexes, enables RLS without browser policies and revokes PUBLIC table
+privileges. Application startup imports models/routes but executes no DDL and no
+`create_all`. Existing auth/satellite/historical tables are neither dropped nor
+recreated in production.
+
+**Applied only to disposable local PostgreSQL 17.6**, including repeated runs
+before and after fixture data. Verified the Maven Central test-binary SHA-256
+`c91d39b6db91cf8811e3b20d941e74a0396e277360873821daab47cdb4c1282c`
+(23,239,913-byte archive; [upstream test distribution](https://github.com/zonkyio/embedded-postgres-binaries)).
+The fixed loopback cluster/database used port 55434 and `orbitwatch_account_test`;
+the harness never loads production `.env`. SQLite checks create only isolated
+temporary schemas, not the PostgreSQL migration.
+
+**Production Supabase was not migrated.** A read-only transaction measured
+`pg_database_size(current_database())` at **12,979,347 bytes** and confirmed both
+new public tables absent. No production test accounts or account-feature writes
+were created. The current production database is therefore **not ready for these
+new endpoints**; existing auth/Live remain usable and the new UI shows feature
+unavailability until deployment.
+
+Disposable PostgreSQL measurements (bytes):
+
+| Stage | Entire test database | Two foundation relations, including indexes |
+| --- | ---: | ---: |
+| Before migration | 8,244,371 | 0 |
+| Empty migration | 8,367,251 | 40,960 |
+| Small populated/constraint fixture | 8,424,595 | 98,304 |
+
+The empty migration increased that test database by **122,880 bytes**; the small
+fixture's total increase was **180,224 bytes**. For deployment planning, budget
+1 MB initially plus a few KiB per account at the five-location maximum; this is
+an estimate, not a production migration measurement or an unlimited-growth claim.
+Against the published [Supabase Free 500 MB database allowance](https://supabase.com/pricing),
+the measured logical production size plus that 1 MB budget would leave roughly
+486 MB, comfortably above the required 200 MB reserve. Actual project plan,
+dashboard usage and current headroom must still be checked at deployment; no
+billing/quota setting was changed.
+
+Required production step: obtain fresh explicit user authorization, verify the
+200 MB reserve, apply/review migration 002 using the backend database role, then
+deploy backend/frontend (install pinned tzdata if absent) and run authenticated
+account CRUD/preferences smoke checks. **Do not run create_all on production.**
+
+### Executed verification
+
+- `.venv/Scripts/python.exe tests/check_account_foundation.py`: **74 HTTP checks
+  PASS** against temporary SQLite. Real unmodified registration/login/JWT, two
+  independent users, cross-owner 404s, CRUD, defaults/fallback, duplicates, five
+  slots, bounds/IANA/name validation, preferences/quiet hours, stale versions,
+  foreign keys/cascades, missing-schema isolation, no startup DDL, CORS and absence
+  of foundation push/delivery calls were exercised.
+- Same harness with `--postgres`: **77 HTTP checks PASS**, plus eight concurrent
+  creates yielding exactly five 201s and three 409s, competing default choices
+  retaining one default, and competing preference writes yielding one 200/one 409.
+  Migration reapplication preserves rows. Direct SQL checks prove database slot,
+  coordinate/default uniqueness, bounds, FK/cascade and preference constraints.
+  A granted non-owner browser test role sees zero rows under RLS. An initial test
+  reporter Decimal serialization error was fixed; a local filesystem-size probe
+  later hit its 8 s limit under host load. Only that test metadata probe now has
+  a 30 s local timeout; final PostgreSQL run passed. API timeouts are unchanged.
+- Existing `tests/check_backend_contract.py`: **39 real API checks PASS**.
+  `tests/check_reliability.py`: **26 API checks + 40 concurrent outage requests
+  PASS**, including closed-port startup, recovery, preserved auth and sanitized
+  errors; external provider calls 0 in that suite. Python compile checks passed.
+- Final frontend: `node --test --test-concurrency=1 tests/accountSettings.test.js
+  tests/accountSettingsUi.test.js tests/orbitwatchApi.test.js
+  tests/locationWeatherUi.test.js tests/placeLabelWeather.test.js
+  tests/earthWeather.test.js tests/weatherControls.test.js`: **28/28 PASS**.
+  Includes actual account actions/failed drafts/double-submit guards, untouched-field
+  reconciliation, logout/late-result isolation, missing-feature transport, rendered
+  controls and existing weather/label/object priority regressions.
+- **Full ESLint PASS (no warnings); production build PASS**, 2,108 modules.
+  Existing large-chunk warning remains; Vite also reports external-globals plugin
+  timing. Diff whitespace and Markdown-scope checks passed.
+- Genuine browser smoke used real app/auth with the disposable PostgreSQL schema,
+  API on 8001 and Vite on a separate **127.0.0.1:5174** origin, preserving the
+  production browser session. Existing login as test user one, explicit point
+  add/default at synthetic 10°,20°/UTC, preference toggles, 30-minute warning,
+  120 km radius, 22:00–07:00 default-zone quiet hours, Save, and browser refresh
+  all succeeded and restored saved values. Logout/login as test user two showed
+  only that user's five different locations/preferences and a disabled Add button.
+  No push prompt or alert was emitted. Saved location/preference screenshots are
+  in the approved visualization workspace. No production browser writes occurred.
+  Missing-schema UI/failure paths were tested through API, controller and rendered
+  component tests; production missing-schema browser interaction is not claimed.
+
+### Changed files and handoff
+
+New: backend `models/account.py`, `schemas/account.py`, `routes/account.py`,
+`migrations/002_account_notification_foundation.sql`; frontend
+`components/AccountNotificationSettings.jsx`/`.css`, `services/accountSettings.js`,
+`utils/useAccountSettings.js`, `tests/accountSettings.test.js`,
+`tests/accountSettingsUi.test.js`; `tests/check_account_foundation.py`.
+Modified: `backend/main.py`, `backend/requirements.txt`, frontend `src/App.jsx`,
+`components/ProfilePanel.jsx`, `components/LocationWeatherCard.jsx`,
+`services/orbitwatchApi.js`, and this journal. No other Markdown file changed.
+
+Temporary browser/API/Vite and PostgreSQL test processes were stopped; ports
+8000/8001/5173/5174/55434 were verified closed. Known limits: production deployment
+is pending explicit migration authorization; storage measurements are logical SQL
+sizes and future account growth needs monitoring. Physical touch, Google 3D and
+real event-marker integration remain on the accepted final integration checklist.
+Future subscriptions/inbox work is a separate batch; this foundation deliberately
+emits nothing. **No commits or pushes. Stop after Batch 04.**

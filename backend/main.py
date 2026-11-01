@@ -20,6 +20,7 @@ from routes.satellites import router as satellite_router
 from routes.historical import router as historical_router
 from routes.weather import router as weather_router
 from routes.natural_events import router as events_router
+from routes.account import router as account_router, AccountFeatureUnavailable
 from services.natural_events import shutdown as shutdown_events
 from workers.satellite_refresh import run_satellite_refresh_worker
 from services.providers.budget import refresh_owner
@@ -54,6 +55,7 @@ app.include_router(historical_router)
 app.include_router(auth_router)
 app.include_router(weather_router)
 app.include_router(events_router)
+app.include_router(account_router)
 
 
 @app.get("/health/live", include_in_schema=False)
@@ -71,6 +73,12 @@ def ready():
 async def database_unavailable(request: Request, error: DatabaseUnavailable):
     return JSONResponse(status_code=503, headers={"Retry-After": "5", "Cache-Control": "no-store"},
                         content={"detail": "Database temporarily unavailable. Please try again shortly.", "code": "database_unavailable"})
+
+
+@app.exception_handler(AccountFeatureUnavailable)
+async def account_unavailable(request: Request, error: AccountFeatureUnavailable):
+    return JSONResponse(status_code=503, headers={"Cache-Control": "no-store"},
+                        content={"detail": "Account settings are unavailable. Please try again later.", "code": "account_feature_unavailable"})
 
 
 @app.exception_handler(RequestValidationError)
@@ -101,7 +109,7 @@ async def safe_error_boundary(request: Request, call_next):
 
 # CORS surrounds the safe boundary, including its generated 500 responses.
 app.add_middleware(CORSMiddleware, allow_origins=allowed_origins,
-                   allow_credentials=False, allow_methods=["GET", "POST"], allow_headers=["*"])
+                   allow_credentials=False, allow_methods=["GET", "POST", "PUT", "DELETE"], allow_headers=["*"])
 
 if __name__ == "__main__":
     uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)

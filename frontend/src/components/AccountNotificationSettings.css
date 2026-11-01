@@ -1,0 +1,20 @@
+.account-foundation { display:grid; gap:12px; font-size:var(--ui-type-12); }
+.account-foundation p,.account-foundation small { color:#abc3d3; line-height:1.6; overflow-wrap:anywhere; }
+.account-foundation p { margin:0 0 10px; }
+.account-foundation__intro { padding:12px; border:1px solid var(--accent-line); background:var(--accent-soft); }
+.account-foundation .account-foundation__error { color:#ffbcaa; }
+.account-foundation button { min-height:36px; padding:7px 10px; border:1px solid var(--accent-line); background:#10232d; color:#def2ff; cursor:pointer; }
+.account-foundation button:disabled { opacity:.45; cursor:default; }
+.account-locations { list-style:none; margin:0 0 12px; padding:0; display:grid; gap:10px; }
+.account-locations li { padding:10px; border:1px solid var(--line); display:grid; gap:5px; min-width:0; }
+.account-locations span,.account-locations strong { overflow-wrap:anywhere; }
+.account-actions { display:flex; flex-wrap:wrap; gap:7px; margin-top:6px; }
+.account-form fieldset { min-width:0; margin:0; padding:12px 0; border:0; display:grid; gap:10px; }
+.account-form label { color:#dcecf6; }
+.account-form input:not([type=checkbox]),.account-form select { min-width:0; width:100%; min-height:38px; border:1px solid var(--accent-line); background:#08141f; color:#e4f0f8; padding:8px; box-sizing:border-box; }
+.account-toggle { display:flex; align-items:center; gap:10px; min-height:34px; }
+.account-toggle input { accent-color:var(--accent); flex:none; width:17px; height:17px; }
+.account-coordinate-row { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:10px; }
+.account-coordinate-row > div { display:grid; gap:8px; min-width:0; }
+.account-remove { padding-top:10px; border-top:1px solid var(--line); }
+.account-foundation :focus-visible { outline:2px solid var(--accent); outline-offset:3px; }

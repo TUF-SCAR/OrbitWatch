@@ -12,6 +12,8 @@ import { createCloudLayer } from '../src/services/cloudLayer.js';
 
 test('Live Earth defaults select a configured-independent map and exactly the supported gallery fields',async()=>{
   assert.equal(LIVE_EARTH_DEFAULTS.mapStyle,'esri');assert.equal(LIVE_EARTH_DEFAULTS.weatherEnabled,true);
+  assert.equal(LIVE_EARTH_DEFAULTS.windEnabled,false);
+  assert.deepEqual(WEATHER_OPTIONS.map(option=>option.id),['observedClouds','precipitation','temperature','humidity','pressure']);
   assert.ok(MAP_OPTIONS.some(map=>map.id===LIVE_EARTH_DEFAULTS.mapStyle));
   assert.equal(LIVE_EARTH_DEFAULTS.weatherField,WEATHER_OPTIONS[0].id);
   assert.deepEqual(WEATHER_OPTIONS.map(option=>option.id).sort(),Object.keys(WEATHER_FIELDS).filter(id=>!WEATHER_FIELDS[id].hidden).sort());

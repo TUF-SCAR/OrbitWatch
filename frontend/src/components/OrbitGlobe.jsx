@@ -336,6 +336,8 @@ export default function OrbitGlobe({
   cloudReady,
   onCloudError,
   weatherField,
+  windField,
+  windVisible = false,
   weatherVisible = false,
   weatherOpacity = .55,
   weatherCompatible = false,
@@ -1083,9 +1085,9 @@ export default function OrbitGlobe({
   useEffect(()=>{
     const viewer=viewerRef.current;if(!viewer||viewer.isDestroyed())return;
     windLayerRef.current ||= createWindLayer(viewer);
-    windFieldRef.current=weatherField;
-    windLayerRef.current.update({field:weatherField,visible:weatherVisible&&mode==='live'&&selectedCelestialBody==='earth',opacity:weatherOpacity,compatible:weatherCompatible,quality});
-  },[weatherField,weatherVisible,weatherOpacity,weatherCompatible,mode,selectedCelestialBody,quality]);
+    windFieldRef.current=windField;
+    windLayerRef.current.update({field:windField,visible:windVisible&&mode==='live'&&selectedCelestialBody==='earth',opacity:weatherOpacity,compatible:weatherCompatible,quality});
+  },[windField,windVisible,weatherOpacity,weatherCompatible,mode,selectedCelestialBody,quality]);
 
   useEffect(()=>{
     const viewer=viewerRef.current;if(!viewer||viewer.isDestroyed())return;

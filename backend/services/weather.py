@@ -13,7 +13,7 @@ from services.weather_fields import decode_fields
 
 cache = WeatherCache()
 logger = logging.getLogger('orbitwatch.weather')
-CURRENT_VARIABLES = 'temperature_2m,apparent_temperature,relative_humidity_2m,wind_speed_10m,wind_direction_10m,precipitation,cloud_cover,weather_code'
+CURRENT_VARIABLES = 'temperature_2m,apparent_temperature,relative_humidity_2m,pressure_msl,wind_speed_10m,wind_direction_10m,precipitation,cloud_cover,weather_code'
 # Lazily used only after a weather request, never on API startup/status reads.
 executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix='weather')
 pending_lock = threading.Lock()
@@ -32,6 +32,11 @@ def annotate(value, kind):
     # present-day observation. Hard expiry prevents displaying ancient weather.
     if valid_age > (86400 if kind == 'global' else 10800) or valid_age < -10800: return None
     stale = age > (21600 if kind == 'global' else 900) or valid_age > (21600 if kind == 'global' else 1800)
+    if kind == 'location' and value.get('units',{}).get('wind_speed_10m') == 'm/s':
+        speed=value.get('values',{}).get('wind_speed_10m')
+        value={**value,'source_units':value.get('source_units',value['units']),
+               'units':{**value['units'],'wind_speed_10m':'km/h'},
+               'values':{**value['values'],'wind_speed_10m':round(speed*3.6,2) if speed is not None else None}}
     return {**value, 'cache_age_seconds': round(age), 'valid_age_seconds': round(valid_age), 'state': 'stale' if stale else 'available'}
 
 
@@ -64,7 +69,7 @@ def refresh_global():
     with cache.lease() as owned:
         if not owned: raise WeatherDeferred()
         existing = cache.latest_global()
-        if existing and existing.get('fields') and existing['source_file'] == f'{cycle:%Y%m%d}/{file}': return existing
+        if existing and existing.get('bundle_version') == 2 and existing['source_file'] == f'{cycle:%Y%m%d}/{file}': return existing
         database_availability.ensure()
         if not enabled('ORBITWATCH_WEATHER_PROVIDER_REQUESTS', True): raise WeatherDeferred()
         # Check our local decoder before spending an upstream reservation.
@@ -79,7 +84,7 @@ def refresh_global():
             cache.record('noaa', 'downloading')
             data = download('https://nomads.ncep.noaa.gov/cgi-bin/filter_gfs_1p00.pl',
                 {'file':file,'lev_2_m_above_ground':'on','lev_10_m_above_ground':'on','lev_surface':'on',
-                 'lev_entire_atmosphere':'on','var_TMP':'on','var_TCDC':'on','var_PRATE':'on','var_UGRD':'on','var_VGRD':'on',
+                 'lev_entire_atmosphere':'on','lev_mean_sea_level':'on','var_TMP':'on','var_TCDC':'on','var_PRATE':'on','var_UGRD':'on','var_VGRD':'on','var_RH':'on','var_PRMSL':'on',
                  'dir':f'/gfs.{cycle:%Y%m%d}/{cycle:%H}/atmos',
                  'leftlon':0,'rightlon':360,'toplat':90,'bottomlat':-90}, 16000000)
             cache.record('noaa', 'decoding')
@@ -140,7 +145,7 @@ def global_temperature(require_fields=False):
     raw = cache.latest_global()
     field = annotate(raw, 'global')
     cycle, step, file = target()
-    needs_refresh = not field or field['source_file'] != f'{cycle:%Y%m%d}/{file}' or (require_fields and not field.get('fields'))
+    needs_refresh = not field or field['source_file'] != f'{cycle:%Y%m%d}/{file}' or (require_fields and field.get('bundle_version') != 2)
     if needs_refresh: revalidate_global()
     availability = global_availability(raw)
     if not field:
@@ -171,20 +176,32 @@ def location_key(latitude, longitude):
 
 def parse_location(data, latitude, longitude, retrieved_at):
     current, units = data['current'], data['current_units']
+    source_units = dict(units)
     if not isinstance(current.get('time'), (int,float)) or units.get('temperature_2m') != '°C' or units.get('wind_speed_10m') != 'm/s':
         raise ValueError('Unexpected location weather schema/units')
     values = {}
     for variable in CURRENT_VARIABLES.split(','):
         value = current.get(variable)
-        if value is not None and (not isinstance(value,(int,float)) or not math.isfinite(value)): raise ValueError('Invalid weather value')
+        if value is not None and (not isinstance(value,(int,float)) or not math.isfinite(value)):
+            if variable in {'relative_humidity_2m','pressure_msl'}: value=None
+            else: raise ValueError('Invalid weather value')
         values[variable] = value
+    # Optional location fields retain explicit identity/units. Invalid optional
+    # values are unavailable rather than breaking temperature or wind readings.
+    for variable, expected_units, low, high in [('relative_humidity_2m','%',0,100),('pressure_msl','hPa',800,1200)]:
+        value=values[variable]
+        if units.get(variable)!=expected_units or value is not None and not low<=value<=high:
+            values[variable]=None
+    if values['wind_speed_10m'] is not None:
+        values['wind_speed_10m']=round(values['wind_speed_10m']*3.6,2)
+    units={**units,'wind_speed_10m':'km/h'}
     if not 0 < current.get('interval',0) <= 3600: raise ValueError('Invalid weather interval')
     return {'provider':'Open-Meteo', 'model':'GFS Global (Open-Meteo processing)', 'kind':'current_model',
             'model_initialized_at':None, 'valid_at':iso(datetime.fromtimestamp(current['time'],timezone.utc)),
             'retrieved_at':iso(retrieved_at), 'interval_seconds':current['interval'],
             'requested_latitude':latitude, 'requested_longitude':longitude,
             'grid_latitude':data['latitude'],'grid_longitude':data['longitude'],
-            'values':values,'units':{key:units.get(key) for key in values},
+            'values':values,'units':{key:units.get(key) for key in values},'source_units':{key:source_units.get(key) for key in values},
             'attribution':'Open-Meteo · NOAA GFS · CC BY 4.0', 'source_url':'https://open-meteo.com/'}
 
 

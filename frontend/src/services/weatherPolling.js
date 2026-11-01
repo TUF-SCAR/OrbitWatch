@@ -5,8 +5,14 @@ const STATES = new Set(['preparing','downloading','decoding','cooldown','failed'
 
 export function temperatureResult(payload, now = Date.now()) {
   if (payload?.values_c) {
-    const field = validateTemperatureField(payload);
+    let field = validateTemperatureField(payload);
     if(field.fields)for(const variable of ['clouds','precipitation','wind'])validateModelField(variable,field.fields[variable]);
+    // A malformed optional variable is isolated; the shared core remains usable.
+    if(field.fields)for(const variable of ['humidity','pressure']) {
+      if(!field.fields[variable])continue;
+      try {validateModelField(variable,field.fields[variable]);}
+      catch {field={...field,fields:{...field.fields}};delete field.fields[variable];}
+    }
     const availability = field.availability;
     const waiting = field.state === 'stale' && availability;
     const delay = waiting ? retryDelay(availability) : 600000;

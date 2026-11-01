@@ -11,7 +11,10 @@ from services.weather_grid import decode_temperature, iso
 def decode_fields(data, source_file, retrieved_at):
     from eccodes import codes_new_from_message, codes_get, codes_get_values, codes_get_array, codes_release
     if len(data) > 16000000: raise ValueError('Global field bundle exceeds limit')
-    offset = 0; count = 0; fields = {}; temperature = None; times = set()
+    offset = 0; count = 0; fields = {}; temperature = None; times = set(); field_times = {}
+    optional = {('2r','heightAboveGround',2):('humidity','%',0,100),
+                ('prmsl','meanSea',0):('pressure','Pa',80000,120000)}
+    optional_errors = {}
     while offset < len(data):
         if len(data)-offset<16 or data[offset:offset+4] != b'GRIB' or data[offset+7] != 2:
             raise ValueError('Expected GRIB2 message boundary')
@@ -21,6 +24,7 @@ def decode_fields(data, source_file, retrieved_at):
         message = data[offset:offset+size]; offset += size; count += 1
         h = codes_new_from_message(message)
         if h is None: raise ValueError('Missing GRIB field')
+        signature = None
         try:
             get = lambda key: codes_get(h, key)
             signature = (get('shortName'), get('typeOfLevel'), get('level'))
@@ -34,7 +38,7 @@ def decode_fields(data, source_file, retrieved_at):
                      ('tcc','entireAtmosphere',0):('clouds','%',0,100),
                      ('prate','surface',0):('precipitation','kg m**-2 s**-1',0,1),
                      ('10u','heightAboveGround',10):('u','m s**-1',-150,150),
-                     ('10v','heightAboveGround',10):('v','m s**-1',-150,150)}
+                     ('10v','heightAboveGround',10):('v','m s**-1',-150,150), **optional}
             spec = names.get(signature)
             if not spec: continue
             key, units, low, high = spec
@@ -50,15 +54,34 @@ def decode_fields(data, source_file, retrieved_at):
             if valid.mean()<.95 or np.any(values[valid]<low) or np.any(values[valid]>high): raise ValueError('Implausible model field')
             output = np.full((181,360),np.nan); output[y[valid],x[valid]] = values[valid]
             if key=='precipitation': output *= 3600 # 1 kg m^-2 liquid water = 1 mm
+            if key=='pressure': output /= 100 # Source Pa; display mean sea-level pressure in hPa.
             stamp = lambda d,t: iso(datetime.strptime(f'{int(d):08d}{int(t):04d}','%Y%m%d%H%M').replace(tzinfo=timezone.utc))
-            times.add((stamp(get('dataDate'),get('dataTime')),stamp(get('validityDate'),get('validityTime'))))
+            field_times[key] = (stamp(get('dataDate'),get('dataTime')),stamp(get('validityDate'),get('validityTime')))
+            if signature not in optional: times.add(field_times[key])
             fields[key] = [None if not np.isfinite(v) else round(float(v),3) for v in output.ravel()]
+        except Exception:
+            if signature not in optional: raise
+            # Optional fields cannot invalidate the existing core bundle. Never
+            # retain one side of an ambiguous duplicate or malformed optional.
+            key = optional[signature][0]
+            fields.pop(key, None); optional_errors[key] = 'invalid_optional_field'
         finally: codes_release(h)
-    if temperature is None or set(fields)!={'clouds','precipitation','u','v'} or len(times)!=1:
+    if temperature is None or not {'clouds','precipitation','u','v'}.issubset(fields) or len(times)!=1:
         raise ValueError('Missing or inconsistent instantaneous model fields')
     temperature['fields'] = {
         'clouds':{'variable':'Total cloud coverage (model)','units':'%','source_units':'%','step_type':'instant','values':fields['clouds']},
         'precipitation':{'variable':'Precipitation rate (liquid equivalent)','units':'mm/h','source_units':'kg m^-2 s^-1','step_type':'instant','values':fields['precipitation']},
         'wind':{'variable':'10-metre wind','units':'m/s','source_units':'m s^-1','step_type':'instant','u':fields['u'],'v':fields['v'],
                 'components':'Eastward u / northward v; arrows point toward, not meteorological wind-from'}}
+    temperature['bundle_version'] = 2
+    temperature['field_status'] = {}
+    for key, variable, units, source_units, level, identity in [
+        ('humidity','2 m relative humidity (model)','%','%','2 m above ground','RH'),
+        ('pressure','Mean Sea-Level Pressure (model)','hPa','Pa','mean sea level','PRMSL')]:
+        if key in fields and key not in optional_errors and field_times[key] in times:
+            temperature['fields'][key] = dict(variable=variable, units=units, source_units=source_units,
+                level=level, grib_parameter=identity, step_type='instant', values=fields[key])
+            temperature['field_status'][key] = 'available'
+        else:
+            temperature['field_status'][key] = optional_errors.get(key, 'inconsistent_time' if key in fields else 'not_returned')
     return temperature

@@ -6,6 +6,12 @@
 .weather-section-heading span,.weather-source,.weather-valid,.weather-panel small { font-size:var(--ui-font-sm); color:var(--ui-text-muted); }
 .weather-status.is-stale { color:var(--ui-warning); }
 .weather-toggle { display:flex; gap:10px; align-items:center; margin:6px 0 14px; font-size:var(--ui-font-regular); }
+.weather-wind-control { border:1px solid var(--line); border-radius:8px; padding:10px 12px; margin:0 0 14px; min-width:0; }
+.weather-wind-control .weather-toggle { margin:0; min-height:32px; cursor:pointer; }
+.weather-wind-control .weather-toggle b { margin-left:auto; font-size:var(--ui-font-sm); font-weight:500; color:var(--ui-text-muted); }
+.weather-wind-control .weather-toggle:has(input:checked) b { color:var(--accent); }
+.weather-wind-control .weather-source { line-height:1.5; margin:7px 0 0; overflow-wrap:anywhere; }
+.weather-wind-control input:focus-visible { outline:2px solid var(--accent); outline-offset:3px; }
 .weather-panel input[type=checkbox] { accent-color:var(--accent); width:18px; height:18px; }
 .weather-opacity { display:grid; grid-template-columns:1fr auto; gap:8px; font-size:var(--ui-font-sm); color:var(--ui-text-muted); }
 .weather-opacity input { width:100%; grid-column:1/-1; accent-color:var(--accent); }

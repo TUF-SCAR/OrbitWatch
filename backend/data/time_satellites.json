@@ -1,4 +1,147 @@
 {
-  "norad_ids": [25544,20580,48274,39084,25867,25994,27424,39634,40697,43435,41866,41752,26407,40544,44057],
-  "default_ids": [25544,20580,48274,39084]
+  "norad_ids": [
+    25544,
+    20580,
+    48274,
+    39084,
+    25867,
+    25994,
+    27424,
+    39634,
+    40697,
+    43435,
+    41866,
+    41752,
+    26407,
+    40544,
+    44057
+  ],
+  "default_ids": [
+    25544,
+    20580,
+    48274,
+    39084
+  ],
+  "lifetimes": {
+    "25544": {
+      "launch_date": "1998-11-20",
+      "decay_date": null,
+      "precision": "UTC calendar day",
+      "source": "Existing imported Space-Track GP_HISTORY LAUNCH_DATE metadata; verified 2026-11-02",
+      "source_url": "https://www.space-track.org/documentation",
+      "decay_note": "No verified decay date in the reviewed metadata; archive endpoints are not lifetime bounds."
+    },
+    "20580": {
+      "launch_date": "1990-04-24",
+      "decay_date": null,
+      "precision": "UTC calendar day",
+      "source": "Existing imported Space-Track GP_HISTORY LAUNCH_DATE metadata; verified 2026-11-02",
+      "source_url": "https://www.space-track.org/documentation",
+      "decay_note": "No verified decay date in the reviewed metadata; archive endpoints are not lifetime bounds."
+    },
+    "48274": {
+      "launch_date": "2021-04-29",
+      "decay_date": null,
+      "precision": "UTC calendar day",
+      "source": "Existing imported Space-Track GP_HISTORY LAUNCH_DATE metadata; verified 2026-11-02",
+      "source_url": "https://www.space-track.org/documentation",
+      "decay_note": "No verified decay date in the reviewed metadata; archive endpoints are not lifetime bounds."
+    },
+    "39084": {
+      "launch_date": "2013-02-11",
+      "decay_date": null,
+      "precision": "UTC calendar day",
+      "source": "Existing imported Space-Track GP_HISTORY LAUNCH_DATE metadata; verified 2026-11-02",
+      "source_url": "https://www.space-track.org/documentation",
+      "decay_note": "No verified decay date in the reviewed metadata; archive endpoints are not lifetime bounds."
+    },
+    "25867": {
+      "launch_date": "1999-07-23",
+      "decay_date": null,
+      "precision": "UTC calendar day",
+      "source": "Existing imported Space-Track GP_HISTORY LAUNCH_DATE metadata; verified 2026-11-02",
+      "source_url": "https://www.space-track.org/documentation",
+      "decay_note": "No verified decay date in the reviewed metadata; archive endpoints are not lifetime bounds."
+    },
+    "25994": {
+      "launch_date": "1999-12-18",
+      "decay_date": null,
+      "precision": "UTC calendar day",
+      "source": "Existing imported Space-Track GP_HISTORY LAUNCH_DATE metadata; verified 2026-11-02",
+      "source_url": "https://www.space-track.org/documentation",
+      "decay_note": "No verified decay date in the reviewed metadata; archive endpoints are not lifetime bounds."
+    },
+    "27424": {
+      "launch_date": "2002-05-04",
+      "decay_date": null,
+      "precision": "UTC calendar day",
+      "source": "Existing imported Space-Track GP_HISTORY LAUNCH_DATE metadata; verified 2026-11-02",
+      "source_url": "https://www.space-track.org/documentation",
+      "decay_note": "No verified decay date in the reviewed metadata; archive endpoints are not lifetime bounds."
+    },
+    "39634": {
+      "launch_date": "2014-04-03",
+      "decay_date": null,
+      "precision": "UTC calendar day",
+      "source": "Existing imported Space-Track GP_HISTORY LAUNCH_DATE metadata; verified 2026-11-02",
+      "source_url": "https://www.space-track.org/documentation",
+      "decay_note": "No verified decay date in the reviewed metadata; archive endpoints are not lifetime bounds."
+    },
+    "40697": {
+      "launch_date": "2015-06-23",
+      "decay_date": null,
+      "precision": "UTC calendar day",
+      "source": "Existing imported Space-Track GP_HISTORY LAUNCH_DATE metadata; verified 2026-11-02",
+      "source_url": "https://www.space-track.org/documentation",
+      "decay_note": "No verified decay date in the reviewed metadata; archive endpoints are not lifetime bounds."
+    },
+    "43435": {
+      "launch_date": "2018-04-18",
+      "decay_date": null,
+      "precision": "UTC calendar day",
+      "source": "NASA TESS mission page",
+      "source_url": "https://science.nasa.gov/mission/tess/",
+      "decay_note": "No verified decay date in the reviewed metadata; archive endpoints are not lifetime bounds."
+    },
+    "41866": {
+      "launch_date": "2016-11-19",
+      "decay_date": null,
+      "precision": "UTC calendar day",
+      "source": "Existing imported Space-Track GP_HISTORY LAUNCH_DATE metadata; verified 2026-11-02",
+      "source_url": "https://www.space-track.org/documentation",
+      "decay_note": "No verified decay date in the reviewed metadata; archive endpoints are not lifetime bounds."
+    },
+    "41752": {
+      "launch_date": "2016-09-08",
+      "decay_date": null,
+      "precision": "UTC calendar day",
+      "source": "Existing imported Space-Track GP_HISTORY LAUNCH_DATE metadata; verified 2026-11-02",
+      "source_url": "https://www.space-track.org/documentation",
+      "decay_note": "No verified decay date in the reviewed metadata; archive endpoints are not lifetime bounds."
+    },
+    "26407": {
+      "launch_date": "2000-07-16",
+      "decay_date": null,
+      "precision": "UTC calendar day",
+      "source": "Existing imported Space-Track GP_HISTORY LAUNCH_DATE metadata; verified 2026-11-02",
+      "source_url": "https://www.space-track.org/documentation",
+      "decay_note": "No verified decay date in the reviewed metadata; archive endpoints are not lifetime bounds."
+    },
+    "40544": {
+      "launch_date": "2015-03-27",
+      "decay_date": null,
+      "precision": "UTC calendar day",
+      "source": "Existing imported Space-Track GP_HISTORY LAUNCH_DATE metadata; verified 2026-11-02",
+      "source_url": "https://www.space-track.org/documentation",
+      "decay_note": "No verified decay date in the reviewed metadata; archive endpoints are not lifetime bounds."
+    },
+    "44057": {
+      "launch_date": "2019-02-27",
+      "decay_date": null,
+      "precision": "UTC calendar day",
+      "source": "Existing imported Space-Track GP_HISTORY LAUNCH_DATE metadata; verified 2026-11-02",
+      "source_url": "https://www.space-track.org/documentation",
+      "decay_note": "No verified decay date in the reviewed metadata; archive endpoints are not lifetime bounds."
+    }
+  }
 }

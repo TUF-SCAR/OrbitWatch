@@ -307,6 +307,7 @@ function applyQuality(viewer, tileset, quality) {
 
 export default function OrbitGlobe({
   historicalData = null,
+  timeLoadId = 0,
   trackedIds,
   selectedId,
   selectedTime,
@@ -1039,6 +1040,7 @@ export default function OrbitGlobe({
     const viewer = viewerRef.current;
     if (!viewer) return;
     updateSceneTime(viewer,selectedTime,mode,ORBITWATCH_MEMORY_PROFILE.targetFrameRate);
+    solarSystemLayerRef.current?.updatePositions(true);
   }, [selectedTime, mode]);
 
   useEffect(() => {
@@ -1121,7 +1123,7 @@ export default function OrbitGlobe({
 
   useEffect(() => {
     const viewer = viewerRef.current;
-    if (!viewer || !earthActiveRef.current || mode === "time") return;
+    if (!viewer || !earthActiveRef.current) return;
     if(mode === "live" && mapStyle === "google" && mapRequestRef.googleError && mapRetryNonce>0 && googleRetryNonceRef.current!==mapRetryNonce) {
       googleRetryNonceRef.current=mapRetryNonce;
       // Keep a valid raster surface before releasing failed/cached Google data.
@@ -1142,12 +1144,11 @@ export default function OrbitGlobe({
     const viewer=viewerRef.current;
     if(!viewer || mode !== "time") return undefined;
     const controller=new AbortController();
-    prepareTimeScene(viewer,{time:selectedTime,signal:controller.signal,earth:earthActiveRef.current,waitForTiles:!mapRequestRef.activeKey || !['esri','local-reference'].includes(mapRequestRef.activeMap),
-      applyMap:()=>applyBaseMap(viewer,googleTilesRef.current,googleReadyRef.current,mapStyleRef.current,mapRequestRef,labelsEnabledRef.current)})
-      .then(()=>{if(!controller.signal.aborted) callbacksRef.current.onTimeReady?.({timestamp:selectedTime.getTime()});})
-      .catch(error=>{if(error.name !== "AbortError" && !controller.signal.aborted) callbacksRef.current.onTimeReady?.({timestamp:selectedTime.getTime(),error:error.message});});
+    prepareTimeScene(viewer,{time:selectedTime,signal:controller.signal,earth:false,waitForTiles:false})
+      .then(()=>{if(!controller.signal.aborted) callbacksRef.current.onTimeReady?.({timestamp:selectedTime.getTime(),sequence:timeLoadId});})
+      .catch(error=>{if(error.name !== "AbortError" && !controller.signal.aborted) callbacksRef.current.onTimeReady?.({timestamp:selectedTime.getTime(),sequence:timeLoadId,error:error.message});});
     return ()=>controller.abort();
-  },[mode,selectedTime,mapRetryNonce]);
+  },[mode,selectedTime,timeLoadId]);
 
   useEffect(() => {
     const viewer = viewerRef.current;

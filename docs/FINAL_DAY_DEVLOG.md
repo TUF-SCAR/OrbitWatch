@@ -874,3 +874,102 @@ Python compile checks and diff whitespace checks passed. Browser viewport restor
 Cleanup: temporary API/Vite/browser and disposable PostgreSQL test cluster stopped.
 No recurring job was installed. The production heartbeat is historical one-shot
 execution evidence and will correctly become stale, not proof of ongoing service.
+
+## Batch 08 — Complete Time Explorer
+
+Starting HEAD 08424141b171b80853056e8130b8586199f6c553. Kept exactly two
+product modes and the existing Viewer/shared celestial meshes. Time navigation now
+accepts all 47 canonical destinations (Sun, eight planets, 26 moons, five dwarfs,
+seven asteroids), including the same overview, subsystems and full catalog as Live.
+The existing approximate scene model, canonical same-time center cache, parent-
+attached paths and local camera transforms remain in use; no precision JPL claim.
+Date changes force the shared positions/frame to update without reselecting Earth.
+
+Time uses the shared raster map gallery with an independent saved map preference
+and label toggle. Google 3D remains explicitly Live-only because its loader lifecycle
+is not Time-compatible; keyed providers remain gated. NASA/Esri/OSM and compatible
+rasters are clearly modern/static reference imagery, never selected-date observations.
+Existing atomic map replacement/fallback remains intact. Time labels are names only;
+Live weather/events/location readings are disabled there. Imagery requests and archive
+coverage do not block mathematical scene readiness or navigation.
+
+Calendar range is 1945-01-01 UTC through the current instant, with month/leap/DST
+validation and explicit local/UTC display. Calendar/scrub edits change draft state;
+LOAD confirms the scene time. Entry needs no introductory Load. Each Load clears
+historical selections/orbits, satellite inspector/follow, stale weather/event panels
+and markers, preserving the celestial destination and local camera. Sequence ID plus
+UTC timestamp fence readiness callbacks; obsolete waits/fetches abort. The cinematic
+shield hides/inerts ordinary HUD while the requested/confirmed date dock stays usable.
+Timeouts finish with a specific scene retry; imagery has its own retry. No arbitrary
+loading delays or extra Viewer. Loads and entry start with all 15 toggles OFF; the
+four legacy default IDs remain metadata/test constants only. Live selections survive.
+
+New compact HistoricalSatelliteList replaces Time's bulk explorer workflow. It
+separates verified prelaunch/decay, missing archive, qualifying stored elements and
+unknown lifetime status. Coverage checks use actual valid windows, not min/max epoch
+bounds; checked objects still require successful backend propagation. A single
+prelaunch notice is dismissible. The immutable 15 IDs were not changed. Added reviewed
+lifetime metadata in time_satellites.json: 14 launch dates read from genuine existing
+imported Space-Track GP_HISTORY LAUNCH_DATE fields, TESS from
+https://science.nasa.gov/mission/tess/ (2018-04-18). Dates have UTC-day precision;
+launch-day status without qualifying elements is unknown. No verified decay dates
+were available, and none were invented. No archive endpoint is treated as a lifetime
+bound. Before the first satellite era, trajectory requests are skipped. Backend
+stored-only/newest-at-or-before/24-hour/SGP4 policies were not modified.
+
+Verification: 66 focused frontend tests PASS (new lifetime/1945/DST checks, calendar,
+reference-map cancellation/fallback, historical catalog, astronomy/local frames,
+weather/labels/picking, auth transport and notification UI/service-worker regressions).
+The separate existing solar-system layer suite's 13 cases and LOD suite's three cases
+also passed, including all 47 center/representation/resource cleanup checks; the
+celestial content case passed. Initial failures were obsolete nine-body/forced-Esri/
+immediate-date-change assertions, updated to the requested behavior; a test-only Node
+process import resolved lint. Final ESLint and production build PASS (2,119 modules);
+existing bundle-size/plugin timing warnings remain. No backend algorithm changed,
+so unrelated backend suites were not rerun.
+
+Actual browser smoke used production-built frontend + genuine backend auth on an
+isolated loopback PostgreSQL database. Two authentic cached archive records (ISS and
+Hubble, 2022-01-01) were copied ONLY into that disposable DB; no provider downloads.
+Verified immediate Time entry/0 toggles, calendar draft leaving scene unchanged,
+1945 LOAD and one 15-object prelaunch notice, all disabled prelaunch rows, full 47-
+object catalog and Saturn subsystem, NASA reference selection, Titan travel and
+subsequent date LOAD retaining Titan/local view, Earth return, a genuine coverage
+shortcut and explicit Hubble toggle yielding 1/1 historical positions. A new Load
+reset all 15; Live returned with its six selections and Esri, Time retained NASA.
+
+Browser inspection found and fixed Time Dock/System panel overlap using measured
+clearance, and a compact moon diagram pseudo-element covering neighboring cells.
+The final Earth parent hit-test resolves Earth, with panel bottom 534px above dock
+top 550px. At 390x844 the page width was 390, list/dock width 300; list bottom 510px
+was above dock top 522px. Improved narrow header/footer typography and omitted the
+redundant zero-selection note on small screens to expose more list content. Proof
+images are in the approved visualization workspace. Development optimizer reload
+instability was avoided by testing the production build; transient browser command
+timeouts were recovered through fresh observations. No physical touch-device claim.
+
+Supabase: READ ONLY. Measured 13,364,371 bytes used, 486,635,629 remaining against
+nominal 500 MB; archive remains 1,019 records and users five. No migration, import,
+record update, provider budget reset or production account/test message was performed.
+Batch 07 worker/push code is preserved; recurring deployment and real device push are
+still not operational and belong to final deployment, not this batch.
+
+Files: App, OrbitGlobe, SystemMenu, MapSettings, TimeDock, SceneTimePicker,
+TimePreparation, navigationVisibility, sceneCalendar, earthMapProviders,
+useHistoricalSatellites, live.css; new HistoricalSatelliteList and
+services/timeSatelliteAvailability; reviewed catalog JSON; focused tests and
+isolated browser fixture helper tests/serve_time_explorer.py. Only this Markdown
+file changed. No commits or pushes.
+
+Limits/Batch 09: celestial positions remain approximate catalog reconstructions;
+modern imagery and present-day place names are reference only; Google 3D is Live-only;
+archive gaps remain honest and day-only launch metadata cannot resolve launch-hour
+existence. Next batch implements bounded genuine historical weather snapshots and
+adds verified satellite archive coverage under the 300 MB normal/400 MB absolute
+storage ceilings. Do not broaden natural-event tracks or hosting here. Stop after
+Batch 08.
+
+Final mobile verification after readability fixes: 390px page width, 300px list/dock,
+203px scrollable list body; list bottom 543px above dock top 555px. Final screenshots
+saved. Temporary browser/API/preview and disposable PostgreSQL stopped; viewport
+reset. No production service or recurring notification worker was started.

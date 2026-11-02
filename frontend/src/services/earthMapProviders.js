@@ -2,7 +2,9 @@ import { createWorldImageryAsync, IonWorldImageryStyle, UrlTemplateImageryProvid
 import { localEarthReferenceProvider, nasaReferenceProvider } from "./nasaImagery.js";
 
 export function earthMapForMode(mode,map) {
-  return mode==='time' ? 'esri' : map;
+  // Google photorealistic loading currently owns a Live-only lifecycle. Time
+  // shares all compatible raster providers and never presents 3D as historical.
+  return mode==='time' && map==='google' ? 'esri' : map;
 }
 
 export function createEarthMapFactories({ionToken,cartoKey}={}) {

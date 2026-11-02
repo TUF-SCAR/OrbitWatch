@@ -1,15 +1,16 @@
 import {useEffect,useMemo,useRef,useState} from 'react';
 import {fetchHistoricalTrajectories} from './orbitwatchApi.js';
+import {FIRST_SATELLITE_TIME,historicalAvailability} from './timeSatelliteAvailability.js';
 import {timeSatelliteSelection} from '../data/timeExplorerCatalog.js';
 
 export function useHistoricalSatellites(enabled,ids,time,retry) {
-  const timestamp=time.toISOString(),idKey=timeSatelliteSelection(ids).sort((a,b)=>a-b).join(',');
+  const timestamp=time.toISOString(),idKey=timeSatelliteSelection(ids).filter(id=>!historicalAvailability(id,time).disabled).sort((a,b)=>a-b).join(',');
   const cache=useRef(null),[state,setState]=useState({state:'idle',objects:[],errors:[]});
   useEffect(()=>{
     if(!enabled)return undefined;
     const controller=new AbortController(),key=`${timestamp}:${idKey}:${retry}`;
     if(cache.current?.key===key) {setState(cache.current.value);return ()=>controller.abort();}
-    if(!idKey) {setState({state:'ready',timestamp,objects:[],errors:[]});return ()=>controller.abort();}
+    if(!idKey||Date.parse(timestamp)<FIRST_SATELLITE_TIME) {setState({state:'ready',timestamp,objects:[],errors:[]});return ()=>controller.abort();}
     setState({state:'loading',timestamp,objects:[],errors:[]});
     fetchHistoricalTrajectories(idKey.split(',').map(Number),timestamp,{signal:controller.signal}).then(result=>{
       if(controller.signal.aborted)return;

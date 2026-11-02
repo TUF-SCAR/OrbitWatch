@@ -3,7 +3,7 @@ import { Check, KeyRound, Map, Tags, X } from "lucide-react";
 import SpatialSurface from "./SpatialSurface.jsx";
 import { MAP_OPTIONS } from "../data/mapOptions.js";
 
-export default function MapSettings({ open, mapStyle, onMapStyleChange, labelsEnabled, onLabelsChange, onClose, mapStatus }) {
+export default function MapSettings({ open, mapStyle, onMapStyleChange, labelsEnabled, onLabelsChange, onClose, mapStatus, mode='live' }) {
 
   const hasCartoKey = Boolean(import.meta.env.VITE_CARTO_API_KEY);
   const fixedLabels = ["osm", "bing-road"].includes(mapStyle);
@@ -19,13 +19,15 @@ export default function MapSettings({ open, mapStyle, onMapStyleChange, labelsEn
       </div>
 
       <div className="hud-panel__body map-settings__body">
+      {mode==='time'&&<p className="inline-warning">Modern reference imagery, not imagery captured at the selected historical time. Buildings, roads and native map labels are contemporary. Historical weather is unavailable.</p>}
       {mapStatus?.message && <p role="status" className="inline-warning">{mapStatus.message}</p>}
 
       <div className="map-gallery" data-depth="4">
         {MAP_OPTIONS.map((map) => {
           const active = mapStatus?.activeMap === map.id;
           const failed=mapStatus?.providers?.[map.id]==="unavailable";
-          const unavailable = (map.requiresCartoKey && !hasCartoKey) || (["google", "bing", "bing-labels", "bing-road"].includes(map.id) && !import.meta.env.VITE_CESIUM_ION_TOKEN);
+          const timeUnsupported=mode==='time'&&map.id==='google';
+          const unavailable = timeUnsupported || (map.requiresCartoKey && !hasCartoKey) || (["google", "bing", "bing-labels", "bing-road"].includes(map.id) && !import.meta.env.VITE_CESIUM_ION_TOKEN);
           return (
             <button
               key={map.id}
@@ -33,10 +35,10 @@ export default function MapSettings({ open, mapStyle, onMapStyleChange, labelsEn
               onClick={() => !unavailable && onMapStyleChange(map.id)}
               aria-pressed={active}
               disabled={unavailable}
-              title={unavailable ? "Unconfigured: provider key required" : failed ? "Provider unavailable. Select to retry." : map.name}
+              title={timeUnsupported?'Google 3D is supported in Live Mode only':unavailable ? "Unconfigured: provider key required" : failed ? "Provider unavailable. Select to retry." : map.name}
             >
               <span className="map-card__preview"><img src={map.preview} alt="" width="320" height="180" /></span>
-              <span className="map-card__copy"><strong>{map.name}</strong>{unavailable ? <small><KeyRound size={13} /> UNCONFIGURED</small> : failed ? <small>UNAVAILABLE · RETRY</small> : mapStyle===map.id && !active ? <small>REQUESTED</small> : null}</span>
+              <span className="map-card__copy"><strong>{map.name}</strong>{timeUnsupported?<small>LIVE 3D ONLY</small>:unavailable ? <small><KeyRound size={13} /> UNCONFIGURED</small> : failed ? <small>UNAVAILABLE · RETRY</small> : mapStyle===map.id && !active ? <small>REQUESTED</small> : null}</span>
               {active && <span className="map-card__check"><Check size={15} /></span>}
             </button>
           );
@@ -45,7 +47,7 @@ export default function MapSettings({ open, mapStyle, onMapStyleChange, labelsEn
 
       <button className={`setting-toggle ${labelsEnabled || fixedLabels ? "is-active" : ""}`} disabled={fixedLabels} onClick={() => onLabelsChange(!labelsEnabled)} aria-pressed={labelsEnabled || fixedLabels} data-depth="5">
         <Tags size={19} />
-        <span><strong>Place labels</strong><small>{fixedLabels ? "Names are part of this provider’s map. Choose satellite imagery to hide them." : "Country, city and state names appear as you zoom in. Live model readings use the shared GFS grid when Weather is enabled; native map text stays unchanged."}</small></span>
+        <span><strong>Place labels</strong><small>{fixedLabels ? "Names are part of this provider’s map. Choose satellite imagery to hide them." : mode==='time'?"Names only: contemporary country, state and city names for orientation. No current weather readings.":"Country, city and state names appear as you zoom in. Live model readings use the shared GFS grid when Weather is enabled; native map text stays unchanged."}</small></span>
         <i>{labelsEnabled || fixedLabels ? "ON" : "OFF"}</i>
       </button>
       </div>

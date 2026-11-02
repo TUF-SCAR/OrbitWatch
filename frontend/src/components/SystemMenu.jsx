@@ -41,7 +41,7 @@ export default function SystemMenu({ open, activeBodyId, onSelectBody, onClose, 
   const reduced = useReducedMotionPreference();
   const [storedPage, setPage] = useState("map");
   const [storedSystem, setSystemId] = useState(null);
-  const timeOnly=mode === "time", page=timeOnly ? "map" : storedPage, systemId=timeOnly ? null : storedSystem;
+  const page=storedPage,systemId=storedSystem;
   const mapRef = useRef(null);
   useEffect(() => {
     const map = mapRef.current;
@@ -57,7 +57,6 @@ export default function SystemMenu({ open, activeBodyId, onSelectBody, onClose, 
   }, [open, systemId, page]);
   const moons = Object.values(CELESTIAL_BODIES).filter((body) => body.type === "Moon" && body.parent === systemId);
   function browseBody(id) {
-    if(timeOnly) { onSelectBody(id);return; }
     if (Object.values(CELESTIAL_BODIES).some((body) => body.type === "Moon" && body.parent === id)) { setSystemId(id); setPage("map"); }
     else onSelectBody(id);
   }
@@ -77,7 +76,7 @@ export default function SystemMenu({ open, activeBodyId, onSelectBody, onClose, 
 
       <div className="system-menu__tabs">
         <button type="button" className={page === "map" ? "is-active" : ""} aria-pressed={page === "map"} onClick={() => setPage("map")}>ORBIT MAP</button>
-        {!timeOnly && <button type="button" className={page === "catalog" ? "is-active" : ""} aria-pressed={page === "catalog"} onClick={() => setPage("catalog")}>CATALOG</button>}
+        {<button type="button" className={page === "catalog" ? "is-active" : ""} aria-pressed={page === "catalog"} onClick={() => setPage("catalog")}>CATALOG</button>}
       </div>
 
       <div className="system-menu__viewport">
@@ -135,13 +134,13 @@ export default function SystemMenu({ open, activeBodyId, onSelectBody, onClose, 
             </div>
             </>}
 
-            {!timeOnly && <button type="button" className="system-slide-next" onClick={() => setPage("catalog")}>
+            {<button type="button" className="system-slide-next" onClick={() => setPage("catalog")}>
               ALL OBJECTS <ChevronRight size={14} />
             </button>}
             <div className="system-map__note">SCHEMATIC UI MAP // REAL DISTANCES ARE USED IN THE 3D SCENE</div>
           </section>
 
-          {!timeOnly && <section className="system-slide system-slide--catalog" inert={page !== "catalog"}>
+          {<section className="system-slide system-slide--catalog" inert={page !== "catalog"}>
             <div className="system-catalog">
               {[
                 ["Star","STAR"],
@@ -177,8 +176,8 @@ export default function SystemMenu({ open, activeBodyId, onSelectBody, onClose, 
       </div>
 
       <div className="system-menu__foot hud-panel__footer">
-        <span>APPROXIMATE EPHEMERIS</span>
-        <strong>{timeOnly ? 9 : Object.keys(CELESTIAL_BODIES).length} OBJECTS</strong>
+        <span>{mode==='time'?'APPROXIMATE HISTORICAL SCENE':'APPROXIMATE EPHEMERIS'}</span>
+        <strong>{Object.keys(CELESTIAL_BODIES).length} OBJECTS</strong>
       </div>
     </SpatialSurface>}</AnimatePresence>
   );

@@ -12,11 +12,11 @@ test("CARTO uses the documented keyed browser endpoints and attribution; unconfi
   assert.match(dark.url,/key=test-key/);assert.match(dark.credit.html,/CARTO/);assert.match(dark.credit.html,/OpenStreetMap/);
 });
 
-test('Time Explorer always uses the existing Esri factory without mutating the Live preference',()=>{
+test('Time Explorer shares compatible raster factories without mutating the Live preference',()=>{
   const factories=createEarthMapFactories();
   assert.equal(factories['nasa-time'],undefined);
   for(const liveMap of ['google','osm','bing','nasa-reference','esri']) {
-    assert.equal(earthMapForMode('time',liveMap),'esri');
+    assert.equal(earthMapForMode('time',liveMap),liveMap==='google'?'esri':liveMap);
     assert.equal(earthMapForMode('live',liveMap),liveMap);
   }
   const provider=factories[earthMapForMode('time','google')]();

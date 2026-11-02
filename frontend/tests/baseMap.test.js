@@ -135,7 +135,7 @@ test('representative timestamp changes reuse Esri and never call the NASA factor
   f.viewer.clock={};await f.apply('osm',factories);
   for(const date of ['1990-01-01','2005-06-01','2024-06-01','2026-10-30','2035-01-01']) {
     updateSceneTime(f.viewer,new Date(`${date}T12:00:00Z`),'time',30);
-    await f.apply(earthMapForMode('time','osm'),factories);
+    await f.apply(earthMapForMode('time','esri'),factories);
     assert.deepEqual(f.layers,[esri]);
   }
   assert.equal(calls,1);assert.equal(nasa,0);

@@ -15,7 +15,7 @@ test("offline object catalog preserves backend IDs and search metadata", () => {
 });
 
 test("all catalog destinations have finite metre coordinates and closed orbits", () => {
-  for (const date of ["2000-01-01T12:00:00Z", "2026-09-17T00:00:00Z", "2030-01-01T00:00:00Z"]) {
+  for (const date of ["1945-01-01T00:00:00Z", "2000-01-01T12:00:00Z", "2026-09-17T00:00:00Z", "2030-01-01T00:00:00Z"]) {
     const time = JulianDate.fromIso8601(date);
     for (const id of ALL_CELESTIAL_IDS) {
       const position = bodyPositionFixed(id, time);

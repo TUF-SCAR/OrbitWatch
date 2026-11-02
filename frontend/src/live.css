@@ -501,3 +501,39 @@ input[type="checkbox"] { accent-color:#8de8fa; width:16px; height:16px; cursor:p
   .scene-picker form { padding:16px; }
   .scene-picker__navigation { gap:4px; grid-template-columns:30px minmax(0,1fr) 76px 30px; }
 }
+/* Date transitions shield the scene/HUD while leaving the dock usable. */
+.time-preparation { background:rgba(3,8,15,.72); backdrop-filter:blur(2px); padding-bottom:calc(var(--hud-dock-height,180px) + 24px); }
+.time-dock-owner { position:absolute; inset:0; z-index:210; pointer-events:none; }
+.time-dock-owner > .time-dock { pointer-events:auto; max-height:45dvh; overflow-y:auto; }
+.time-dock__load { border:1px solid #b8a7ff88; border-radius:7px; background:#b8a7ff20; color:#eee7ff; min-height:38px; padding:8px 14px; cursor:pointer; font:600 11px var(--ui-font-primary); }
+.time-dock__load:disabled { opacity:.4; cursor:default; }
+.time-dock.is-loading { border-color:#b8a7ff99; }
+.time-date-notice { flex-basis:100%; display:flex; align-items:center; justify-content:space-between; gap:12px; font-size:11px; line-height:1.5; color:#d3c7ff; padding:8px 10px; border:1px solid #b8a7ff44; }
+.time-date-notice button { flex:none; color:inherit; background:transparent; border:0; cursor:pointer; padding:5px; }
+.historical-satellite-list ul { list-style:none; padding:0; margin:0; display:grid; gap:8px; }
+.historical-satellite-list li { min-width:0; padding:11px; border:1px solid #b8a7ff29; background:#15192a77; overflow-wrap:anywhere; }
+.historical-satellite-list label { display:flex; align-items:center; gap:10px; cursor:pointer; }
+.historical-satellite-list input { width:17px; height:17px; flex:none; accent-color:#c4b6ff; }
+.historical-satellite-list strong { display:block; font-size:12px; color:#e4eafa; }
+.historical-satellite-list small { display:block; font-size:10px; line-height:1.6; color:#9daec6; }
+.historical-status { display:block; margin:8px 0 3px; font-size:11px; color:#c2b3eb; }
+.historical-satellite-list li[data-status=available] .historical-status { color:#a4e2c8; }
+.historical-satellite-list button:not(.icon-button) { margin-top:8px; padding:6px 8px; background:#212c3e; color:#c8dfea; border:1px solid #63819955; cursor:pointer; font-size:11px; }
+.historical-satellite-list :focus-visible { outline:2px solid #c4b6ff; outline-offset:3px; }
+@media(max-width:650px) { .time-dock-owner>.time-dock { max-height:42dvh; }.time-date-notice { font-size:10px; }.time-preparation h1 { font-size:23px; }.time-preparation small { margin-top:12px; font-size:11px; } }
+/* Respect the measured Time Dock clearance, including on moon-system diagrams. */
+.mode-time .system-menu { height:calc(100dvh - var(--ui-panel-top) - var(--ui-bottom-safe)); max-height:calc(100dvh - var(--ui-panel-top) - var(--ui-bottom-safe)); }
+.time-dock { width:min(1020px,calc(100vw - 130px)); }
+.time-date-notice { order:2; }
+@media(max-width:650px) { .time-dock { width:auto; }.mode-time .system-menu { min-height:210px; max-height:calc(100dvh - var(--ui-panel-top) - var(--ui-bottom-safe)); } }
+/* Compact grid buttons already have full cells; diagram hit slop must not
+   become an absolute pseudo-element covering the entire moon-system map. */
+.system-map[data-compact="true"] .system-planet::before { display:none; }
+@media(max-width:650px) {
+  .historical-satellite-list .eyebrow { font-size:9px; letter-spacing:.02em; }
+  .historical-satellite-list .hud-panel__header h2 { display:flex; align-items:center; gap:6px; font-size:15px; white-space:nowrap; }
+  .historical-satellite-list .hud-panel__header h2 svg { width:14px; flex:none; }
+  .historical-satellite-list .hud-panel__body > p { font-size:10px; line-height:1.5; margin:0 0 8px; }
+  .historical-satellite-list .hud-panel__footer { font-size:10px; line-height:1.4; }
+  .time-dock[data-tracked-count="0"] .time-satellite-coverage { display:none; }
+}

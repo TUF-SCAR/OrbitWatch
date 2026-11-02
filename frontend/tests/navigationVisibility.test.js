@@ -8,12 +8,12 @@ test("Live Earth exposes all scene controls and mode navigation", () => {
 test("off-Earth Live exposes System as the return path, without Earth controls", () => {
   assert.deepEqual(navigationVisibility("live", false), { modeRail: false, map: false, camera: false, system: true, explorer: false, place: false });
 });
-test("Time Explorer has shared camera/system navigation and dedicated imagery without Live map selector", () => {
-  assert.deepEqual(navigationVisibility("time", true), { modeRail: true, map: false, camera: true, system: true, explorer: true, place: true });
+test("Time Explorer has shared camera/system navigation and shared raster map gallery", () => {
+  assert.deepEqual(navigationVisibility("time", true), { modeRail: true, map: true, camera: true, system: true, explorer: true, place: true });
   assert.deepEqual(navigationVisibility("time", false), { modeRail: false, map: false, camera: false, system: true, explorer: false, place: false });
-  assert.equal(TIME_CELESTIAL_IDS.length,9);
+  assert.equal(TIME_CELESTIAL_IDS.length,47);
   for(const id of TIME_CELESTIAL_IDS) assert.ok(celestialDestinationAllowed("time",id));
-  for(const id of ["moon","ceres","pluto","phobos","bennu"]) {assert.ok(!celestialDestinationAllowed("time",id));assert.ok(celestialDestinationAllowed("live",id));}
+  for(const id of ["moon","ceres","pluto","phobos","bennu"]) {assert.ok(celestialDestinationAllowed("time",id));assert.ok(celestialDestinationAllowed("live",id));}
 });
 test("only two product modes are accepted; unknown modes have no controls", () => {
   assert.deepEqual(PRODUCT_MODES,["live","time"]);

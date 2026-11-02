@@ -601,7 +601,7 @@ export default function OrbitGlobe({
     let googleLoading = false;
     const removeReady = viewer.scene.postRender.addEventListener(() => { removeReady(); callbacksRef.current.onSceneReady?.(); });
     const idleEarthSpeed=uiNumber("--ui-idle-earth-speed",.00204);
-    const locationEligible=()=>locationInteractionRef.current.enabled&&modeRef.current==='live'&&earthActiveRef.current;
+    const locationEligible=()=>locationInteractionRef.current.enabled&&earthActiveRef.current;
     const surfaceClicks=createSurfaceClickGate({eligible:locationEligible,onSelect:value=>locationInteractionRef.current.onSelect?.(value)});
     surfaceClicksRef.current=surfaceClicks;
     let idleState = "waiting", pointerHeld = false, lastIdleFrame = performance.now(), lastIdleInteraction = lastInteractionRef.current, idleDestination = '', idleSettlingUntil = 0;
@@ -1080,14 +1080,14 @@ export default function OrbitGlobe({
   useEffect(()=>{
     const viewer=viewerRef.current;if(!viewer||viewer.isDestroyed())return;
     weatherMarkerRef.current ||= createWeatherLocationMarker(viewer);
-    weatherMarkerRef.current.update(mode==='live'&&selectedCelestialBody==='earth'?locationSelection:null);
+    weatherMarkerRef.current.update(selectedCelestialBody==='earth'?locationSelection:null);
   },[locationSelection,mode,selectedCelestialBody]);
 
   useEffect(()=>{
     const viewer=viewerRef.current;if(!viewer||viewer.isDestroyed())return;
     temperatureLayerRef.current ||= createTemperatureLayer(viewer);
-    temperatureLayerRef.current.update({field:weatherField,visible:weatherVisible&&mode==='live'&&selectedCelestialBody==='earth',
-      quality,opacity:weatherOpacity,compatible:weatherCompatible,immediate:mode!=='live'||selectedCelestialBody!=='earth'||!weatherField});
+    temperatureLayerRef.current.update({field:weatherField,visible:weatherVisible&&(mode==='live'||weatherField?.source_kind==='era5')&&selectedCelestialBody==='earth',
+      quality,opacity:weatherOpacity,compatible:weatherCompatible,immediate:mode==='time'||selectedCelestialBody!=='earth'||!weatherField});
   },[weatherField,weatherVisible,weatherOpacity,weatherCompatible,mode,selectedCelestialBody,quality]);
 
   useEffect(()=>{
@@ -1106,7 +1106,7 @@ export default function OrbitGlobe({
     const viewer=viewerRef.current;if(!viewer||viewer.isDestroyed())return;
     windLayerRef.current ||= createWindLayer(viewer);
     windFieldRef.current=windField;
-    windLayerRef.current.update({field:windField,visible:windVisible&&mode==='live'&&selectedCelestialBody==='earth',opacity:weatherOpacity,compatible:weatherCompatible,quality});
+    windLayerRef.current.update({field:windField,visible:windVisible&&(mode==='live'||windField?.source_kind==='era5')&&selectedCelestialBody==='earth',opacity:weatherOpacity,compatible:weatherCompatible,quality});
   },[windField,windVisible,weatherOpacity,weatherCompatible,mode,selectedCelestialBody,quality]);
 
   useEffect(()=>{

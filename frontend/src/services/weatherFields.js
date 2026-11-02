@@ -1,5 +1,6 @@
 import { rainColor, RAIN_GRADIENT } from './precipitationStyle.js';
 import { sampleTemperature, temperaturePixels, TEMPERATURE_GRADIENT } from './temperatureGrid.js';
+import {validateHistoricalField} from './historicalWeather.js';
 
 const HUMIDITY_PALETTE=[[0,137,92,63],[25,203,170,99],[50,90,175,165],[75,74,135,207],[100,146,123,216]];
 const PRESSURE_PALETTE=[[900,65,85,174],[980,62,170,194],[1013,172,218,201],[1040,211,159,178],[1100,149,87,172]];
@@ -23,6 +24,7 @@ export function selectWeatherField(bundle,variable='temperature') {
   return {...bundle,...field,id:`${bundle.id}:${variable}`,display_variable:variable};
 }
 export function validateModelField(variable,field) {
+  if(field?.source_kind==='era5')return validateHistoricalField(variable,field);
   const limits={clouds:[0,100,'%'],precipitation:[0,3600,'mm/h'],wind:[-150,150,'m/s'],humidity:[0,100,'%'],pressure:[800,1200,'hPa']};
   const spec=limits[variable];if(!spec||field.units!==spec[2]||field.step_type!=='instant')throw Error('Unsupported model field');
   if(variable==='humidity'&&(field.grib_parameter!=='RH'||field.level!=='2 m above ground'||field.source_units!=='%'))throw Error('Expected modeled 2 m RH');

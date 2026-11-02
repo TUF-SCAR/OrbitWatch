@@ -14,6 +14,8 @@ ROOT=Path(__file__).resolve().parents[1];sys.path.insert(0,str(ROOT/'backend'))
 
 
 def main():
+    import argparse
+    parser=argparse.ArgumentParser();parser.add_argument('--weather-fixture',action='store_true');args=parser.parse_args()
     with psycopg.connect(host='127.0.0.1',port=55444,user='orbitwatch_test',dbname='postgres',connect_timeout=3,autocommit=True) as db:
         db.execute('DROP DATABASE IF EXISTS orbitwatch_time_ui WITH (FORCE)');db.execute('CREATE DATABASE orbitwatch_time_ui')
     with patch('dotenv.load_dotenv',return_value=False),patch.dict(os.environ,{'DATABASE_URL':'postgresql+psycopg://orbitwatch_test@127.0.0.1:55444/orbitwatch_time_ui',
@@ -27,6 +29,36 @@ def main():
         from fastapi.testclient import TestClient
         import uvicorn
         DatabaseBase.metadata.create_all(database_engine)
+        # Additive migration exercised twice against this fixed disposable DB only.
+        import re
+        from sqlalchemy import text
+        weather_sql=(ROOT/'backend/migrations/006_historical_weather.sql').read_text(encoding='utf8')
+        weather_sql=re.sub(r'(?m)^BEGIN;\s*$|^COMMIT;\s*$','',weather_sql)
+        with database_engine.begin() as db:
+            db.exec_driver_sql(weather_sql);db.exec_driver_sql(weather_sql)
+        if args.weather_fixture:
+            # Scientifically valid constants ONLY for UI contract testing. Never
+            # source downloads, never production. Every view labels the fixture.
+            from hashlib import sha256
+            from datetime import datetime,timezone
+            import numpy as np
+            from services.historical_weather_codec import encode,DATASET,PROVIDER,GRID,NODES
+            from services.historical_weather_storage import SnapshotStorage
+            blobs={}
+            for month in (1,4):
+                date=datetime(1945,month,15,12,tzinfo=timezone.utc)
+                provenance=dict(dataset=DATASET,product='reanalysis',source_sha256='a'*64,
+                    job_id='ISOLATED-UI-SCIENTIFIC-FIXTURE',isolated_fixture=True)
+                values={name:np.full(NODES,value,dtype=float) for name,value in {'temperature':20,'dewpoint':10,'clouds':50,'precipitation':2,'pressure':1013,'u':3,'v':4,'humidity':52.5}.items() if month==1 or name!='humidity'}
+                values['temperature'][0]=np.nan
+                blob,header=encode(date,values,provenance);checksum=sha256(blob).hexdigest();key=f'era5/v1/{date.strftime("%Y%m%dT%H%M%SZ")}/{checksum}.owwx';blobs[key]=blob
+                with database_engine.begin() as db:
+                    db.execute(text('''INSERT INTO historical_weather_snapshots (timestamp,version,provider,dataset,product,variables,grid,object_key,sha256,compressed_bytes,status,validated_at,provenance)
+                        VALUES (:date,1,:provider,:dataset,'reanalysis',CAST(:variables AS jsonb),CAST(:grid AS jsonb),:key,:sha,:size,'partial',now(),CAST(:provenance AS jsonb))'''),dict(date=date,provider=PROVIDER,dataset=DATASET,variables=json.dumps(header['fields']),grid=json.dumps(GRID),key=key,sha=checksum,size=len(blob),provenance=json.dumps(provenance)))
+            class FixtureStorage:
+                def get(self,key):return blobs[key]
+            from services import historical_weather
+            historical_weather.SnapshotStorage=FixtureStorage
         fixture=TestClient(app)
         response=fixture.post('/api/auth/register',json={'username':'time_fixture','email':'time@example.invalid','password':'Disposable-time-2026'})
         assert response.status_code==201

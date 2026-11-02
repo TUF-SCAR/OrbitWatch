@@ -12,6 +12,7 @@ export default function SceneDock({
   weatherAvailable,
   weatherOpen,
   onToggleWeather,
+  historicalWeather=false,
 }) {
   return (
     <SpatialSurface as="aside" side="right" strength={3.1} className={`scene-dock ${weatherAvailable ? 'scene-dock--weather' : ''}`} aria-label="Scene controls">
@@ -28,7 +29,7 @@ export default function SceneDock({
       {controls.system && <button aria-pressed={systemOpen} className={`scene-tool ${systemOpen ? "is-active" : ""}`} onClick={onToggleSystem} title="Solar system (S)" data-depth="5">
         <Orbit size={19} /><span>System</span>
       </button>}
-      {weatherAvailable && <button aria-label="Weather" aria-pressed={weatherOpen} className={`scene-tool ${weatherOpen?'is-active':''}`} onClick={onToggleWeather} title="Live Earth weather (W)" data-depth="3"><Thermometer size={19}/><span>Weather</span></button>}
+      {weatherAvailable && <button aria-label={historicalWeather?'Historical weather':'Weather'} aria-pressed={weatherOpen} className={`scene-tool ${weatherOpen?'is-active':''}`} onClick={onToggleWeather} title={historicalWeather?'Historical weather (W)':'Live Earth weather (W)'} data-depth="3"><Thermometer size={19}/><span>{historicalWeather?'Archive':'Weather'}</span></button>}
     </SpatialSurface>
   );
 }

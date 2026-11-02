@@ -1,4 +1,17 @@
 .weather-panel { --panel-width:420px; }
+.historical-weather-panel { max-height:calc(100dvh - var(--ui-bottom-safe,180px) - 100px); }
+.historical-weather-panel .weather-field-card:disabled { opacity:.45; cursor:not-allowed; }
+.historical-weather-panel .inline-warning { overflow-wrap:anywhere; }
+.historical-weather-panel .weather-source { line-height:1.6; }
+.historical-weather-panel a,.historical-location-card a { color:var(--accent); }
+.historical-location-card { border-color:#65b3c680; }
+.historical-weather-legend>strong { font-size:var(--ui-font-sm); }
+.weather-legend>.historical-weather-legend:first-child { display:block; }
+@media(max-width:720px) {
+  .historical-weather-panel .map-card__copy { padding:6px; }
+  .historical-weather-panel .map-card__copy strong { font-size:11px; }
+  .historical-location-card { left:var(--ui-content-left,80px); width:calc(100vw - var(--ui-content-left,80px) - 12px); }
+}
 .weather-panel__body { display:flex; flex-direction:column; gap:var(--ui-panel-spacing); }
 .weather-panel section+section { border-top:1px solid var(--line); padding-top:var(--ui-panel-spacing); }
 .weather-panel h3 { font-size:var(--ui-font-regular); margin:0 0 12px; color:var(--ui-text); }

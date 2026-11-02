@@ -10,7 +10,7 @@ export function temperatureProvider(field,quality) {
   const context=canvas.getContext('2d'),image=context.createImageData(width,height);
   image.data.set(weatherPixels(field,width,height));context.putImageData(image,0,0);
   return new SingleTileImageryProvider({url:canvas.toDataURL('image/png'),tileWidth:width,tileHeight:height,rectangle:Rectangle.MAX_VALUE,
-    credit:new Credit('<a href="https://nomads.ncep.noaa.gov/">NOAA/NCEP GFS · model weather</a>')});
+    credit:new Credit(field.source_kind==='era5'?'<a href="https://cds.climate.copernicus.eu/datasets/reanalysis-era5-single-levels">Copernicus / ECMWF ERA5 · historical reanalysis</a>':'<a href="https://nomads.ncep.noaa.gov/">NOAA/NCEP GFS · model weather</a>')});
 }
 
 export function createTemperatureLayer(viewer,{makeProvider=temperatureProvider,now=()=>performance.now(),reduced=prefersReducedMotion}={}) {

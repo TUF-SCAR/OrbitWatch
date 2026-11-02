@@ -103,6 +103,10 @@ export function getApiBaseUrl() {
   return API_BASE;
 }
 
+export function fetchHistoricalWeatherCoverage(signal){return requestJson('/api/historical/weather/coverage',{signal});}
+export function fetchHistoricalWeatherSnapshot(time,signal){return requestJson(`/api/historical/weather/snapshot?${new URLSearchParams({timestamp:time.toISOString()})}`,{signal,timeoutMs:20000});}
+export function fetchHistoricalWeatherLocation(time,point,signal){return requestJson(`/api/historical/weather/location?${new URLSearchParams({timestamp:time.toISOString(),latitude:point.latitude,longitude:point.longitude})}`,{signal});}
+
 export function fetchSatelliteCatalog(signal) {
   return requestJson("/api/satellites/catalog", { signal });
 }

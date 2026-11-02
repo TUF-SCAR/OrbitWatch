@@ -973,3 +973,169 @@ Final mobile verification after readability fixes: 390px page width, 300px list/
 203px scrollable list body; list bottom 543px above dock top 555px. Final screenshots
 saved. Temporary browser/API/preview and disposable PostgreSQL stopped; viewport
 reset. No production service or recurring notification worker was started.
+
+## Batch 09 — Genuine Historical Weather & Satellite Archives
+
+Starting HEAD 6cbbcec11727f5d33f92e7ff593973cf8396a9b6; working tree was clean.
+Preserved Batch 08's 47 destinations, independent reference map preference,
+1945–present draft/LOAD calendar, local camera context, names-only place labels,
+15 unchecked satellite identities and strict stored-only 24-hour orbital rule.
+Batch 07 notification architecture was not modified. No commits or pushes.
+
+Implemented explicit ERA5 ingestion, private-object storage adapter, compact
+metadata migration 006, authenticated coverage/snapshot/location routes, and
+Earth-only Time Explorer weather controls. Main toggle, six variable cards,
+opacity, independent Wind Flow, real coverage, deliberate nearest-snapshot scene
+LOAD and historical click inspector share the existing Viewer. Historical date
+changes reset weather/inspection and abort obsolete requests; synchronous timestamp
+guards exclude old planes before effects run. Weather never blocks scene readiness.
+Live current/forecast sources remain separate. Historical labels remain names-only.
+Fixed the obsolete Time Dock claim that historical weather never exists and a
+standalone legend inheriting the Live legend's horizontal flex layout.
+
+Scientific source: Copernicus CDS / ECMWF, reanalysis-era5-single-levels,
+https://cds.climate.copernicus.eu/datasets/reanalysis-era5-single-levels,
+DOI 10.24381/cds.adbb2d47, current dataset CC-BY licence/required C3S attribution.
+Reviewed official ECMWF ERA5 documentation and CDS API setup. ERA5 covers 1940
+onward, including 1945. It is atmospheric reanalysis, not literal satellite/radar
+or station observations; sparse early observations constrain estimates less.
+Source and uncertainty statements appear in the historical panel and inspector.
+
+Exactly 328 planned timestamps: January/April/July/October 15, 12:00 UTC,
+1945–2026 inclusive. Genuine production snapshots downloaded/imported: **0 / 328**.
+Per-variable production coverage is zero for temperature, dewpoint, cloud fraction,
+preceding-hour precipitation, MSL pressure, U/V wind and derived RH. No generated
+production weather, nearest-date substitution, temporal interpolation, current-
+weather fallback or special-date fabrication. The schema permits future individually
+verified dates; this importer deliberately accepts only scheduled seasonal dates.
+
+CDS access was not configured: no CDSAPI_KEY/ECMWF_DATASTORES_KEY, .cdsapirc or
+matching ECMWF rc account configuration. The 1945 pilot stopped at this local
+credential prerequisite, with **zero CDS job submissions/download calls**. Recent-
+year ingestion was deferred for the same prerequisite rather than repeated failed
+authentication. Dataset-terms acceptance cannot be verified without the owner's
+account and must be completed manually. No credentials were created or printed.
+SUPABASE_URL and a backend Storage service-role credential are also absent.
+Consequently no production bucket/blob was created and no weather metadata was
+seeded. No direct writes to Supabase's managed Storage schema were attempted.
+
+Pipeline: pinned official ecmwf-datastores-client 0.5.3 in the existing venv.
+historical_weather_import.py supports status, migrate, download --year YEAR,
+inspect --file FILE and import --file FILE --expected-target 91629c91746ef7a1.
+One grouped year/available-month request, seven genuine source variables, 12:00,
+GRIB and requested 1-degree grid; explicit operation only, never startup/API work.
+Uses final ERA5 (experiment 1) with a conservative 95-day release lag; no ERA5T
+substitution. A persistent request/job manifest polls once per invocation and
+resumes the same job, with no queue wait or automatic ambiguous resubmission.
+Completed months and checksums prevent duplicate downloads as a year expands.
+One host operation lease and persistent provider gate; four snapshots/import,
+64 MiB source response, 256 MiB local pilot and 4 MiB object limits.
+
+Scientific validation checks CDS manifest/dataset/product, source SHA-256,
+ECMWF ea/oper class/stream, final experiment, supported GRIB parameter/units/level,
+exact validity instant, instant analysis versus one-hour forecast accumulation,
+regular global grid ordering/wrap, bitmap masks and physical ranges. GRIB1's
+ECMWF surface-coded 2m/10m/MSL parameters are recognized by exact paramId;
+GRIB2's explicit levels are also accepted. Invalid variables are reported as
+partial coverage, never silently zeroed. Temperature/dewpoint K→°C, cloud fraction
+→%, Pa→hPa, accumulated metres→mm for the preceding hour. RH uses ECMWF's
+liquid-water Tetens relation es=611.21 exp(17.502*(T−273.16)/(T−32.19)), bounded
+to 0–100%; display wind speed is hypot(U,V)*3.6 km/h.
+
+Canonical grid is 360×181 integer-degree point samples, west −180°, north 90°,
+with cyclic longitude and both polar rows. CDS regridding or direct integer-node
+decimation of 0.25-degree data adds no resolution. Spatial bilinear display sampling
+propagates missing contributing nodes. OWWX1 uses zlib, a bounded metadata header
+and little-endian int16 planes, −32768 missing sentinel, explicit units/offsets/
+scales/missing counts. Scales: 0.01 for °C, %, mm and m/s; pressure 0.1 hPa with
+1000 hPa offset. Error is at most half a quantization step. Decompression size,
+header/plane consistency and SHA are revalidated before rendering/sampling.
+
+Storage design: private historical-weather bucket, no anonymous/client policies,
+4 MiB application/octet-stream cap, server-only service access and project match.
+Immutable key era5/v1/UTC_TIMESTAMP/SHA256.owwx; verify upload by checksum GET
+before publishing the metadata transaction. Failed/corrupt objects never receive
+metadata; interruption can leave a reusable versioned object, never a dangling
+published index. PostgreSQL contains small metadata only, not field arrays.
+Bounded authenticated responses, transparent negotiated HTTP gzip, four decoded
+objects cached and exact-date 404s; Storage failures return an isolated 503.
+Importer checks measured PostgreSQL <300 MB and all object bytes <750 MB, and
+refuses unknown-size objects. File storage and egress are separate from DB reserve.
+
+Supabase fingerprint 91629c91746ef7a1 verified before writes. Migration 006 applied
+and reapplied idempotently with RLS and unchanged users/orbital rows. PostgreSQL
+13,364,371 bytes before → 13,421,715 after migration → 13,446,291 after first
+satellite batch → **13,487,251 final**; nominal remaining **486,512,749 bytes**.
+Normal 300 MB and absolute 400 MB ceilings remain well clear. Storage metadata
+measured **0 objects / 0 bytes before and after**, no unknown-size entries.
+Dashboard egress/plan usage was not accessible and was not claimed measured.
+
+Satellite audit reused seven complete saved GP_HISTORY archives; no old request
+was repeated. Two disjoint, one-day pilot windows ending at the seasonal 12:00
+instant: 2025-01-14→15 and 2026-04-14→15. Each passed existing response/count,
+local disk, 50 MiB table pilot and measured transaction capacity checks. Sources
+validated identity, preserved record IDs/epochs and actual SGP4 propagation.
+Two GP_HISTORY retrievals plus two normal logins (four Space-Track HTTP requests),
+with cooldown/lease/counters preserved. First response: 47 records, 53,041 raw /
+6,795 gzip bytes; second: 68 records, 76,805 raw / 8,230 gzip bytes. Imported all
+115; no failed/deferred source responses. Stopped after the two-batch cap.
+
+Historical rows **1,019 → 1,066 → 1,134**; distinct IDs **14 → 15**, including TESS.
+Saved gzip archive bytes **120,561 → 135,586** across nine manifests. For each
+pilot timestamp, 13/15 objects pass genuine backend SGP4. January 2025 gaps:
+Chandra/GOES-16; April 2026 gaps: Chandra/TESS. Across all 328 scheduled timestamps,
+verified launch-day exclusions leave **1,045 eligible satellite/date pairs**:
+exact qualifying coverage **0 before → 26 after**, **1,019 remaining gaps**.
+This count is timestamp coverage, not continuous historical completeness. The
+newest stored epoch must remain at/before the selected instant and <=24 hours old.
+Detailed measurements/checkpoints are retained in ignored .runtime/history audits.
+
+Verification: **11 backend scientific/API tests PASS**, plus a real isolated
+PostgreSQL publish integration PASS (migration twice/RLS, corrupt source before
+target access, corrupt upload before metadata, upload-first visibility, complete
+eight-plane metadata, repeat import no-op, unchanged unrelated rows). Tests cover
+calendar/1945, conservative archive lag, conversions/RH, GRIB metadata and partial
+failure, quantization/masks/checksum/corrupt compression, global decimation/wrap/
+polar sampling, Storage size limits, auth/exact gating, location units and safe
+503. Mocked CDS tests prove grouped requests reuse job IDs and never resubmit an
+ambiguous attempt. Real production read-only service checks returned coverage
+200 with zero stored snapshots, snapshot/location 404; authentication middleware
+was independently tested locally, while production reads used a dependency override.
+
+**61 focused frontend tests PASS** in the final combined run (historical weather,
+Time completion/calendar/scene preparation, satellite catalog, Earth picking,
+place weather, source fields, independent wind, map/navigation/ephemeris and
+weather resource/quality/reduced-motion regressions). Final ESLint PASS and
+production build PASS, 2,122 modules; preexisting bundle-size/plugin warnings and
+test Vite HMR-port warning remain nonfatal. An initial GRIB fixture assertion was
+too strict for GRIB1 packing precision; corrected the tolerance to 0.0002°C.
+No application failure remained in the focused checks.
+
+Bounded browser smoke used the real backend/auth and fixed disposable loopback
+PostgreSQL, never a production account/weather fixture. Explicitly labelled
+isolated scientific fixtures exercised exact April 15 1945 data, missing RH,
+nearest action loading a deliberately disclosed timestamp, on/off, independent
+wind + precipitation, view-center inspection and a real Earth surface click.
+Inspector displayed 20°C, 1013 hPa, 18 km/h, 2 mm preceding-hour precipitation and
+Unavailable RH; these were test constants, never claimed downloaded ERA5.
+April 16 LOAD removed the old layer and inspector immediately. Fixture-free
+restart verified the honest 0/328 coverage experience. Modern basemap disclaimer
+and date LOAD remain intact. At 390×844: page 390px, panel/dock 300px, panel
+bottom 543px above dock top 555px, scrollable body; desktop panel also clears dock.
+Screenshots saved in the approved visualization folder. No physical touch-device
+or genuine ERA5 cloud-blob end-to-end delivery claim.
+
+Remaining limitations/handoff: supply a CDS personal access token with manually
+accepted dataset terms and backend SUPABASE_URL/SUPABASE_SERVICE_ROLE_KEY for
+this verified project. Then run one 1945 and one recent final-year grouped pilot,
+inspect genuine GRIB metadata (especially hourly precipitation), create/review the
+private bucket through the API, import and measure actual uploaded object/egress
+bytes before expanding. Actual remote CDS queue/download and Supabase blob upload
+remain unverified without those credentials. No known new blocking application
+bug from focused checks; preexisting approximate celestial ephemerides and large
+bundle remain. Satellite gaps are explicit, not filled by current elements.
+Batch 10 is Natural Events/source status/cyclone coverage; hosting, recurring
+notifications, VAPID and real device push still belong to the final release batch.
+No Natural Events expansion or hosting was implemented. Temporary API/preview/
+browser and local PostgreSQL stopped, viewport reset, normal frontend build
+restored. Stop after Batch 09.

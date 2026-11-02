@@ -103,6 +103,32 @@
 .event-report-link { color:var(--accent); font-size:var(--ui-font-sm); display:inline-block; min-height:36px; }
 .event-provider { border-top:1px solid var(--line); padding:12px 0; }
 .event-timeline { padding-left:20px; max-height:200px; overflow:auto; }
+.event-filters { display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:12px 0; }
+.event-filters label { display:flex;flex-direction:column;gap:6px;font-size:var(--ui-font-sm);color:var(--ui-text-muted);min-width:0; }
+.event-filters select,.natural-events>label select { max-width:100%;min-width:0;background:#0b1824;color:var(--ui-text);border:1px solid var(--line);border-radius:5px;padding:8px;font:inherit; }
+.event-filters small { grid-column:1/-1;line-height:1.5; }
+.event-actions { display:flex;gap:8px;flex-wrap:wrap;margin:12px 0; }
+.event-actions button { flex:1;min-width:110px; }
+.event-more { width:100%;margin:12px 0; }
+.event-focus-toolbar { position:absolute;z-index:33;left:var(--ui-content-left,90px);bottom:calc(var(--hud-dock-height,64px) + 26px);width:300px;max-width:calc(100vw - var(--ui-content-left,90px) - 12px);padding:12px;border:1px solid #72c8cd70;border-radius:8px;background:#071522ed;display:flex;flex-wrap:wrap;gap:8px; }
+.event-focus-toolbar strong { width:100%;font-size:10px;letter-spacing:1px;color:#9fdddf; }
+.event-focus-toolbar small { width:100%;font-size:10px;line-height:1.5;color:var(--ui-text-muted); }
+.event-focus-toolbar button { flex:1;font-size:10px;min-height:36px; }
+.cyclone-track-details { margin:16px 0;padding:12px;border:1px solid #70d4cf50;border-radius:8px;background:#0a222c60; }
+.cyclone-track-details p { font-size:var(--ui-font-sm);line-height:1.65;overflow-wrap:anywhere; }
+.cyclone-track-legend { display:grid;gap:8px;color:var(--ui-text-muted);font-size:var(--ui-font-sm); }
+.cyclone-track-legend span { display:flex;align-items:center;gap:8px; }
+.cyclone-track-legend i { display:inline-block;width:30px;border-top:2px solid #89e4dd; }
+.cyclone-track-legend span+span i { border-top:2px dashed #f4cf9a; }
+@media(max-width:650px) {
+  .event-filters { grid-template-columns:1fr; }.event-actions { flex-direction:column; }.event-inspector { padding-left:9px; }.cyclone-track-details { padding:9px; }
+  /* Mobile surfaces drop translation; anchor the telemetry dock by its edges. */
+  .orbitwatch-shell.mode-live .live-telemetry-dock { left:var(--ui-content-left);right:var(--ui-edge);width:auto;max-width:none; }
+  .orbitwatch-shell.mode-live .top-hud { grid-template-columns:minmax(0,1fr) auto; }
+  .orbitwatch-shell.mode-live .system-readout { gap:6px; }
+  .orbitwatch-shell.mode-live .brand-lockup { min-width:0; }
+  .orbitwatch-shell.mode-live .brand-lockup__title { font-size:13px;letter-spacing:.1em; }
+}
 
 .cloud-playback { display:flex; flex-wrap:wrap; gap:10px; align-items:center; margin:12px 0; }
 .cloud-playback label { display:flex; flex-direction:column; gap:6px; flex:1; min-width:100px; color:var(--ui-text-muted); font-size:var(--ui-font-sm); }

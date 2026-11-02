@@ -1,6 +1,9 @@
 from fastapi import APIRouter,Depends,Response,HTTPException,Path
 from core.security import get_current_user
-from services.natural_events import current_events
+from services.natural_events import current_events,stores
+from services.event_boundaries import selected_boundary
+from services.weather_cache import WeatherDeferred
+from core.config import enabled
 
 router=APIRouter(prefix='/api/events',tags=['Live Earth natural events'],dependencies=[Depends(get_current_user)])
 
@@ -24,3 +27,13 @@ def detail(response:Response,event_id:str=Path(min_length=3,max_length=180,patte
     event=next((e for e in value['events'] if e['id']==event_id),None)
     if not event:raise HTTPException(404,'This report is not in the usable recent-event cache.')
     return {'event':event,'provider_status':value['providers'][event['provider']],'disclaimer':value['disclaimer']}
+
+
+@router.get('/{event_id}/boundary')
+def boundary(response:Response,event_id:str=Path(min_length=3,max_length=180,pattern=r'^[A-Za-z0-9_:-]+$')):
+    response.headers['Cache-Control']='private, no-store'
+    event=next((e for e in current_events(schedule=False)['events'] if e['id']==event_id),None)
+    if not event:raise HTTPException(404,'Source report unavailable')
+    if event['provider']!='gdacs':raise HTTPException(422,'This source does not provide this geometry product')
+    try:return selected_boundary(event,stores['gdacs'],allow_fetch=enabled('ORBITWATCH_EVENT_PROVIDER_REQUESTS',True))
+    except (ValueError,WeatherDeferred):raise HTTPException(503,'Official geometry unavailable or source cooldown active.',headers={'Retry-After':str(stores['gdacs'].gate('gdacs')['retry_after_seconds'])}) from None

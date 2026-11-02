@@ -16,18 +16,34 @@ from core.config import enabled
 from core.database import database_availability
 from services.weather_cache import WeatherCache, WeatherDeferred
 from services.natural_event_data import normalize, cross_references, iso, date
+from services.natural_event_sources import acquire
+from services.event_policy import fair_events,material_updates
+from services.cyclone_tracks import IBTRACS_URL,NHC_URL,attach_forecasts
+from services.weather_cache import WeatherDeferred
 
-POLICIES={'eonet':(900,4,96),'gdacs':(900,4,96),'usgs':(300,12,288)}
+POLICIES={'eonet':(900,4,96),'gdacs':(900,4,96),'usgs':(300,12,288),'ibtracs':(43200,2,2),'nhc':(900,4,96)}
 URLS={'eonet':'https://eonet.gsfc.nasa.gov/api/v3/events',
       'gdacs':'https://www.gdacs.org/gdacsapi/api/Events/geteventlist/search',
-      'usgs':'https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/2.5_week.geojson'}
-LIMITATIONS={'eonet':'Latest 300 events in 30 days. Open is curation status, not a current threat.',
-             'gdacs':'Latest 100 reports in 30 days. Overall alert level may differ from the latest episode. Dates without offsets are interpreted as UTC.',
-             'usgs':'M2.5+ reported earthquakes in the past 7 days; not all earthquakes. Origin time and review updates are distinct.'}
+      'usgs':'https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/2.5_month.geojson','ibtracs':IBTRACS_URL,'nhc':NHC_URL}
+LIMITATIONS={'eonet':'Up to 500 open curated events without an age cutoff, plus 150 closed reports in 30 days. Open does not verify an ongoing hazard.',
+             'gdacs':'Two pages each: EQ/TC in 30 days; FL/VO/DR/WF in 180 days. Shared 4-request/hour budget; incomplete pagination is disclosed. Overall and episode alerts differ.',
+             'usgs':'Official M2.5+ month feed; not all earthquakes or continuing hazards. Origin and review update times differ.',
+             'ibtracs':'NOAA v4r01 ACTIVE global subset, storms active in archive last 7 days; batch updates can lag. Only original agency positions, no interpolated/spur positions; at most 32 storms/512 points each.',
+             'nhc':'NHC/CPHC official forecast points for Atlantic/Eastern and Central Pacific only. At most two active bins per refresh, 12-hour issue freshness. No inferred global forecast.'}
 
 
 class EventCache(WeatherCache):
     def policy(self,provider):return POLICIES[provider]
+    def reserve_extra(self,provider):
+        # Pagination is one owned refresh; charge every additional HTTP request
+        # while retaining the normal refresh interval and hourly/daily ceilings.
+        now=self.clock();_,hourly,daily=self.policy(provider)
+        with self.db() as db:
+            db.execute('BEGIN IMMEDIATE')
+            hour=db.execute('SELECT count(*) FROM calls WHERE provider=? AND stamp>?',(provider,now-3600)).fetchone()[0]
+            day=db.execute('SELECT count(*) FROM calls WHERE provider=? AND stamp>?',(provider,now-86400)).fetchone()[0]
+            if hour>=hourly or day>=daily:raise WeatherDeferred()
+            db.execute('INSERT INTO calls VALUES(?,?)',(provider,now))
 
 
 root=Path(os.getenv('ORBITWATCH_EVENTS_CACHE_DIR') or Path(__file__).resolve().parents[1]/'.runtime'/'events')
@@ -39,27 +55,7 @@ def utcnow():return datetime.now(timezone.utc)
 
 
 def fetch(provider,previous):
-    now=utcnow();params={}
-    if provider=='eonet':params={'status':'all','days':30,'limit':300}
-    if provider=='gdacs':params={'eventlist':'EQ;TC;FL;VO;DR;WF','fromDate':(now-timedelta(days=30)).strftime('%Y-%m-%d'),
-                               'toDate':now.strftime('%Y-%m-%d'),'pageSize':100,'pageNumber':1}
-    headers={'User-Agent':'OrbitWatch/1.0 (educational natural-event visualization)'}
-    if previous:
-        for source,target in [('etag','If-None-Match'),('last-modified','If-Modified-Since')]:
-            value=previous.get('headers',{}).get(source)
-            if value:headers[target]=value
-    with httpx.Client(timeout=httpx.Timeout(20,connect=5),follow_redirects=False) as client:
-        with client.stream('GET',URLS[provider],params=params,headers=headers) as response:
-            response.raise_for_status()
-            safe_headers={k:v[:1000] for k,v in response.headers.items() if k in {'cache-control','expires','etag','last-modified'}}
-            if response.status_code==304 and previous:return None,safe_headers
-            if response.status_code!=200:raise ValueError('Unexpected feed status')
-            chunks=[];size=0;start=time.monotonic()
-            for chunk in response.iter_bytes():
-                size+=len(chunk)
-                if size>8000000 or time.monotonic()-start>35:raise ValueError('Feed exceeds bounds')
-                chunks.append(chunk)
-            return json.loads(b''.join(chunks)),safe_headers
+    return acquire(provider,previous,stores[provider],utcnow())
 
 
 def respect_headers(store,provider,headers):
@@ -93,7 +89,7 @@ def refresh(provider):
     with store.lease() as owned:
         if not owned:raise WeatherDeferred()
         previous=store.get('feed')
-        if previous and time.time()-previous['validated_at']<POLICIES[provider][0]:return previous
+        if previous and previous.get('schema_version')==2 and time.time()-previous['validated_at']<POLICIES[provider][0]:return previous
         database_availability.ensure()
         if not enabled('ORBITWATCH_EVENT_PROVIDER_REQUESTS',True):raise WeatherDeferred()
         store.reserve(provider);store.record(provider,'downloading')
@@ -103,9 +99,14 @@ def refresh(provider):
             if data is None:
                 value={**previous,'validated_at':time.time(),'headers':{**previous.get('headers',{}),**headers}}
             else:
-                retrieved=iso(utcnow());events,rejected=normalize(provider,data,retrieved)
+                retrieved=iso(utcnow())
+                if '_normalized_events' in data:events,rejected=data['_normalized_events'],data.get('_rejected_count',0)
+                else:events,rejected=normalize(provider,data,retrieved)
+                events=material_updates(events,(previous or {}).get('events',[]))
+                acquisition=data.get('_acquisition',{})
                 value={'events':events,'retrieved_at':retrieved,'validated_at':time.time(),'headers':headers,
-                       'rejected_count':rejected,'source_url':URLS[provider]}
+                       'rejected_count':rejected,'source_url':URLS[provider],'schema_version':2,
+                       'parts':acquisition.get('parts',{}),'coverage':acquisition.get('coverage',{}),'forecasts':data.get('forecasts',[])}
             respect_headers(store,provider,value['headers']);store.put('feed','global',value);store.succeeded(provider)
             return value
         except Exception as error:
@@ -125,7 +126,7 @@ def revalidate(provider):
 
 
 def current_events(schedule=True):
-    events=[];providers={};usable=0;now=time.time()
+    events=[];forecasts=[];providers={};usable=0;now=time.time()
     for provider,store in stores.items():
         cached=store.get('feed');age=max(0,now-cached['validated_at']) if cached else None
         ttl=freshness_seconds(provider,cached) if cached else 0
@@ -133,24 +134,34 @@ def current_events(schedule=True):
         gate=store.gate(provider);future=pending.get(provider)
         with store.lease() as free:busy=not free
         active=(future is not None and not future.done()) or busy
-        valid=cached is not None and age<=86400
+        valid=cached is not None and age<=(7*86400 if provider=='ibtracs' else 86400)
         state=('refreshing' if active else 'stale' if age>=ttl else 'available') if valid else 'preparing' if active else 'unavailable'
         if valid:
             usable+=1
+            forecasts.extend(cached.get('forecasts',[]))
             for e in cached['events']:
-                events.append({**e,'data_state':'stale' if state in {'stale','refreshing'} else 'available'})
+                # Legacy caches never retain the old arbitrary polygon marker.
+                g=e.get('geometry') or {};position=g.get('coordinates') if g.get('type')=='Point' else None
+                events.append({**e,'position':position,'provider_validated_at':iso(datetime.fromtimestamp(cached['validated_at'],timezone.utc)),
+                    'recent_activity_verified':False,'recent_report_available':utcnow()-date(e['reported_at'])<=timedelta(days=7),'data_state':'stale' if state in {'stale','refreshing'} else 'available'})
         activity=store.event(provider)
+        latest=max((e['reported_at'] for e in cached['events']),default=None,key=date) if cached else None
         providers[provider]={'state':state,'retrieved_at':cached['retrieved_at'] if cached else None,
                              'validated_at':iso(datetime.fromtimestamp(cached['validated_at'],timezone.utc)) if cached else None,
                              'retry_after_seconds':3 if active else max(5,gate['retry_after_seconds']),
                              'failure':activity.get('category') if activity and gate['failures'] else None,
                              'http_status':activity.get('http_status') if activity and gate['failures'] else None,
                              'count':len(cached['events']) if valid else 0,'rejected_count':cached.get('rejected_count',0) if cached else 0,
-                             'source_url':URLS[provider],'limitation':LIMITATIONS[provider]}
-    events=cross_references(sorted(events,key=lambda e:date(e['reported_at']),reverse=True))
-    return {'state':'available' if usable==3 else 'partial' if usable else 'preparing' if any(p['state']=='preparing' for p in providers.values()) else 'unavailable',
+                             'source_url':URLS[provider],'limitation':LIMITATIONS[provider],
+                             'coverage':cached.get('coverage',{}) if cached else {},
+                             'latest_observation':latest,'source_age_seconds':max(0,now-date(latest).timestamp()) if latest else None,'cache_age_seconds':age}
+    total=len(events);events,unmatched=attach_forecasts(events,forecasts)
+    events=cross_references(fair_events(events))
+    return {'state':'available' if usable==len(stores) else 'partial' if usable else 'preparing' if any(p['state']=='preparing' for p in providers.values()) else 'unavailable',
             'events':events,'providers':providers,'generated_at':iso(utcnow()),
-            'optional_sources':{'firms':'Not enabled. A NASA FIRMS MAP_KEY and separately reviewed hotspot budget are required.'},
+            'coverage':{'normalized_reports':total,'displayed_reports':len(events),'display_cap':1200,'provider_cap':400,'allocation':'Round robin across provider/category groups','truncated':len(events)<total,'unmatched_forecast_ids':unmatched},
+            'optional_sources':{'firms':'Not enabled. A NASA FIRMS MAP_KEY and separately reviewed hotspot budget are required.',
+                'imd':'Official cyclone_track endpoint requires authorization (HTTP 401); no key configured or bypass attempted.','gdacs_forecast':'No forecast path inferred from general event geometry.'},
             'disclaimer':'Educational visualization of reported events; not a public warning service. Consult official local authorities.'}
 
 

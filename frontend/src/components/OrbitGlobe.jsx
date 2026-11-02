@@ -421,6 +421,8 @@ export default function OrbitGlobe({
   }, [selectedTime, selectedId, labelsEnabled, onObjectSelect, onViewTelemetry, mapStyle, mode, shownOrbitIds, onCelestialSelect, onSceneReady, onRefreshComplete, onMapStatus, onDetailReady, onScaleChange, onSatelliteStatus, quality, onOrbitInfo, onTimeReady]);
 
   useImperativeHandle(globeRef, () => ({
+    focusNaturalEvent(id){lastInteractionRef.current=performance.now();return naturalEventLayerRef.current?.focusEvent(id);},
+    returnFromNaturalEvent(){return naturalEventLayerRef.current?.returnFromFocus();},
     weatherViewCenter() {
       const viewer=viewerRef.current;if(!viewer||!earthActiveRef.current)return null;
       const canvas=viewer.scene.canvas;

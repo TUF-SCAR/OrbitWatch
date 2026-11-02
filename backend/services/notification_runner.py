@@ -22,6 +22,7 @@ from models.satellite_orbital_data import SatelliteOrbitalData
 from schemas.alerts import TrustedNotificationInput
 from services.account_inbox import store_notification,utc
 from services.notification_policy import quiet,distance,astronomy_candidate,event_candidate,digest
+from services.event_geometry import proximity
 from services.visibility import prediction
 from services.visibility_forecast import forecast
 from services.natural_events import current_events
@@ -105,7 +106,9 @@ def persist(engine,token,owner,subscription_id,location_id,candidate,now):
         if candidate.get('warning_minutes') is not None and preferences.advance_warning_minutes!=candidate['warning_minutes']:return False
         if candidate.get('distance_km',0)>preferences.event_radius_km:return False
         # Bounded retention; nothing is deleted before it is long ineligible.
-        db.execute(delete(NotificationDelivery).where(NotificationDelivery.owner_id==owner,NotificationDelivery.expires_at<now-timedelta(days=35)))
+        # Long-running incident update keys must survive inbox cleanup/restarts.
+        # Preserve event ledgers; the existing hard cap prevents unbounded growth.
+        db.execute(delete(NotificationDelivery).where(NotificationDelivery.owner_id==owner,NotificationDelivery.kind!='event',NotificationDelivery.expires_at<now-timedelta(days=35)))
         if db.scalar(select(func.count()).select_from(NotificationDelivery).where(NotificationDelivery.owner_id==owner))>=MAX_LEDGER:return False
         if db.scalar(select(NotificationDelivery.id).where(NotificationDelivery.owner_id==owner,NotificationDelivery.dedup_key==digest(candidate))):return False
         if candidate['kind']!='event':
@@ -219,13 +222,16 @@ def evaluate_owner(engine,token,owner,now,deadline,events):
         by_category={sub.target_id:sub for sub in subscriptions if sub.kind=='event'}
         with Session(engine) as db:
             event_severity=dict(db.execute(select(NotificationDelivery.target_id,func.max(NotificationDelivery.severity)).where(NotificationDelivery.owner_id==owner,NotificationDelivery.kind=='event').group_by(NotificationDelivery.target_id)).all())
-        for event in events[:600]:
+        for event in events[:1200]:
             if time.monotonic()>=owner_deadline or generated>=5:break
             sub=by_category.get(event.get('category'))
             if not sub:continue
             previous=event_severity.get(event['id'])
             # One report alert/account, associated with closest relevant saved point.
-            for location in sorted(locations,key=lambda point:distance(float(point.latitude),float(point.longitude),*(list(reversed(event.get('position') or [0,0]))))):
+            def reported_distance(point):
+                km=proximity(event.get('geometry') or {},float(point.latitude),float(point.longitude))
+                return km if km is not None else float('inf')
+            for location in sorted(locations,key=reported_distance):
                 candidate=event_candidate(event,location,pref.event_radius_km,now,previous)
                 if candidate:
                     generated+=persist(engine,token,owner,sub.id,location.id,candidate,now);break

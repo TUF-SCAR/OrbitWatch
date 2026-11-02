@@ -1139,3 +1139,183 @@ notifications, VAPID and real device push still belong to the final release batc
 No Natural Events expansion or hosting was implemented. Temporary API/preview/
 browser and local PostgreSQL stopped, viewport reset, normal frontend build
 restored. Stop after Batch 09.
+
+## Batch 10 — Global Natural Events & Cyclone Tracks
+
+Starting HEAD 81601b2927c0c516da2aa27a54f569fc6c4c8724; clean working tree.
+Preserved handwritten auth, two product modes, Live weather, Batch 08 navigation/
+camera/calendar/satellites and Batch 09 exact historical-weather unavailability.
+No ERA5 onboarding/import, schema migration, production alert/push, hosting,
+recurring worker deployment, VAPID configuration, clay icons, commits or pushes.
+
+Expanded independent shared-host event caches: EONET queries up to 500 open
+curated records without a 30-day cutoff plus 150 closed records from 30 days;
+GDACS searches EQ/TC over 30 days and FL/VO/DR/WF over 180 days, two 100-record
+pages per group maximum; USGS uses its official M2.5+ month GeoJSON feed. EONET
+open is expressly curation status, never proof a wildfire still burns. Separate
+first report/start, last report, source modification, verified material update,
+retrieval, provider validation, cache age and report age. Future GDACS end dates
+are retained separately and cannot masquerade as a new observed event time.
+Overall versus episode alert levels remain distinct. Official main-report links
+are restricted to the provider's domain; no source-supplied URL is proxied.
+
+Acquisition validates exact URL/parameter-scoped ETag/Last-Modified parts, handles
+real HTTP 304 without changing original retrieval/report times, honors restrictive
+cache controls, retains Retry-After/backoff and atomic refresh ownership. Every
+extra page consumes the same provider's persistent hourly/daily budget; original
+EONET/GDACS 4 requests/hour and refresh cooldowns were not bypassed/reset. Repeated
+pages/IDs terminate pagination. Responses cap at 8 MB each / 16 MB per refresh,
+5,000 source records, at most three acquisition threads, and no startup bulk job.
+New explicit natural_events_refresh.py --refresh runs one bounded cache operation;
+without the flag it only reports existing data. An initial concurrent readiness
+probe deferred four sources before any HTTP; a single preflight then completed
+them, reusing the already-refreshed GDACS cache. Provider counters were preserved.
+
+Added NOAA NCEI IBTrACS v4r01 ACTIVE CSV (143,079 bytes, not the 333 MB ALL archive).
+Official source: https://www.ncei.noaa.gov/products/international-best-track-archive
+and its v04r01 column/technical documentation; DOI 10.25921/82ty-9e16. Required
+NOAA/IBTrACS attribution is shown. This batch archive updates several times per
+week, not minute-by-minute. Parser validates SID, basin/season, dated positions,
+agency columns, missing values, main/provisional classification and IFLAG. It
+excludes spurs and P-interpolated positions, preserves original O/I/V positions,
+and withholds interpolated intensity for I flags. Wind remains reported knots with
+documented agency averaging (USA 1 minute; Tokyo 10; New Delhi 3; CMA 2, etc.);
+no cross-agency category conversion. At most 32 storms / 512 points each; source
+SHA-256 f30823baf46e983b7889357483f2f0ba90f9dcb14b5f21ec03b871765dbe5016.
+Small authentic two-storm excerpts with provenance/checksums exist ONLY in tests.
+
+NHC/CPHC CurrentStorms index plus reviewed NOAA GIS forecast-point layer metadata
+provide a bounded regional forecast adapter: at most two official bins, exact
+basin/storm-number/bin checks, issue/valid timestamps, 12-hour issue expiration,
+and separate future forecast arrays. Invalid/expired/mixed-issue data are withheld.
+Only a unique explicit USA_ATCF_ID match joins IBTrACS and NHC; names/proximity
+never join EONET/GDACS/IBTrACS storms. Unmatched verified forecasts remain separate
+source reports without an invented current marker. Genuine NHC index retrieval
+returned **zero active storms / zero forecasts**. No real current GIS forecast
+delivery claim: its active-storm field-format case still requires release checking.
+IMD's documented cyclone_track endpoint returned **HTTP 401** on one public probe;
+authorized credentials are required, no bypass/retry. General GDACS geometry is
+not sufficient evidence of a dated forecast path, so none is inferred. No cones,
+forecast probabilities, danger radii, future intensities or landfalls were invented.
+
+Genuine pilot normalized **2,658 reports**: EONET **648** (two rejected), GDACS
+**37**, USGS **1,968** (two rejected), IBTrACS **5** storms (149 non-original/
+unsupported source rows excluded), NHC **0**. Fair provider/category round robin
+retains **842** with 400/source and 1,200 overall caps, not the old global 600 cap.
+Displayed categories: 403 earthquakes, 397 wildfires, 16 floods, 14 cyclone reports,
+six volcanoes, four droughts, two snow/ice reports. Other supported categories
+explicitly show no loaded reports. **219 older open EONET records** remain visible;
+oldest displayed last report is 2026-06-15. Coverage is incomplete, clearly disclosed.
+
+Five genuine IBTrACS observed/provisional routes: IN-FA 35 points, VANCE 46,
+ARNAB 14, OLANA 12, CHAMPI 47. Four EONET reported-position routes add 38, 34,
+11 and six points. Thus nine source routes, not nine distinct reconciled storms.
+Latest IBTrACS position is 2026-11-01 00:00 UTC; EONET latest 2026-11-02 00:00.
+Feed retrievals were 09:58–10:00 UTC November 2. EONET's no-cache policy marks
+its application snapshot stale immediately; by final read EONET/GDACS/USGS/NHC
+caches were stale and IBTrACS fresh. Source dates do not change on local reads.
+There are no verified forecasts in this pilot; every relevant inspector says so.
+
+Operational provider calls: EONET two, GDACS two search requests, USGS one,
+IBTrACS one, NHC one = seven feed HTTP calls / 2,358,396 response bytes. One
+additional quota-accounted selected GDACS flood geometry request (FL:1104121)
+returned zero accepted polygons; no outline was invented and no retry was made.
+Separate schema/access research: GDACS Swagger, NOAA layer list, NOAA point-field
+metadata and the one IMD 401 probe. Browser smoke used cached data with provider
+fetching disabled; it introduced no event-provider calls. Documentation browsing
+is separate from these operational request counts.
+
+Added authenticated explicit /api/events/{id}/boundary enrichment. It shares
+GDACS's lease/cooldown/quota, caps response at 2 MB and output at 16 boundaries /
+4,096 vertices, supports standard Polygon/MultiPolygon/GeometryCollection nesting,
+keeps at most 16 cached products, and honors no-store/no-cache/max-age. Cached
+reads remain available when provider fetching is disabled. Boundary product roles
+can include forecasts/impact outlines; without verified role they are labelled
+unknown and are excluded from automatic notification proximity. Nonempty remote
+GDACS enrichment remains unverified; isolated valid/empty/cache cases are tested.
+
+Renderer reuses the same Viewer and two existing bounded CustomDataSources.
+Only the selected storm creates its route: solid glowing reported path, hollow
+amber forecast points/dashed forecast path, dated/intensity markers selected from
+actual points, and a stationary source icon. Geographic segments take the short
+antimeridian route; large temporal/spatial gaps are split rather than fabricated.
+Selection alone never flies. Explicit VIEW TRACK / FOCUS STORM frames the route
+clear of the desktop report panel; return restores saved camera position/direction/
+up. Generation guards and owned-flight cancellation prevent late camera movement
+after mode changes. Track geometry is rebuilt on data/selection changes, not each
+frame. Reduced motion, category icons, marker animation, clustering, depth testing,
+event-click priority and satellite ownership are preserved. No arbitrary polygon
+vertex becomes an incident-centre icon; validated source boundaries render instead.
+
+Natural Events UI has category/source/report-context filters, actual loaded counts,
+source freshness/curation badges, dates, ages, source status, complete inspector,
+observed/forecast legend and explicit missing-data messages. List filters are
+labelled separately from the map category. Lists start with 40 rows, load 40 more,
+and stop at 200 with a refinement notice. Mobile focus closes the report panel and
+retains named track/return controls. Fixed inherited Live dock edge anchoring and
+mobile HUD grid sizing that clipped telemetry/account controls; clocks remain.
+
+Notification eligibility now uses current source validation separately from report
+age. An older incident requires evidence: comparable source timestamps plus a
+>=0.5 upward USGS magnitude revision, GDACS latest-episode escalation, or a changed
+reported polygon newly reaching the saved radius. An unchanged refetch, old open
+curation record, unverified change or projected forecast passage cannot alert.
+Existing ledger severity can also substantiate a significant escalation. Point/
+Polygon/MultiPolygon proximity handles holes and antimeridian unwrapping with
+spherical minimum distance to segments. Crossing/degenerate/oversized, hemispheric
+or near-polar ambiguous polygons are conservatively rejected. Viewing-location
+ordering uses the same reported geometry, not a fake centroid. Messages describe
+source reports near saved observation areas, never certain impacts. Consent,
+category/radius, saved locations, quiet hours/timezones, freshness, fencing and
+atomic durable dedup remain. Event ledger keys are retained during routine expiry
+cleanup; the existing 1,000-row/account hard cap still bounds storage. No competing
+scheduler or automatic subscriptions were introduced. Forecast-only/IBTrACS reports
+do not automatically trigger proximity alerts without suitable current evidence.
+
+Storage: no Supabase writes/new tables/buckets. Fingerprint 91629c91746ef7a1,
+read-only PostgreSQL **13,487,251 bytes**, 486,512,749 nominal bytes remaining,
+12 public tables, users five, archived satellite elements 1,134, weather snapshots
+zero. Supabase Storage remains zero objects/bytes. Local events directory measured
+**6,372,021 bytes** including caches, audit and research metadata, not PostgreSQL.
+No giant raw track archive or production fixture was stored in Supabase.
+
+Verification: **12 focused new backend tests PASS** for old open/closed reports,
+future end dates, episode levels, real IBTrACS excerpt/checksum/flags, forecast
+identity/issue/expiry, no name merging, fair allocation, real HTTP transport mock
+pagination/ETag/304, holes/dateline/multipolygons/malformed geometry, material
+changes and selected boundary caching. Original event auth/cache/concurrency suite
+PASS (36 concurrent consumers, 48 atomic reservations, 304/429/outage recovery,
+zero real provider calls). Notification delivery suite PASS including 27 HTTP
+checks, quiet/DST/policy, owner-isolated encrypted push, atomic inbox/ledger,
+inbox cleanup dedup, overlap fencing and mocked committed/ambiguous sends. No
+production alert or push was sent. **44 focused frontend tests PASS** together;
+subsequent 19-case renderer/picking/Time regressions also PASS after focus fixes.
+Final lint/build PASS; existing large-bundle/plugin warnings remain. Initial test
+failures were obsolete old-open/polygon-rejection assertions and one inconsistent
+fixture report timestamp; fixed and rerun. An initial dict syntax error and render
+clock purity lint finding were fixed before final verification.
+
+Real authenticated browser smoke used a disposable local PostgreSQL user with
+genuine unchanged cached official reports (not fictional disasters). Verified
+842 loaded / five IBTrACS-filtered storms, source selection, IN-FA's 35 dated
+positions, real 93 kt / 1-minute source intensity, provisional/batch/source dates,
+no-forecast message, solid route, explicit focus, 27,000 km camera restoration,
+mobile panel closing/return toolbar and no overlapping weather legend. At 390×844:
+page width 390, toolbar 300px/right 378/bottom 710, Live dock 300px/right 379/top
+725, account button fully within right 379. Time entry removes the live track/
+toolbar, keeps 15 objects / zero selected, NASA reference map and LOAD; Live
+returns with six selections. Screenshots saved in the approved visualization
+folder. No physical touch-device claim. Temporary browser/API/preview/PostgreSQL
+were stopped and normal frontend build restored; viewport override reset.
+
+Limitations/final-batch handoff: feeds are bounded and incomplete, source activity
+is not independently verified, and stale reports remain labelled. No genuine
+forecast was available; validate an active NHC/CPHC response and nonempty GDACS
+geometry/roles before claiming those live cases verified. IMD needs authorized
+access; no global forecast is promised. Polygon geodesic proximity is conservative
+and rejects ambiguous large/polar shapes. Event ledger cap requires monitoring;
+do not delete dedup keys to regenerate notices. Shared cache/provider quotas need
+one persistent ingestion host/volume. Recurring notifications and real-device
+push remain undeployed. Prompt 11 handles hosting, genuine scheduler, VAPID,
+release verification and cleanup. Historical weather remains honestly 0/328;
+Copernicus onboarding was not attempted here. Stop after Batch 10.

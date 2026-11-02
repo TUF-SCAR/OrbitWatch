@@ -15,7 +15,7 @@ ROOT=Path(__file__).resolve().parents[1];sys.path.insert(0,str(ROOT/'backend'))
 
 def main():
     import argparse
-    parser=argparse.ArgumentParser();parser.add_argument('--weather-fixture',action='store_true');args=parser.parse_args()
+    parser=argparse.ArgumentParser();parser.add_argument('--weather-fixture',action='store_true');parser.add_argument('--events-fixture',action='store_true');args=parser.parse_args()
     with psycopg.connect(host='127.0.0.1',port=55444,user='orbitwatch_test',dbname='postgres',connect_timeout=3,autocommit=True) as db:
         db.execute('DROP DATABASE IF EXISTS orbitwatch_time_ui WITH (FORCE)');db.execute('CREATE DATABASE orbitwatch_time_ui')
     with patch('dotenv.load_dotenv',return_value=False),patch.dict(os.environ,{'DATABASE_URL':'postgresql+psycopg://orbitwatch_test@127.0.0.1:55444/orbitwatch_time_ui',
@@ -75,7 +75,7 @@ def main():
                 if len(saved)==2:break
             db.commit()
         async def isolated(scope,receive,send):
-            if scope['type']=='http' and (scope['path'].startswith('/api/weather') or scope['path'].startswith('/api/events')):
+            if scope['type']=='http' and (scope['path'].startswith('/api/weather') or scope['path'].startswith('/api/events') and not args.events_fixture):
                 from starlette.responses import JSONResponse
                 return await JSONResponse({'detail':'External providers disabled in isolated Time browser fixture'},503)(scope,receive,send)
             return await app(scope,receive,send)

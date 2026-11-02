@@ -33,6 +33,13 @@ def safe_url(value):
     except (ValueError,TypeError):return None
 
 
+def official_url(provider,value):
+    value=safe_url(value)
+    if not value:return None
+    host=urlsplit(value).hostname.lower();domain={'eonet':'nasa.gov','gdacs':'gdacs.org','usgs':'usgs.gov'}[provider]
+    return value if host==domain or host.endswith('.'+domain) else None
+
+
 def date(value):
     try:
         if isinstance(value,(int,float)) and not isinstance(value,bool):
@@ -81,7 +88,7 @@ def geometry(g):
 
 def anchor(g):
     if g['type']=='Point':return g['coordinates']
-    return g['coordinates'][0][0] if g['type']=='Polygon' else g['coordinates'][0][0][0]
+    return None  # A boundary is not evidence of a precise incident centre.
 
 
 def normalize(provider,data,retrieved_at,now=None):
@@ -89,19 +96,21 @@ def normalize(provider,data,retrieved_at,now=None):
     items=data.get('events' if provider=='eonet' else 'features') if isinstance(data,dict) else None
     if not isinstance(items,list) or len(items)>5000:raise ValueError('Invalid event collection')
     events={};rejected=0
-    for row in items[:1000]:
+    if len(items)>5000:raise ValueError('Collection exceeds normalized input bound')
+    for row in items:
         try:
             e=normalize_one(provider,row,retrieved_at,now)
             if not e:rejected+=1;continue
             previous=events.get(e['id'])
-            if not previous or date(previous['reported_at'])<date(e['reported_at']):events[e['id']]=e
+            if not previous or (date(previous.get('updated_at')) or date(previous['reported_at']))<(date(e.get('updated_at')) or date(e['reported_at'])):events[e['id']]=e
         except (TypeError,ValueError,KeyError,IndexError,AttributeError):rejected+=1
-    return sorted(events.values(),key=lambda e:date(e['reported_at']),reverse=True)[:600],rejected
+    return sorted(events.values(),key=lambda e:date(e.get('updated_at')) or date(e['reported_at']),reverse=True),rejected
 
 
 def normalize_one(provider,row,retrieved_at,now):
     if not isinstance(row,dict):return None
-    measurements=[];timeline=[];references=[];closed=None;updated=None
+    measurements=[];timeline=[];references=[];closed=None;updated=None;started=None;ended=None
+    retrieved_at=row.get('_orbitwatch_retrieved_at') or retrieved_at
     if provider=='eonet':
         ident=text(row.get('id'),100)
         if not ident or not re.fullmatch(r'[A-Za-z0-9_-]+',ident):return None
@@ -116,6 +125,7 @@ def normalize_one(provider,row,retrieved_at,now):
             if d and g and d<=now+FUTURE_TOLERANCE:timeline.append({'at':iso(d),'geometry':g,'value':number(item.get('magnitudeValue')),'units':text(item.get('magnitudeUnit'),50)})
         if not timeline:return None
         timeline.sort(key=lambda t:date(t['at']));last=timeline[-1];g=last['geometry'];reported=date(last['at'])
+        started=date(timeline[0]['at'])
         if last['value'] is not None:measurements.append({'label':'Source magnitude','value':last['value'],'units':last['units']})
         closed=iso(date(row.get('closed')));status='closed' if row.get('closed') else 'open'
         meaning='EONET curation status; open does not imply an active threat or emergency warning.'
@@ -129,6 +139,7 @@ def normalize_one(provider,row,retrieved_at,now):
             if p.get('type')!='earthquake':return None
             ident=text(row.get('id'),100);category='earthquake';title=text(p.get('title') or p.get('place'),240)
             reported=date(p.get('time'));updated=iso(date(p.get('updated')));status=text(p.get('status'),80)
+            started=reported
             meaning='USGS review status, not an emergency alert. Magnitude and location may be revised.'
             coordinates=row.get('geometry',{}).get('coordinates',[])
             mag=number(p.get('mag'),-3,10);depth=number(coordinates[2],-10,1000) if len(coordinates)>2 else None
@@ -141,7 +152,9 @@ def normalize_one(provider,row,retrieved_at,now):
             source_id=str(p.get('eventid'))
             if not re.fullmatch(r'[0-9]{1,20}',source_id) or int(source_id)<=0:return None
             ident=f"{event_type}:{source_id}";category=CATEGORIES[event_type];title=text(p.get('name'),240)
-            reported=date(p.get('todate'));updated=iso(date(p.get('datemodified')));status=text(p.get('alertlevel'),80)
+            started=date(p.get('fromdate'));ended=date(p.get('todate'));updated=iso(date(p.get('datemodified')));status=text(p.get('alertlevel'),80)
+            # GDACS end dates may describe a forecast period, not a new report.
+            reported=ended if ended and ended<=now+FUTURE_TOLERANCE else date(updated) or started
             meaning='GDACS overall humanitarian-impact alert level; not a local warning. Latest episode may differ.'
             description=text(p.get('htmldescription') or p.get('description'));url=safe_url(p.get('url',{}).get('report'))
             severity=p.get('severitydata') or {};value=number(severity.get('severity'));unit=text(severity.get('severityunit'),40)
@@ -150,21 +163,32 @@ def normalize_one(provider,row,retrieved_at,now):
             if value is not None and unit:measurements.append({'label':'Source severity','value':value,'units':unit,'description':text(severity.get('severitytext'),240)})
         if not ident or not re.fullmatch(r'[A-Za-z0-9_:-]+',ident):return None
     if not title or not reported or reported>now+FUTURE_TOLERANCE:return None
-    # Events are recent reports, not claimed current threats. Ongoing GDACS
-    # incidents may start months ago; their last report/update must be recent.
     freshness=date(updated) or reported
-    if freshness<now-timedelta(days=30) or freshness>now+FUTURE_TOLERANCE:return None
+    if freshness>now+FUTURE_TOLERANCE:return None
+    # Source-specific retention: open EONET curation can span years. It is NOT
+    # evidence that the physical hazard remains active. GDACS retains a bounded
+    # six-month report/update window; USGS uses its official month feed.
+    if provider=='eonet' and status=='closed' and (date(closed) or reported)<now-timedelta(days=30):return None
+    if provider=='gdacs' and freshness<now-timedelta(days=185):return None
+    if provider=='usgs' and freshness<now-timedelta(days=32):return None
     position=anchor(g)
-    return {'id':f'{provider}:{ident}','provider':provider,'provider_event_id':ident.split(':')[-1] if provider=='gdacs' else ident,
+    event={'id':f'{provider}:{ident}','provider':provider,'provider_event_id':ident.split(':')[-1] if provider=='gdacs' else ident,
             'provider_event_type':p.get('eventtype') if provider=='gdacs' else None,
             'source_episode_id':text(str(p.get('episodeid')),40) if provider=='gdacs' and p.get('episodeid') is not None else None,
             'episode_status':text(p.get('episodealertlevel'),80) if provider=='gdacs' else None,'category':category,
             'title':title,'status':status,'status_meaning':meaning,'closed_at':closed,
             'reported_at':iso(reported),'updated_at':updated,'retrieved_at':retrieved_at,
-            'geometry':g,'position':position,'position_meaning':('GDACS reported centroid; not a verified eye' if provider=='gdacs' and category=='cyclone' else 'reported location') if g['type']=='Point' else 'reported boundary vertex (not a storm centre)',
-            'measurements':measurements,'description':description,'source_url':url or PROVIDER_URLS[provider],
+            'started_at':iso(started or reported),'last_report_at':iso(reported),'source_updated_at':updated,
+            'source_end_at':iso(ended),'recent_activity_verified':False,'recent_report_available':now-reported<=timedelta(days=7),
+            'report_context':'older_source_monitored' if reported<now-timedelta(days=30) else 'recent_report',
+            'geometry':g,'position':position,'position_meaning':('GDACS reported centroid; not a verified eye' if provider=='gdacs' and category=='cyclone' else 'reported location') if g['type']=='Point' else 'source-reported boundary; no verified incident centre',
+            'measurements':measurements,'description':description,'source_url':official_url(provider,url) or PROVIDER_URLS[provider],
             'references':references,'timeline':timeline[-128:] or None,'track':None,
             'size_km':None,'danger_radius_km':None}
+    if category=='cyclone' and provider=='eonet':
+        from services.cyclone_tracks import eonet_track
+        event['track']=eonet_track(event,now)
+    return event
 
 
 def cross_references(events):

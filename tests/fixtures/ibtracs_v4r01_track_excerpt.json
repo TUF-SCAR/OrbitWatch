@@ -1,0 +1,658 @@
+{
+  "provenance": {
+    "source_url": "https://www.ncei.noaa.gov/data/international-best-track-archive-for-climate-stewardship-ibtracs/v04r01/access/csv/ibtracs.ACTIVE.list.v04r01.csv",
+    "retrieved_at": "2026-11-02T09:59:58.740471Z",
+    "upstream_sha256": "f30823baf46e983b7889357483f2f0ba90f9dcb14b5f21ec03b871765dbe5016",
+    "excerpt_sha256": "751a21d72833628f78767cf6ae50639b8a176208fbf76584a633b4665c387f1c",
+    "note": "Authentic subset/columns, isolated parser/renderer tests only; never production seed."
+  },
+  "events": [
+    {
+      "id": "ibtracs:2026297N11166",
+      "provider": "ibtracs",
+      "provider_event_id": "2026297N11166",
+      "provider_event_type": "TC",
+      "source_episode_id": null,
+      "episode_status": null,
+      "category": "cyclone",
+      "title": "IN-FA \u00b7 WP 2026",
+      "status": "provisional",
+      "status_meaning": "IBTrACS track classification, not an active emergency designation.",
+      "closed_at": null,
+      "started_at": "2026-10-23T12:00:00Z",
+      "reported_at": "2026-11-01T00:00:00Z",
+      "last_report_at": "2026-11-01T00:00:00Z",
+      "updated_at": null,
+      "source_updated_at": null,
+      "retrieved_at": "2026-11-02T09:59:58.740471Z",
+      "recent_activity_verified": true,
+      "report_context": "recent_report",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          144.3,
+          22.8
+        ]
+      },
+      "position": [
+        144.3,
+        22.8
+      ],
+      "position_meaning": "Latest supplied agency position in the batch archive; not real-time",
+      "measurements": [
+        {
+          "label": "Reported sustained wind",
+          "value": 93.0,
+          "units": "kt",
+          "description": "tcvitals \u00b7 1-minute average"
+        }
+      ],
+      "description": null,
+      "source_url": "https://www.ncei.noaa.gov/products/international-best-track-archive",
+      "references": [],
+      "timeline": null,
+      "track": {
+        "observed": [
+          {
+            "at": "2026-10-23T12:00:00Z",
+            "latitude": 10.9,
+            "longitude": 166.2,
+            "wind": 29.0,
+            "wind_units": "kt",
+            "wind_averaging_minutes": 1,
+            "agency": "tcvitals",
+            "classification": "provisional",
+            "interpolation_flag": "O"
+          },
+          {
+            "at": "2026-10-23T18:00:00Z",
+            "latitude": 10.6,
+            "longitude": 166.3,
+            "wind": 35.0,
+            "wind_units": "kt",
+            "wind_averaging_minutes": 1,
+            "agency": "tcvitals",
+            "classification": "provisional",
+            "interpolation_flag": "O"
+          },
+          {
+            "at": "2026-10-24T00:00:00Z",
+            "latitude": 10.4,
+            "longitude": 166.2,
+            "wind": 45.0,
+            "wind_units": "kt",
+            "wind_averaging_minutes": 1,
+            "agency": "tcvitals",
+            "classification": "provisional",
+            "interpolation_flag": "O"
+          },
+          {
+            "at": "2026-10-24T06:00:00Z",
+            "latitude": 10.1,
+            "longitude": 165.7,
+            "wind": 51.0,
+            "wind_units": "kt",
+            "wind_averaging_minutes": 1,
+            "agency": "tcvitals",
+            "classification": "provisional",
+            "interpolation_flag": "O"
+          },
+          {
+            "at": "2026-10-24T12:00:00Z",
+            "latitude": 10.6,
+            "longitude": 165.9,
+            "wind": 51.0,
+            "wind_units": "kt",
+            "wind_averaging_minutes": 1,
+            "agency": "tcvitals",
+            "classification": "provisional",
+            "interpolation_flag": "O"
+          },
+          {
+            "at": "2026-10-24T18:00:00Z",
+            "latitude": 11.1,
+            "longitude": 165.6,
+            "wind": 51.0,
+            "wind_units": "kt",
+            "wind_averaging_minutes": 1,
+            "agency": "tcvitals",
+            "classification": "provisional",
+            "interpolation_flag": "O"
+          },
+          {
+            "at": "2026-10-25T00:00:00Z",
+            "latitude": 11.5,
+            "longitude": 165.3,
+            "wind": 54.0,
+            "wind_units": "kt",
+            "wind_averaging_minutes": 1,
+            "agency": "tcvitals",
+            "classification": "provisional",
+            "interpolation_flag": "O"
+          },
+          {
+            "at": "2026-10-25T06:00:00Z",
+            "latitude": 12.0,
+            "longitude": 165.0,
+            "wind": 60.0,
+            "wind_units": "kt",
+            "wind_averaging_minutes": 1,
+            "agency": "tcvitals",
+            "classification": "provisional",
+            "interpolation_flag": "O"
+          },
+          {
+            "at": "2026-10-25T12:00:00Z",
+            "latitude": 12.8,
+            "longitude": 164.5,
+            "wind": 74.0,
+            "wind_units": "kt",
+            "wind_averaging_minutes": 1,
+            "agency": "tcvitals",
+            "classification": "provisional",
+            "interpolation_flag": "O"
+          },
+          {
+            "at": "2026-10-25T18:00:00Z",
+            "latitude": 13.4,
+            "longitude": 163.9,
+            "wind": 80.0,
+            "wind_units": "kt",
+            "wind_averaging_minutes": 1,
+            "agency": "tcvitals",
+            "classification": "provisional",
+            "interpolation_flag": "O"
+          },
+          {
+            "at": "2026-10-26T00:00:00Z",
+            "latitude": 13.8,
+            "longitude": 163.2,
+            "wind": 80.0,
+            "wind_units": "kt",
+            "wind_averaging_minutes": 1,
+            "agency": "tcvitals",
+            "classification": "provisional",
+            "interpolation_flag": "O"
+          },
+          {
+            "at": "2026-10-26T06:00:00Z",
+            "latitude": 14.0,
+            "longitude": 163.0,
+            "wind": 115.0,
+            "wind_units": "kt",
+            "wind_averaging_minutes": 1,
+            "agency": "tcvitals",
+            "classification": "provisional",
+            "interpolation_flag": "O"
+          },
+          {
+            "at": "2026-10-26T12:00:00Z",
+            "latitude": 14.1,
+            "longitude": 162.7,
+            "wind": 115.0,
+            "wind_units": "kt",
+            "wind_averaging_minutes": 1,
+            "agency": "tcvitals",
+            "classification": "provisional",
+            "interpolation_flag": "O"
+          },
+          {
+            "at": "2026-10-26T18:00:00Z",
+            "latitude": 14.1,
+            "longitude": 162.6,
+            "wind": 109.0,
+            "wind_units": "kt",
+            "wind_averaging_minutes": 1,
+            "agency": "tcvitals",
+            "classification": "provisional",
+            "interpolation_flag": "O"
+          },
+          {
+            "at": "2026-10-27T00:00:00Z",
+            "latitude": 14.3,
+            "longitude": 162.4,
+            "wind": 109.0,
+            "wind_units": "kt",
+            "wind_averaging_minutes": 1,
+            "agency": "tcvitals",
+            "classification": "provisional",
+            "interpolation_flag": "O"
+          },
+          {
+            "at": "2026-10-27T06:00:00Z",
+            "latitude": 14.5,
+            "longitude": 162.1,
+            "wind": 105.0,
+            "wind_units": "kt",
+            "wind_averaging_minutes": 1,
+            "agency": "tcvitals",
+            "classification": "provisional",
+            "interpolation_flag": "O"
+          },
+          {
+            "at": "2026-10-27T12:00:00Z",
+            "latitude": 14.5,
+            "longitude": 161.6,
+            "wind": 105.0,
+            "wind_units": "kt",
+            "wind_averaging_minutes": 1,
+            "agency": "tcvitals",
+            "classification": "provisional",
+            "interpolation_flag": "O"
+          },
+          {
+            "at": "2026-10-27T18:00:00Z",
+            "latitude": 14.7,
+            "longitude": 160.8,
+            "wind": 115.0,
+            "wind_units": "kt",
+            "wind_averaging_minutes": 1,
+            "agency": "tcvitals",
+            "classification": "provisional",
+            "interpolation_flag": "O"
+          },
+          {
+            "at": "2026-10-28T00:00:00Z",
+            "latitude": 14.9,
+            "longitude": 159.9,
+            "wind": 119.0,
+            "wind_units": "kt",
+            "wind_averaging_minutes": 1,
+            "agency": "tcvitals",
+            "classification": "provisional",
+            "interpolation_flag": "O"
+          },
+          {
+            "at": "2026-10-28T06:00:00Z",
+            "latitude": 15.1,
+            "longitude": 158.9,
+            "wind": 128.0,
+            "wind_units": "kt",
+            "wind_averaging_minutes": 1,
+            "agency": "tcvitals",
+            "classification": "provisional",
+            "interpolation_flag": "O"
+          },
+          {
+            "at": "2026-10-28T12:00:00Z",
+            "latitude": 15.4,
+            "longitude": 157.6,
+            "wind": 128.0,
+            "wind_units": "kt",
+            "wind_averaging_minutes": 1,
+            "agency": "tcvitals",
+            "classification": "provisional",
+            "interpolation_flag": "O"
+          },
+          {
+            "at": "2026-10-28T18:00:00Z",
+            "latitude": 15.6,
+            "longitude": 156.3,
+            "wind": 119.0,
+            "wind_units": "kt",
+            "wind_averaging_minutes": 1,
+            "agency": "tcvitals",
+            "classification": "provisional",
+            "interpolation_flag": "O"
+          },
+          {
+            "at": "2026-10-29T00:00:00Z",
+            "latitude": 15.9,
+            "longitude": 154.6,
+            "wind": 115.0,
+            "wind_units": "kt",
+            "wind_averaging_minutes": 1,
+            "agency": "tcvitals",
+            "classification": "provisional",
+            "interpolation_flag": "O"
+          },
+          {
+            "at": "2026-10-29T06:00:00Z",
+            "latitude": 16.3,
+            "longitude": 152.9,
+            "wind": 119.0,
+            "wind_units": "kt",
+            "wind_averaging_minutes": 1,
+            "agency": "tcvitals",
+            "classification": "provisional",
+            "interpolation_flag": "O"
+          },
+          {
+            "at": "2026-10-29T12:00:00Z",
+            "latitude": 16.6,
+            "longitude": 151.3,
+            "wind": 128.0,
+            "wind_units": "kt",
+            "wind_averaging_minutes": 1,
+            "agency": "tcvitals",
+            "classification": "provisional",
+            "interpolation_flag": "O"
+          },
+          {
+            "at": "2026-10-29T18:00:00Z",
+            "latitude": 17.1,
+            "longitude": 149.7,
+            "wind": 128.0,
+            "wind_units": "kt",
+            "wind_averaging_minutes": 1,
+            "agency": "tcvitals",
+            "classification": "provisional",
+            "interpolation_flag": "O"
+          },
+          {
+            "at": "2026-10-30T00:00:00Z",
+            "latitude": 17.8,
+            "longitude": 147.8,
+            "wind": 124.0,
+            "wind_units": "kt",
+            "wind_averaging_minutes": 1,
+            "agency": "tcvitals",
+            "classification": "provisional",
+            "interpolation_flag": "O"
+          },
+          {
+            "at": "2026-10-30T06:00:00Z",
+            "latitude": 18.7,
+            "longitude": 146.2,
+            "wind": 124.0,
+            "wind_units": "kt",
+            "wind_averaging_minutes": 1,
+            "agency": "tcvitals",
+            "classification": "provisional",
+            "interpolation_flag": "O"
+          },
+          {
+            "at": "2026-10-30T12:00:00Z",
+            "latitude": 19.7,
+            "longitude": 144.5,
+            "wind": 119.0,
+            "wind_units": "kt",
+            "wind_averaging_minutes": 1,
+            "agency": "tcvitals",
+            "classification": "provisional",
+            "interpolation_flag": "O"
+          },
+          {
+            "at": "2026-10-30T18:00:00Z",
+            "latitude": 20.5,
+            "longitude": 143.4,
+            "wind": 115.0,
+            "wind_units": "kt",
+            "wind_averaging_minutes": 1,
+            "agency": "tcvitals",
+            "classification": "provisional",
+            "interpolation_flag": "O"
+          },
+          {
+            "at": "2026-10-31T00:00:00Z",
+            "latitude": 21.5,
+            "longitude": 142.8,
+            "wind": 115.0,
+            "wind_units": "kt",
+            "wind_averaging_minutes": 1,
+            "agency": "tcvitals",
+            "classification": "provisional",
+            "interpolation_flag": "O"
+          },
+          {
+            "at": "2026-10-31T06:00:00Z",
+            "latitude": 22.2,
+            "longitude": 142.9,
+            "wind": 115.0,
+            "wind_units": "kt",
+            "wind_averaging_minutes": 1,
+            "agency": "tcvitals",
+            "classification": "provisional",
+            "interpolation_flag": "O"
+          },
+          {
+            "at": "2026-10-31T12:00:00Z",
+            "latitude": 22.8,
+            "longitude": 143.5,
+            "wind": 109.0,
+            "wind_units": "kt",
+            "wind_averaging_minutes": 1,
+            "agency": "tcvitals",
+            "classification": "provisional",
+            "interpolation_flag": "O"
+          },
+          {
+            "at": "2026-10-31T18:00:00Z",
+            "latitude": 22.9,
+            "longitude": 144.0,
+            "wind": 99.0,
+            "wind_units": "kt",
+            "wind_averaging_minutes": 1,
+            "agency": "tcvitals",
+            "classification": "provisional",
+            "interpolation_flag": "O"
+          },
+          {
+            "at": "2026-11-01T00:00:00Z",
+            "latitude": 22.8,
+            "longitude": 144.3,
+            "wind": 93.0,
+            "wind_units": "kt",
+            "wind_averaging_minutes": 1,
+            "agency": "tcvitals",
+            "classification": "provisional",
+            "interpolation_flag": "O"
+          }
+        ],
+        "forecast": [],
+        "official_id": "2026297N11166",
+        "atcf_ids": [
+          "WP302026"
+        ],
+        "basin": "WP",
+        "season": "2026",
+        "source": "NOAA IBTrACS v4r01 ACTIVE",
+        "source_url": "https://www.ncei.noaa.gov/data/international-best-track-archive-for-climate-stewardship-ibtracs/v04r01/access/csv/ibtracs.ACTIVE.list.v04r01.csv",
+        "latest_observation": "2026-11-01T00:00:00Z",
+        "issued_at": null,
+        "expires_at": null,
+        "note": "Batch-updated provisional/best-track agency positions; not a live storm locator. Interpolated positions/spurs excluded; wind averaging differs by agency."
+      },
+      "related_ids": [],
+      "size_km": null,
+      "danger_radius_km": null
+    },
+    {
+      "id": "ibtracs:2026297N14177",
+      "provider": "ibtracs",
+      "provider_event_id": "2026297N14177",
+      "provider_event_type": "TC",
+      "source_episode_id": null,
+      "episode_status": null,
+      "category": "cyclone",
+      "title": "OLANA \u00b7 WP 2026",
+      "status": "provisional",
+      "status_meaning": "IBTrACS track classification, not an active emergency designation.",
+      "closed_at": null,
+      "started_at": "2026-10-24T06:00:00Z",
+      "reported_at": "2026-10-27T00:00:00Z",
+      "last_report_at": "2026-10-27T00:00:00Z",
+      "updated_at": null,
+      "source_updated_at": null,
+      "retrieved_at": "2026-11-02T09:59:58.740471Z",
+      "recent_activity_verified": false,
+      "report_context": "recent_report",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -176.2,
+          13.2
+        ]
+      },
+      "position": [
+        -176.2,
+        13.2
+      ],
+      "position_meaning": "Latest supplied agency position in the batch archive; not real-time",
+      "measurements": [
+        {
+          "label": "Reported sustained wind",
+          "value": 25.0,
+          "units": "kt",
+          "description": "nhc_working_bt \u00b7 1-minute average"
+        }
+      ],
+      "description": null,
+      "source_url": "https://www.ncei.noaa.gov/products/international-best-track-archive",
+      "references": [],
+      "timeline": null,
+      "track": {
+        "observed": [
+          {
+            "at": "2026-10-24T06:00:00Z",
+            "latitude": 13.6,
+            "longitude": 177.1,
+            "wind": 20.0,
+            "wind_units": "kt",
+            "wind_averaging_minutes": 1,
+            "agency": "nhc_working_bt",
+            "classification": "provisional",
+            "interpolation_flag": "O"
+          },
+          {
+            "at": "2026-10-24T12:00:00Z",
+            "latitude": 13.7,
+            "longitude": 177.6,
+            "wind": 20.0,
+            "wind_units": "kt",
+            "wind_averaging_minutes": 1,
+            "agency": "nhc_working_bt",
+            "classification": "provisional",
+            "interpolation_flag": "O"
+          },
+          {
+            "at": "2026-10-24T18:00:00Z",
+            "latitude": 13.8,
+            "longitude": 178.4,
+            "wind": 25.0,
+            "wind_units": "kt",
+            "wind_averaging_minutes": 1,
+            "agency": "nhc_working_bt",
+            "classification": "provisional",
+            "interpolation_flag": "O"
+          },
+          {
+            "at": "2026-10-25T00:00:00Z",
+            "latitude": 14.1,
+            "longitude": 179.1,
+            "wind": 25.0,
+            "wind_units": "kt",
+            "wind_averaging_minutes": 1,
+            "agency": "nhc_working_bt",
+            "classification": "provisional",
+            "interpolation_flag": "O"
+          },
+          {
+            "at": "2026-10-25T06:00:00Z",
+            "latitude": 14.2,
+            "longitude": 179.6,
+            "wind": 30.0,
+            "wind_units": "kt",
+            "wind_averaging_minutes": 1,
+            "agency": "nhc_working_bt",
+            "classification": "provisional",
+            "interpolation_flag": "O"
+          },
+          {
+            "at": "2026-10-25T12:00:00Z",
+            "latitude": 14.4,
+            "longitude": -179.6,
+            "wind": 30.0,
+            "wind_units": "kt",
+            "wind_averaging_minutes": 1,
+            "agency": "nhc_working_bt",
+            "classification": "provisional",
+            "interpolation_flag": "O"
+          },
+          {
+            "at": "2026-10-25T18:00:00Z",
+            "latitude": 14.7,
+            "longitude": -178.5,
+            "wind": 35.0,
+            "wind_units": "kt",
+            "wind_averaging_minutes": 1,
+            "agency": "nhc_working_bt",
+            "classification": "provisional",
+            "interpolation_flag": "O"
+          },
+          {
+            "at": "2026-10-26T00:00:00Z",
+            "latitude": 15.1,
+            "longitude": -177.2,
+            "wind": 40.0,
+            "wind_units": "kt",
+            "wind_averaging_minutes": 1,
+            "agency": "nhc_working_bt",
+            "classification": "provisional",
+            "interpolation_flag": "O"
+          },
+          {
+            "at": "2026-10-26T06:00:00Z",
+            "latitude": 14.8,
+            "longitude": -176.9,
+            "wind": 35.0,
+            "wind_units": "kt",
+            "wind_averaging_minutes": 1,
+            "agency": "nhc_working_bt",
+            "classification": "provisional",
+            "interpolation_flag": "O"
+          },
+          {
+            "at": "2026-10-26T12:00:00Z",
+            "latitude": 14.1,
+            "longitude": -176.8,
+            "wind": 30.0,
+            "wind_units": "kt",
+            "wind_averaging_minutes": 1,
+            "agency": "nhc_working_bt",
+            "classification": "provisional",
+            "interpolation_flag": "O"
+          },
+          {
+            "at": "2026-10-26T18:00:00Z",
+            "latitude": 13.7,
+            "longitude": -176.7,
+            "wind": 30.0,
+            "wind_units": "kt",
+            "wind_averaging_minutes": 1,
+            "agency": "nhc_working_bt",
+            "classification": "provisional",
+            "interpolation_flag": "O"
+          },
+          {
+            "at": "2026-10-27T00:00:00Z",
+            "latitude": 13.2,
+            "longitude": -176.2,
+            "wind": 25.0,
+            "wind_units": "kt",
+            "wind_averaging_minutes": 1,
+            "agency": "nhc_working_bt",
+            "classification": "provisional",
+            "interpolation_flag": "O"
+          }
+        ],
+        "forecast": [],
+        "official_id": "2026297N14177",
+        "atcf_ids": [
+          "CP032026"
+        ],
+        "basin": "WP",
+        "season": "2026",
+        "source": "NOAA IBTrACS v4r01 ACTIVE",
+        "source_url": "https://www.ncei.noaa.gov/data/international-best-track-archive-for-climate-stewardship-ibtracs/v04r01/access/csv/ibtracs.ACTIVE.list.v04r01.csv",
+        "latest_observation": "2026-10-27T00:00:00Z",
+        "issued_at": null,
+        "expires_at": null,
+        "note": "Batch-updated provisional/best-track agency positions; not a live storm locator. Interpolated positions/spurs excluded; wind averaging differs by agency."
+      },
+      "related_ids": [],
+      "size_km": null,
+      "danger_radius_km": null
+    }
+  ]
+}

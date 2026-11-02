@@ -14,7 +14,7 @@ export function TemperatureLegend({field,state,labelWeatherNote}) {
   const style=WEATHER_FIELDS[field.display_variable||'temperature'];
   return <aside className="weather-legend" aria-label="Weather legend"><div><strong>{style.title} · {style.units}</strong><span>{state==='stale'?'CACHED · STALE':'GFS · 1°'}</span></div><i style={{background:style.gradient}}/><div className="weather-legend__ticks">{style.ticks.map(tick=><span key={tick}>{tick}</span>)}</div><small>{field.kind==='analysis'?'Analysis':'Forecast'} valid {weatherTime(field.valid_at)} · <a href="https://nomads.ncep.noaa.gov/" target="_blank" rel="noreferrer">NOAA/NCEP</a></small>{labelWeatherNote&&<small>{labelWeatherNote}</small>}</aside>;
 }
-export default function WeatherPanel({windEnabled=false,onWindEnabled,windField,cameraAltitudeKm,cloudFallback=false,observedClouds,tab,onTab,events,eventsEnabled,onEventsEnabled,eventCategory,onEventCategory,selectedEventId,onEventSelect,open,onClose,weather,variable='temperature',onVariable,enabled,onEnabled,opacity,onOpacity,compatible,onCompatibleMap,onRefresh,refreshCooling,onViewCenter,locationWeather,labelWeatherNote}) {
+export default function WeatherPanel({onFocusEvent,onReturnEvent,windEnabled=false,onWindEnabled,windField,cameraAltitudeKm,cloudFallback=false,observedClouds,tab,onTab,events,eventsEnabled,onEventsEnabled,eventCategory,onEventCategory,selectedEventId,onEventSelect,open,onClose,weather,variable='temperature',onVariable,enabled,onEnabled,opacity,onOpacity,compatible,onCompatibleMap,onRefresh,refreshCooling,onViewCenter,locationWeather,labelWeatherNote}) {
   const bodyRef=useRef(null);
   useLayoutEffect(()=>{
     if(!open||!bodyRef.current)return;
@@ -36,7 +36,7 @@ export default function WeatherPanel({windEnabled=false,onWindEnabled,windField,
     <div className="hud-panel__header"><div><div className="eyebrow"><Thermometer size={15}/> LIVE EARTH</div><h2>Weather</h2></div><button className="icon-button" aria-label="Close weather" onClick={onClose}><X size={20}/></button></div>
     <div className="weather-view-tabs" role="group" aria-label="Weather views"><button aria-pressed={tab==='layers'} onClick={()=>onTab('layers')}>WEATHER LAYERS</button><button aria-pressed={tab==='events'} onClick={()=>onTab('events')}>NATURAL EVENTS</button></div>
     <div className="hud-panel__body weather-panel__body" ref={bodyRef}>
-      {tab==='events'?<NaturalEventsPanel data={events} enabled={eventsEnabled} onEnabled={onEventsEnabled} category={eventCategory} onCategory={onEventCategory} selectedId={selectedEventId} onSelect={onEventSelect}/>:<>
+      {tab==='events'?<NaturalEventsPanel onFocus={onFocusEvent} onReturn={onReturnEvent} data={events} enabled={eventsEnabled} onEnabled={onEventsEnabled} category={eventCategory} onCategory={onEventCategory} selectedId={selectedEventId} onSelect={onEventSelect}/>:<>
       <section aria-labelledby="global-weather-title"><div className="weather-section-heading"><h3 id="global-weather-title">Global weather</h3><span className={`weather-status is-${weather.state}`}>{observed?observedClouds.status.toUpperCase():stateLabel}</span></div>
         <WeatherGallery value={variable} onChange={onVariable}/>{labelWeatherNote&&<p className="weather-source" role="note">{labelWeatherNote}</p>}
         <label className="weather-toggle"><input type="checkbox" checked={enabled} onChange={event=>onEnabled(event.target.checked)}/><span>Weather layer</span></label>

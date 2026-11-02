@@ -102,6 +102,7 @@ async function requestJson(path, options = {}) {
 export function getApiBaseUrl() {
   return API_BASE;
 }
+export function fetchNaturalEventBoundary(id,signal){return requestJson(`/api/events/${encodeURIComponent(id)}/boundary`,{signal,timeoutMs:25000});}
 
 export function fetchHistoricalWeatherCoverage(signal){return requestJson('/api/historical/weather/coverage',{signal});}
 export function fetchHistoricalWeatherSnapshot(time,signal){return requestJson(`/api/historical/weather/snapshot?${new URLSearchParams({timestamp:time.toISOString()})}`,{signal,timeoutMs:20000});}

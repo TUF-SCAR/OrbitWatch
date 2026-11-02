@@ -1,4 +1,5 @@
-import { Cartesian2, Cartesian3, Color, CustomDataSource, NearFarScalar, VerticalOrigin } from 'cesium';
+import { Cartesian2, Cartesian3, Color, CustomDataSource, NearFarScalar, VerticalOrigin,PolylineDashMaterialProperty,PolylineGlowMaterialProperty,ArcType,BoundingSphere,Matrix4,HeadingPitchRange } from 'cesium';
+import {trackPoints,trackSegments,datedPointSubset,windColor} from './cycloneTracks.js';
 import { prefersReducedMotion } from '../utils/motionPreferences.js';
 
 import {EVENT_CATEGORIES} from '../data/eventCategories.js';
@@ -40,7 +41,7 @@ export function eventIcon(category,frame=0){
 
 export function createNaturalEventLayer(viewer,{onSelect=()=>{},reduced=prefersReducedMotion,makeIcon=eventIcon,makeClusterIcon=clusterIcon,now=()=>performance.now()}={}){
   const source=new CustomDataSource('OrbitWatch reported natural events'),focus=new CustomDataSource('OrbitWatch selected natural event');
-  let destroyed=false,enabled=false,records=[],selected=null,signature='',removeFrame=null,selectedEntity=null;
+  let destroyed=false,enabled=false,records=[],selected=null,signature='',removeFrame=null,selectedEntity=null,savedCamera=null,focusGeneration=0,focusFlight=false;
   source.clustering.enabled=true;source.clustering.pixelRange=44;source.clustering.minimumClusterSize=3;
   const removeCluster=source.clustering.clusterEvent.addEventListener((entities,cluster)=>{
     // Bake number + disc into ONE depth-tested sprite. Separate coincident
@@ -63,19 +64,40 @@ export function createNaturalEventLayer(viewer,{onSelect=()=>{},reduced=prefersR
         fillColor:Color.fromCssColorString(spec.color),showBackground:true,backgroundColor:Color.fromCssColorString('#07101ee6'),
         pixelOffset:new Cartesian2(0,-34),disableDepthTestDistance:0}:undefined};
   }
+  function boundaries(event){
+    return [...(event.geometry?.type==='Polygon'||event.geometry?.type==='MultiPolygon'?[event.geometry]:[]),...(event.boundaries||[])].slice(0,16);
+  }
+  function addBoundaries(target,event,prefix){
+    let count=0;
+    for(const geometry of boundaries(event)){
+      const polygons=geometry.type==='Polygon'?[geometry.coordinates]:geometry.coordinates;
+      if(!Array.isArray(polygons))continue;
+      for(const polygon of polygons)for(const ring of polygon){
+        if(!Array.isArray(ring)||ring.length<4||ring.length>2048||count+ring.length>4096||ring.some(p=>!Array.isArray(p)||!Number.isFinite(p[0])||!Number.isFinite(p[1])||Math.abs(p[0])>180||Math.abs(p[1])>90))continue;
+        count+=ring.length;target.entities.add({id:`${prefix}:${event.id}:${count}`,properties:{naturalEventId:event.id},polyline:{positions:Cartesian3.fromDegreesArray(ring.flat()),width:1.5,arcType:ArcType.GEODESIC,
+          material:Color.fromCssColorString(EVENT_CATEGORIES[event.category]?.color||'#b4ccd8').withAlpha(.65)}});
+      }
+    }
+  }
+  function addTrack(event){
+    for(const kind of ['observed','forecast']){
+      const points=trackPoints(event.track,kind);
+      for(const [i,segment] of trackSegments(points).entries())focus.entities.add({id:`track:${kind}:${i}:${event.id}`,properties:{naturalEventId:event.id,trackKind:kind},polyline:{positions:segment.map(p=>Cartesian3.fromDegrees(p.longitude,p.latitude,5000)),arcType:ArcType.GEODESIC,width:kind==='observed'?3:2.5,
+        material:kind==='observed'?new PolylineGlowMaterialProperty({glowPower:.15,color:Color.fromCssColorString('#89e4dd')}):new PolylineDashMaterialProperty({color:Color.fromCssColorString('#f4cf9a'),dashLength:18})}});
+      const subset=datedPointSubset(points,kind==='observed'?48:16);
+      for(const [i,p] of subset.entries())focus.entities.add({id:`trackpoint:${kind}:${i}:${event.id}`,name:`${kind==='observed'?'Reported':'Forecast'} ${p.at}`,properties:{naturalEventId:event.id,trackKind:kind,sourceTimestamp:p.at},position:Cartesian3.fromDegrees(p.longitude,p.latitude,6000),
+        point:{pixelSize:kind==='forecast'?8:i===subset.length-1?7:4,color:Color.fromCssColorString(kind==='forecast'?'#f4cf9a':windColor(p)).withAlpha(kind==='forecast'?.12:1),outlineColor:Color.fromCssColorString(kind==='forecast'?'#f4cf9a':'#07101e'),outlineWidth:kind==='forecast'?2:1,disableDepthTestDistance:0},
+        label:i===subset.length-1||kind==='forecast'&&i%3===0?{text:`${kind==='forecast'?'FCST · ':''}${new Date(p.at).toISOString().slice(5,16).replace('T',' ')} UTC${Number.isFinite(p.wind)?`\n${p.wind} ${p.wind_units} · ${p.wind_averaging_minutes||'?'} min`:''}`,font:'11px sans-serif',fillColor:Color.fromCssColorString('#dceff0'),showBackground:true,backgroundColor:Color.fromCssColorString('#07101ed9'),pixelOffset:new Cartesian2(10,kind==='observed'?28:-14),disableDepthTestDistance:0}:undefined});
+    }
+  }
   function select(id){
     removeFrame?.();removeFrame=null;focus.entities.removeAll();selected=id;selectedEntity=null;
     for(const e of source.entities.values)e.show=e.properties.naturalEventId.getValue()!==id;
     const event=records.find(e=>e.id===id);if(!enabled||!event)return;
-    selectedEntity=focus.entities.add(entity(event,true));
-    if(event.geometry?.type==='Polygon'||event.geometry?.type==='MultiPolygon'){
-      const polygons=event.geometry.type==='Polygon'?[event.geometry.coordinates]:event.geometry.coordinates;
-      for(const polygon of polygons)for(const ring of polygon){
-        focus.entities.add({properties:{naturalEventId:event.id},polyline:{positions:Cartesian3.fromDegreesArray(ring.flat()),width:1.5,clampToGround:true,
-          material:Color.fromCssColorString(EVENT_CATEGORIES[event.category]?.color||'#b4ccd8').withAlpha(.7)}});
-      }
-    }
-    if(!reduced()&&['cyclone','earthquake'].includes(event.category)){
+    if(Array.isArray(event.position))selectedEntity=focus.entities.add(entity(event,true));
+    addBoundaries(focus,event,'selected-boundary');
+    if(event.category==='cyclone'&&event.track)addTrack(event);
+    if(selectedEntity&&!reduced()&&['cyclone','earthquake'].includes(event.category)){
       removeFrame=viewer.scene.preRender.addEventListener(()=>{
         if(destroyed||!enabled||!selectedEntity)return;
         if(reduced()){selectedEntity.billboard.scale.setValue(1);selectedEntity.billboard.rotation.setValue(0);return;}
@@ -92,16 +114,42 @@ export function createNaturalEventLayer(viewer,{onSelect=()=>{},reduced=prefersR
     update({events=[],visible=false,category='all',selectedId=null}){
       if(destroyed||viewer.isDestroyed())return;
       const visibilityChanged=enabled!==visible;enabled=visible;source.show=visible;focus.show=visible;
-      const next=events.filter(e=>category==='all'||e.category===category);
+      const next=events.filter(e=>category==='all'||e.category===category).slice(0,1200);
       // Source revisions can change a title/category/extent without changing
       // the report time or point. Include all visual inputs, not retrieval time.
-      const key=JSON.stringify(next.map(e=>[e.id,e.reported_at,e.category,e.title,e.position,e.geometry]));
+      const key=JSON.stringify(next.map(e=>[e.id,e.reported_at,e.category,e.title,e.position,e.geometry,e.track,e.boundaries,e.track?.forecast?.length?Date.parse(e.track.expires_at)>Date.now():false]));
       records=next;
       if(key!==signature||visibilityChanged){
         signature=key;records=next;source.entities.suspendEvents();source.entities.removeAll();
-        if(visible)for(const event of next)source.entities.add(entity(event));source.entities.resumeEvents();select(selectedId);
+        if(visible){let polygonCount=0;for(const event of next){if(Array.isArray(event.position))source.entities.add(entity(event));else if(polygonCount++<80)addBoundaries(source,event,'context-boundary');}}source.entities.resumeEvents();select(selectedId);
       }else if(selected!==selectedId||(!visible&&removeFrame)||(visible&&selectedId&&!selectedEntity))select(selectedId);
       viewer.scene.requestRender();
+      if(!visible){if(focusFlight)viewer.camera?.cancelFlight?.();focusFlight=false;savedCamera=null;focusGeneration++;}
+    },
+    focusEvent(id){
+      const event=records.find(e=>e.id===id),camera=viewer.camera;
+      if(!enabled||!event||!camera)return false;
+      const points=event.track?[...trackPoints(event.track),...trackPoints(event.track,'forecast')].map(p=>Cartesian3.fromDegrees(p.longitude,p.latitude)):[];
+      if(!points.length&&Array.isArray(event.position))points.push(Cartesian3.fromDegrees(...event.position));
+      if(!points.length)for(const g of boundaries(event)){const polygons=g.type==='Polygon'?[g.coordinates]:g.coordinates;for(const polygon of polygons)for(const ring of polygon)for(const p of ring)points.push(Cartesian3.fromDegrees(...p));}
+      if(!points.length)return false;
+      savedCamera||={position:Cartesian3.clone(camera.positionWC),direction:Cartesian3.clone(camera.directionWC),up:Cartesian3.clone(camera.upWC)};
+      const sphere=BoundingSphere.fromPoints(points);sphere.radius=Math.max(250000,sphere.radius);
+      const range=Math.max(800000,sphere.radius*4.2),generation=++focusGeneration;focusFlight=true;
+      camera.flyToBoundingSphere(sphere,{duration:reduced()?0:1.4,offset:new HeadingPitchRange(0,-Math.PI/2,range),complete:()=>{
+        focusFlight=false;
+        if(destroyed||generation!==focusGeneration||!savedCamera)return;
+        const canvas=viewer.scene.canvas;
+        // Keep the framed route left of the desktop report panel. Narrow
+        // screens close that panel and retain a dedicated return toolbar.
+        if(canvas?.clientWidth>=1100)camera.moveRight?.(2*range*Math.tan((camera.frustum?.fovy||Math.PI/3)/2)/canvas.clientHeight*160);
+        viewer.scene.requestRender();
+      },cancel:()=>{focusFlight=false;}});return true;
+    },
+    returnFromFocus(){
+      if(!savedCamera||!viewer.camera)return false;
+      const saved=savedCamera;savedCamera=null;focusGeneration++;focusFlight=false;viewer.camera.cancelFlight?.();viewer.camera.lookAtTransform(Matrix4.IDENTITY);
+      viewer.camera.setView({destination:saved.position,orientation:{direction:saved.direction,up:saved.up}});viewer.scene.requestRender();return true;
     },
     pick(picked){
       const id=picked?.id;
@@ -114,7 +162,7 @@ export function createNaturalEventLayer(viewer,{onSelect=()=>{},reduced=prefersR
     destroy(){
       if(destroyed)return;destroyed=true;removeFrame?.();removeFrame=null;removeCluster();
       for(const ds of [source,focus])if(!viewer.isDestroyed())viewer.dataSources.remove(ds,true);
-      records=[];selectedEntity=null;
+      if(focusFlight)viewer.camera?.cancelFlight?.();records=[];selectedEntity=null;savedCamera=null;focusFlight=false;
     },
   };
 }

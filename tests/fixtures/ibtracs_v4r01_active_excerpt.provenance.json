@@ -1,0 +1,7 @@
+{
+  "source_url": "https://www.ncei.noaa.gov/data/international-best-track-archive-for-climate-stewardship-ibtracs/v04r01/access/csv/ibtracs.ACTIVE.list.v04r01.csv",
+  "retrieved_at": "2026-11-02T09:59:58.740471Z",
+  "upstream_sha256": "f30823baf46e983b7889357483f2f0ba90f9dcb14b5f21ec03b871765dbe5016",
+  "excerpt_sha256": "751a21d72833628f78767cf6ae50639b8a176208fbf76584a633b4665c387f1c",
+  "note": "Authentic subset/columns, isolated parser/renderer tests only; never production seed."
+}

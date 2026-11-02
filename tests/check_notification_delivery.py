@@ -106,7 +106,7 @@ def run(postgres=False,serve=False):
             assert event_candidate(event,loc,120,now)
             assert not event_candidate(event,SimpleNamespace(**{**vars(loc),'latitude':0,'longitude':0}),120,now)
             assert not event_candidate({**event,'reported_at':(now-timedelta(days=3)).isoformat()},loc,120,now)
-            assert not event_candidate({**event,'geometry':{'type':'Polygon','coordinates':[[[-74,40.7],[-74,40.8],[-74.1,40.8],[-74,40.7]]]}},loc,120,now)
+            assert event_candidate({**event,'geometry':{'type':'Polygon','coordinates':[[[-74,40.7],[-74,40.8],[-74.1,40.8],[-74,40.7]]]}},loc,120,now)
             assert not event_candidate(event,loc,120,now,4.5)
             assert event_candidate({**event,'measurements':[{'label':'Magnitude','value':5.1}]},loc,120,now,4.5)
             assert not event_candidate({**event,'provider':'eonet','status':'open','closed_at':None,'reported_at':(now-timedelta(days=2)).isoformat()},loc,120,now)

@@ -13,6 +13,9 @@ def run():
   'DATABASE_URL':f'sqlite:///{Path(tmp).as_posix()}/accounts.db','JWT_SECRET_KEY':'isolated-event-contract-secret-with-sufficient-length','ORBITWATCH_INGESTION_ENABLED':'false','ORBITWATCH_EVENTS_CACHE_DIR':str(Path(tmp)/'events')}):
   from services.natural_event_data import normalize,safe_url,geometry,cross_references,iso
   from services import natural_events as n
+  # This legacy concurrency suite deliberately exercises the three original
+  # providers; global track acquisition has its own focused contract tests.
+  n.POLICIES={p:n.POLICIES[p] for p in ('eonet','gdacs','usgs')};n.stores={p:n.stores[p] for p in n.POLICIES}
   from services.weather_cache import WeatherDeferred
   from core.database import DatabaseBase,database_engine,database_session_maker
   from core.availability import DatabaseUnavailable
@@ -37,7 +40,8 @@ def run():
   invalid=copy.deepcopy(row);invalid['geometry'][0]['coordinates']=[190,12]
   ancient=copy.deepcopy(row);ancient['id']='old';ancient['geometry'][0]['date']=iso(now-timedelta(days=40))
   future=copy.deepcopy(row);future['id']='future';future['geometry'][0]['date']=iso(now+timedelta(days=2))
-  parsed,rejected=normalize('eonet',{'events':[row,row,invalid,ancient,future]},stamp);assert len(parsed)==1 and rejected==3
+  parsed,rejected=normalize('eonet',{'events':[row,row,invalid,ancient,future]},stamp);assert len(parsed)==2 and rejected==2
+  assert next(e for e in parsed if e['provider_event_id']=='old')['recent_activity_verified'] is False
   empty,rejected=normalize('eonet',{'events':[]},stamp);assert empty==[]
   quake={'id':'q1','properties':{'type':'earthquake','title':'Real-contract fixture','time':now.timestamp()*1000,'mag':4.5,'magType':'mb','status':'reviewed','url':'https://earthquake.usgs.gov/earthquakes/eventpage/q1'},'geometry':{'type':'Point','coordinates':[10,20,33]}}
   q=normalize('usgs',{'features':[quake]},stamp)[0][0];assert q['measurements'][1]=={'label':'Hypocentral depth','value':33,'units':'km'}

@@ -7,6 +7,8 @@ from urllib.parse import urlsplit
 from services.account_inbox import utc
 from services.natural_event_data import date
 from services.visibility_forecast import match_forecast
+from services.event_geometry import proximity
+from services.event_policy import severity as event_severity
 
 
 def quiet(preferences,locations,now):
@@ -62,40 +64,54 @@ def astronomy_candidate(kind,identity,name,result,location,preferences,now,datas
 
 def event_candidate(event,location,radius,now,previous_severity=None):
     provider=event.get('provider');geometry=event.get('geometry') or {}
-    # Boundary vertices/centroids are NOT used to invent polygon proximity.
-    if geometry.get('type')!='Point' or event.get('data_state')!='available':return None
-    coordinates=geometry.get('coordinates',[])
-    if len(coordinates)<2:return None
+    if event.get('data_state')!='available':return None
     reported=date(event.get('reported_at'));updated=date(event.get('updated_at'));retrieved=date(event.get('retrieved_at'))
-    if not reported or not retrieved or not timedelta(0)<=now-reported<=timedelta(hours=24) or not timedelta(0)<=now-retrieved<=timedelta(hours=1):return None
+    validated=date(event.get('provider_validated_at')) or retrieved
+    if not reported or not retrieved or not validated or reported>now or not timedelta(0)<=now-validated<=timedelta(hours=1):return None
     if updated and not -timedelta(minutes=5)<=now-updated<=timedelta(hours=24):return None
-    km=distance(float(location.latitude),float(location.longitude),coordinates[1],coordinates[0])
-    if km>radius:return None
-    severity=None;version='new'
+    km=proximity(geometry,float(location.latitude),float(location.longitude))
+    if km is None or km>radius:return None
+    severity=None;version='new';material=event.get('material_update') or {}
+    material_at=date(material.get('at'))
+    verified_update=bool(material_at and updated and material_at==updated and timedelta(0)<=now-material_at<=timedelta(hours=24))
+    new_report=timedelta(0)<=now-reported<=timedelta(hours=24)
     if provider=='usgs':
-        severity=next((m['value'] for m in event.get('measurements',[]) if m.get('label','').startswith('Magnitude')),None)
-        if severity is None or severity<4:return None
+        severity=event_severity(event)
+        if not isinstance(severity,(int,float)) or isinstance(severity,bool) or not math.isfinite(severity) or not 4<=severity<=10:return None
         if previous_severity is not None:
             if severity-previous_severity<.5 or not updated:return None
             version=f'magnitude:{math.floor(severity*2)}'
+        elif not new_report:
+            if not verified_update or material.get('kind')!='significant_magnitude_increase':return None
+            version='change:'+material['signature']
     elif provider=='gdacs':
-        severity={'green':1,'orange':2,'red':3}.get(str(event.get('status','')).lower(),0)
-        if severity<2:return None
+        severity=event_severity(event)
+        if severity is None or severity<2:return None
+        area_change=False
+        if verified_update and material.get('kind')=='reported_boundary_change':
+            old_distance=proximity(material.get('previous_geometry') or {},float(location.latitude),float(location.longitude))
+            area_change=old_distance is not None and old_distance>radius
         if previous_severity is not None:
-            if severity<=previous_severity or not updated:return None
-            version=f'level:{int(severity)}'
+            if area_change:version='area:'+material['signature']
+            elif severity>previous_severity and updated:version=f'level:{int(severity)}'
+            else:return None
+        elif not new_report:
+            if not verified_update or not(area_change or material.get('kind')=='official_alert_escalation'):return None
+            version='change:'+material['signature']
     elif provider=='eonet':
-        if event.get('closed_at') or event.get('status')!='open' or previous_severity is not None:return None
+        if not new_report or event.get('closed_at') or event.get('status')!='open' or previous_severity is not None:return None
         severity=0  # Single recent curation report per identity, no automatic updates.
     else:return None
+    source_at=updated if version!='new' else reported
+    if not source_at:return None
     identity=event['id']
     url=event.get('source_url') or ''
     parsed=urlsplit(url)
     host=parsed.hostname or ''
     if parsed.scheme!='https' or parsed.username or parsed.password or not any(host==domain or host.endswith('.'+domain) for domain in ('usgs.gov','nasa.gov','gdacs.org')):url=None
     return {'kind':'event','target_id':identity,'category':event['category'],'title':f"{provider.upper()} {event['category'].replace('_',' ')} report"[:120],
-            'message':f"A {event['category'].replace('_',' ')} was reported by {provider.upper()} within your selected radius ({km:.0f} km from {location.name}). Source status: {event.get('status','unavailable')}. This is a source report, not a local emergency warning. OrbitWatch does not replace official emergency alert systems."[:400],
-            'opportunity_at':reported,'expires_at':reported+timedelta(hours=24),'source_at':updated or reported,
+            'message':f"{'An updated' if version!='new' else 'A'} {provider.upper()} {event['category'].replace('_',' ')} report was issued near your saved observation area ({km:.0f} km). Source {'episode' if event.get('episode_status') else 'overall'} status: {event.get('episode_status') or event.get('status','unavailable')}. Proximity is to a reported point/boundary, not a danger radius or forecast impact. Consult official local authorities."[:400],
+            'opportunity_at':source_at,'expires_at':source_at+timedelta(hours=24),'source_at':source_at,
             'key':f'event:{identity}:{version}','severity':severity,'source_url':url,'distance_km':km,
             'observer':(float(location.latitude),float(location.longitude),location.timezone,getattr(location,'version',None))}
 

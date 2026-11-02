@@ -6,10 +6,12 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from sqlalchemy import and_, delete, func, or_, select, update
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import SQLAlchemyError
 from core.database import get_database_session
 from core.security import get_current_user
 from models.user import User
 from models.alerts import AlertSubscription, InboxNotification
+from models.notification_delivery import NotificationDelivery
 from routes.account import account_storage, lock_owner
 from schemas.alerts import SubscriptionInput, SubscriptionResponse, InboxItem
 from services.account_targets import LIMITS, target_name
@@ -88,7 +90,14 @@ def inbox(response: Response, limit: int = Query(20, ge=1, le=50), cursor: str |
             query = query.where(or_(InboxNotification.created_at < stamp, and_(InboxNotification.created_at == stamp, InboxNotification.id < identity)))
         rows = list(database.scalars(query.order_by(InboxNotification.created_at.desc(), InboxNotification.id.desc()).limit(limit+1)))
         more = len(rows) > limit; rows = rows[:limit]
-        items = [InboxItem(**{key: utc(getattr(row,key)) if key.endswith('_at') else getattr(row,key) for key in InboxItem.model_fields if key not in {"is_expired","destination"}},
+        metadata={}
+        try:
+            with database.begin_nested():
+                metadata={item.inbox_id:item for item in database.scalars(select(NotificationDelivery).where(NotificationDelivery.owner_id==user.id,NotificationDelivery.inbox_id.in_([row.id for row in rows])))}
+        except SQLAlchemyError:
+            pass  # A missing additive delivery migration does not break the old inbox.
+        items = [InboxItem(**{key: utc(getattr(row,key)) if key.endswith('_at') else getattr(row,key) for key in InboxItem.model_fields if key not in {"is_expired","destination","source_url","delivery_state"}},
+            source_url=metadata[row.id].source_url if row.id in metadata else None,delivery_state=metadata[row.id].state if row.id in metadata else None,
             is_expired=bool(row.expires_at and utc(row.expires_at) <= now), destination={"kind": row.kind, "target_id": row.target_id}).model_dump() for row in rows]
         next_cursor = base64.urlsafe_b64encode(json.dumps([utc(rows[-1].created_at).isoformat(), rows[-1].id]).encode()).decode().rstrip("=") if more else None
         return {"items": items, "next_cursor": next_cursor, "unread_count": unread(database,user.id,now), "retention_days": RETENTION_DAYS}

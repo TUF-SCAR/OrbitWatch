@@ -39,6 +39,6 @@ export default function VisibilityPreview({account,kind}) {
       })}</div>
       {data&&<p className="account-muted">24-hour preview · refreshed {timeLabel(data.generated_at,location.timezone)}. {data.items.some(item=>item.computed_at&&new Date(data.generated_at).getTime()-new Date(item.computed_at).getTime()>300000)?'Calculation is over five minutes old; refresh to update. ':''}Geometry and forecast conditions are separate; visibility is not guaranteed.</p>}
     </>}
-    <small className="account-muted">On-demand preview only. Scheduled notifications are upcoming.</small>
+    <small className="account-muted">On-demand preview only. Notification delivery depends on your preferences and worker status.</small>
   </section>;
 }

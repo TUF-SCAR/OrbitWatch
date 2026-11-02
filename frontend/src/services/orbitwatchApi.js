@@ -212,3 +212,7 @@ export async function fetchVisibilityPreview(kind,locationId,signal) {
   const data=await requestJson(`/api/account/visibility/${collection}?${new URLSearchParams({location_id:locationId,hours:'24'})}`,{signal,timeoutMs:20000});
   return {...data,collectionKind:kind};
 }
+
+export function fetchDeliveryStatus(signal) {return requestJson('/api/account/notification-delivery',{signal});}
+export function savePushSubscription(body,signal) {return accountWrite('/api/account/push-subscriptions','POST',body,signal);}
+export function revokePushSubscription(id,signal) {return requestJson(`/api/account/push-subscriptions/${encodeURIComponent(id)}`,{method:'DELETE',signal,timeoutMs:4000,keepalive:true});}

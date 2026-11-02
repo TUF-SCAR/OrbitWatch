@@ -12,3 +12,5 @@ eccodes==2.50.0
 numpy==2.5.3
 tzdata==2026.5
 skyfield-data==7.0.0
+pywebpush==2.5.0
+cryptography==50.0.2

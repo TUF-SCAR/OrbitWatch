@@ -708,3 +708,169 @@ Final checks: ESLint PASS with no warnings after replacing render-time clock acc
 with the response generation timestamp; final production build PASS (2,115 modules).
 Python compile and diff whitespace checks PASS. Temporary visibility API/Vite and
 browser tab stopped; viewport override reset. No production services were started.
+
+## Batch 07 — Real Notification Generation & Delivery
+
+Starting HEAD 59effb83359163c74974c91b6f4260711c8943cd; completed 2026-11-02.
+Preserved Batch 05/06 authentication, subscriptions, inbox and scientific engine.
+New trusted runner: `backend/run_notifications.py --once` or `--loop` (300-second
+cadence), independent of browsers and web-server lifespan. A systemd service
+example is supplied in `deploy/orbitwatch-notifications.service`; it is NOT installed
+or deployed. PostgreSQL session advisory exclusion plus a 90-second durable token/
+lease fences mutations. Hard process death expires the lease; ordinary interruption
+releases it. Heartbeat records actual start/success/error and once/loop mode; one
+successful one-shot is never represented as verified recurring deployment.
+
+Evaluation uses master/category preferences, canonical followed targets, owned saved
+locations, IANA quiet hours (including overnight/DST), actual source validity and
+10/30/60-minute warning gates. A notification may be generated between its due
+warning and ten minutes later, always before the useful start; messages show the
+actual local start, not an exact lead-time promise. Existing Skyfield/SGP4/DE421
+predictions are reused over a two-hour worker horizon, with darkness, sunlit segments,
+10-degree screening, seven-day element bound and explicit brightness uncertainty.
+A clipped END is allowed; ongoing/clipped starts fail the future-warning gate.
+Forecasts are queried only for due candidates, shared per saved location, with the
+existing one-hour cache, valid-time matching, provider lease/quotas/backoff. Suppress
+forecast cloud >=80%, precipitation probability >=70% or precipitation >=0.2 mm;
+missing forecasts remain explicitly unknown, not substituted with current weather.
+
+Bounds: 25 enabled accounts selected by persistent owner cursor/run, up to 140
+location-target pairs/account, eight-second per-account work budget, 55-second run
+deadline, five generated messages/account/run, 50 outbox rows/run. Pair rotation
+and account cursor reduce starvation; resource limits can defer/miss short windows
+under load and are not an alert-delivery guarantee. No massive prediction arrays
+are stored. Worker refuses generation at 299 MB database usage to retain the normal
+reserve. Provider fetches are off by default: workers consume existing caches and
+never separately fetch orbital/event feeds. Optional weather fetching requires
+ORBITWATCH_NOTIFICATION_PROVIDER_REQUESTS=true, the exact `--host-fingerprint`
+value in ORBITWATCH_NOTIFICATION_HOST_ID, and an existing persistent shared weather
+cache. Deploy only on the same ingestion/API host/shared cache volume; SQLite/OS
+provider gates are NOT distributed quota coordination. Independent ephemeral hosts
+must remain cache-only. No provider counters were reset.
+
+Natural events reuse normalized cached EONET/GDACS/USGS records without new polling.
+Only reliable Point geometry is supported for automatic radius alerts (haversine,
+including dateline); Polygon/MultiPolygon reports are skipped rather than using a
+boundary vertex. Require fresh usable cache, retrieval <=1 hour and genuine report
+<=24 hours. USGS new M>=4 reports qualify; a >=0.5 magnitude increase with a recent
+source update is material. GDACS Orange/Red qualify; only escalation is material.
+EONET recent open, nonclosed curation reports qualify once/identity, with no automatic
+update repeats. Open/reviewed/alert levels are never described as local danger.
+Source report URLs are constrained to official NASA/USGS/GDACS domains. Coverage
+remains bounded by existing ingestion; OrbitWatch is not an emergency alert system.
+
+`services/notification_policy.py` separates scientific eligibility from persistence.
+`services/notification_runner.py` commits inbox and compact durable delivery ledger
+atomically through the existing trusted writer. Dedup survives dismissal/200-row
+inbox rotation; nearby locations (<=10 km) and same-target starts within 20 minutes
+are coalesced, with stable event identities/material-change keys. Ledger is capped
+at 1,000/account and expired entries retained 35 days; capacity suppresses new work
+rather than evicting live dedup identities. Settings/subscription/location ownership,
+coordinate/version, warning/radius and quiet-hour gates are rechecked before commit.
+Pending delivery rechecks current consent/settings/location/subscription and expiry.
+No public notification-create endpoint exists.
+
+Delivery state distinguishes inbox persisted, push queued/retry, provider accepted,
+rejected, expired, suppressed and unknown. Send intent is committed before network;
+only committed inbox rows can be sent. Temporary explicit HTTP 429/5xx rejections
+retry with backoff/Retry-After, at most four attempts; 404/410 revoke subscriptions.
+A transport ambiguity or crash after send intent becomes UNKNOWN and is not blindly
+resent: Web Push offers no exactly-once receipt API. This trades a possible missed
+push for avoiding duplicate sends; inbox remains durable. Provider acceptance is
+never proof of display. Unconfigured push preserves pending work until expiry.
+
+Push: pinned pywebpush 2.5.0 and compatible cryptography 50.0.2 installed in venv;
+pip check passed. The initial older cryptography pin was rejected by dependency
+resolution before installation and was corrected. Endpoint/key material is Fernet
+encrypted at rest; only known HTTPS FCM/Mozilla/Apple/WNS hosts are allowed, with
+public-address validation, no credentials/nonstandard ports/redirects, bounded keys
+and payloads, and owner-only APIs. Device limit is configurable 1–5 with a hard DB
+cap of five. VAPID keypair consistency is validated. Required persistent server
+secrets: ORBITWATCH_VAPID_PRIVATE_KEY (base64 DER), ORBITWATCH_VAPID_PUBLIC_KEY
+(base64url uncompressed P-256), ORBITWATCH_VAPID_SUBJECT and
+ORBITWATCH_PUSH_ENCRYPTION_KEY (Fernet). No keys were committed or written to env.
+References reviewed: https://pypi.org/project/pywebpush/ and
+https://github.com/web-push-libs/pywebpush; Apple Home Screen requirements at
+https://developer.apple.com/documentation/usernotifications/sending-web-push-notifications-in-web-apps-and-browsers.
+
+New authenticated APIs: GET /api/account/notification-delivery, POST
+/api/account/push-subscriptions (explicit consent), DELETE /push-subscriptions/{id}.
+Status exposes opaque device receipts and genuine heartbeat/outcome metadata, never
+endpoints. Existing inbox safely enriches source URL and delivery state; missing
+migration 005 does not destroy the old inbox path. Existing Notification Centre and
+Preferences show real worker/permission/device state, explicit enable/disable,
+quiet-hours and platform guidance. One visible-app 60-second refresh updates count/
+inbox; no per-second polling or permission prompts on login/render. Push-only service
+worker intercepts no Cesium/Vite fetches, checks a durable local device marker and
+expiry, uses branded notifications, validates same-origin click destinations and
+opens/reuses the authenticated inbox. Logout attempts local marker revocation,
+notification closing, browser unsubscribe and server revocation before session clear;
+failed server revocation retains a receipt for retry. Fully quit browser/OS delivery
+is platform-dependent. Revoked browser permission is displayed honestly.
+
+Supabase migration 005: explicitly APPLIED to verified fingerprint
+91629c91746ef7a1. Three additive tables: account_push_devices,
+notification_runner_state, account_notification_delivery, with unique/check/FK
+constraints, indexes, RLS and PUBLIC revocation. The explicit migration checker now
+validates 002–005 plus delivery constraints/indexes and preserved existing account
+counts. Production size: 13,192,339 bytes before; 13,347,987 after migration
+(+155,648); 13,364,371 after one genuine runner heartbeat. Final nominal remaining:
+486,635,629 bytes. Normal 300 MB/emergency 400 MB ceilings were not approached.
+Legacy counts unchanged: users 5, live elements 143, history 0, archive 1,019.
+All four old account tables remain empty. Production inbox/delivery/push rows: ZERO;
+runner metadata: ONE genuine heartbeat. No fake production users/messages or push.
+
+Actual operation verified separately: `backend/run_notifications.py --once` completed
+with evaluated=0/generated=0 against real Supabase, with no browser or upstream
+fetches. Eight authenticated production auth/readiness/account/status GETs returned
+200. Status reported mode=once, real last-success timestamp, push_configured=false,
+no devices/outcomes. Recurring worker is NOT deployed and background delivery is
+NOT operational. No always-on host/VAPID configuration was present; the owner's
+host clarification remains unanswered, so a reviewable deployment unit was prepared.
+Operator action: deploy the loop service on the persistent ingestion host with shared
+caches and DB/secrets, then explicitly opt in a device and verify a genuine accepted
+push AND device display. No real opted-in device received a push in this batch.
+
+Focused tests: disposable SQLite policy/API/ledger/worker suite passed (27 counted
+HTTP checks after integration additions); disposable PostgreSQL suite passed 28 HTTP
+checks, migration reapplication preserving data, schema constraints/RLS and granted
+non-owner role reading zero rows. Includes actual DE421 window -> runner -> private
+inbox, unchanged USGS report dedup, all warning choices, overnight/DST quiet hours,
+disabled preferences, owner isolation, missing/stale/polygon event rejection,
+material magnitude/GDACS changes, encrypted endpoint storage, committed send intent,
+ambiguous crash recovery, 429 retry/Retry-After and 410 device revocation. Real
+pywebpush encryption/VAPID signing was exercised with ONLY the HTTP boundary mocked;
+no unsolicited provider call. Existing account-alert suite: 101 HTTP checks PASS;
+existing scientific visibility suite: 15 HTTP checks plus scientific assertions PASS.
+Frontend: 18/18 focused tests PASS, including actual service-worker message/push/click
+handlers, explicit consent, unsubscribe, late private response isolation and prior
+account/visibility contracts. ESLint and production build PASS; existing bundle/plugin
+warnings remain. Windows denied the old disposable PostgreSQL port 55434; test server
+ran on alternate loopback 55444. An invalid 17-byte auth test key was corrected to
+16 bytes; obsolete UI-text assertions and a mixed-encoding edit were corrected.
+
+Genuine browser: disposable local users only, actual backend auth/inbox/status;
+no permission requested. Unconfigured push control disabled, one-shot status honest,
+60-second refresh eventually showed stale heartbeat, Mark all read cleared the bell.
+Desktop and 390x844 inspected; page width 390, delivery box width 260 / scroll width
+258 (no horizontal overflow). Screenshots saved in approved visualization workspace.
+Hot-reload blank state was recovered by normal reload; production build/SSR tests
+passed. Push-click deep-link restoration and final cleanup status recorded below.
+
+Changed files: new delivery models/routes, migration 005, browser_push,
+notification_policy/runner services, run_notifications entrypoint, systemd service,
+frontend NotificationDelivery/browserPush/push service worker and focused backend/
+frontend tests; extended migration runner, API/router/schema, account controller/hook,
+AuthRoot/App deep-link/logout, existing Notification Centre/Preferences/Skywatch
+wording and account CSS. Only this Markdown file changed. No commits or pushes.
+Next-batch handoff: deployment/secrets/device verification above remains operational
+work; next development batch is Time Explorer completion. Stop after Batch 07.
+
+Final verification: authenticated push-click URL restored Notifications automatically;
+normal logout returned to the login screen with private account UI removed. No push
+permission prompt appeared. Final SQLite delivery suite exited 0 (27 HTTP checks),
+Python compile checks and diff whitespace checks passed. Browser viewport restored.
+
+Cleanup: temporary API/Vite/browser and disposable PostgreSQL test cluster stopped.
+No recurring job was installed. The production heartbeat is historical one-shot
+execution evidence and will correctly become stale, not proof of ongoing service.

@@ -60,8 +60,8 @@ export default function App({ currentUser, onLogout, hudActive = true, onSceneRe
   const [liveShownOrbitIds, setLiveShownOrbitIds] = useState(new Set(DEFAULT_MAJOR_OBJECTS));
   const [timeShownOrbitIds, setTimeShownOrbitIds] = useState(new Set(TIME_DEFAULT_OBJECTS));
   const [selectedId, setSelectedId] = useState(null);
-  const [layers, setLayers] = useState([]);
-  const [profileTab,setProfileTab]=useState('profile'),[skywatchTab,setSkywatchTab]=useState('satellite');
+  const [layers, setLayers] = useState(()=>new URLSearchParams(window.location.search).get('notifications')==='1'?['profile']:[]);
+  const [profileTab,setProfileTab]=useState(()=>new URLSearchParams(window.location.search).get('notifications')==='1'?'notifications':'profile'),[skywatchTab,setSkywatchTab]=useState('satellite');
   const account=useAccountSettings(currentUser?.id,layers.includes('profile'),profileTab);
   const [searchCycle, setSearchCycle] = useState(0);
   const [selectedCelestialBody, setSelectedCelestialBody] = useState("earth");
@@ -268,6 +268,15 @@ export default function App({ currentUser, onLogout, hudActive = true, onSceneRe
     if(kind==='event'&&naturalEvents.events.some(event=>event.id===id)){setSelectedEventId(id);setWeatherTab('events');setEventsEnabled(true);openLayer('weather');return;}
     account.owner.navigationNotice('This related object or report is not available in the current catalog/feed.');
   }
+  useEffect(()=>{
+    function openFromPush(){
+      setProfileTab('notifications');setLayers(current=>current.includes('profile')?current:[...current,'profile']);
+      window.history.replaceState({},'',window.location.pathname);
+    }
+    window.addEventListener('orbitwatch:notification-open',openFromPush);
+    if(new URLSearchParams(window.location.search).get('notifications')==='1')window.history.replaceState({},'',window.location.pathname);
+    return()=>window.removeEventListener('orbitwatch:notification-open',openFromPush);
+  },[]);
   function focusSelected() { if (globeRef.current?.focusSelected()) setCameraFollowing(false); }
   function followSelected() { setCameraFollowing(Boolean(globeRef.current?.followSelected())); }
   function toggleSelectedOrbit() {

@@ -92,3 +92,9 @@
 .account-tabs > button > span { overflow-wrap:normal; }
 .account-tabs > button > svg { flex:none; }
 @media(max-width:560px) { .account-tabs > button { font-size:10px; padding-left:1px; padding-right:1px; letter-spacing:0; } }
+.notification-delivery { margin:14px 0; border:1px solid #6593aa55; background:linear-gradient(130deg,#17313f77,#0a152199); padding:14px; min-width:0; overflow-wrap:anywhere; }
+.notification-delivery h3 { display:flex; gap:7px; align-items:center; }
+.notification-delivery small { display:block; font-size:11px; line-height:1.7; color:#a4c0cf; margin:8px 0; }
+.notification-delivery button { padding:9px 12px; color:#d9eff8; background:#1c3e4d99; border:1px solid #74bfd466; cursor:pointer; font-size:12px; max-width:100%; }
+.notification-delivery button:disabled { opacity:.6; cursor:default; }
+.inbox-card a { color:#a5d8ed; font-size:11px; }

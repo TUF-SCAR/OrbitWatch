@@ -62,3 +62,5 @@ class InboxItem(BaseModel):
     read_at: datetime | None
     is_expired: bool
     destination: dict
+    source_url: str | None = None
+    delivery_state: str | None = None

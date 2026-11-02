@@ -1,0 +1,26 @@
+[Unit]
+Description=OrbitWatch notification evaluation and durable delivery
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User=orbitwatch
+Group=orbitwatch
+WorkingDirectory=/opt/orbitwatch
+EnvironmentFile=/etc/orbitwatch/notifications.env
+# Same persistent ingestion host, application checkout and cache volume as API.
+# Environment file supplies DATABASE_URL, JWT_SECRET_KEY, VAPID keys, Fernet key.
+# Keep ORBITWATCH_NOTIFICATION_PROVIDER_REQUESTS=false unless explicitly running
+# on that host with ORBITWATCH_NOTIFICATION_HOST_ID and shared weather cache.
+ExecStart=/opt/orbitwatch/.venv/bin/python backend/run_notifications.py --loop
+Restart=on-failure
+RestartSec=30
+TimeoutStopSec=15
+KillSignal=SIGTERM
+NoNewPrivileges=true
+PrivateTmp=true
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

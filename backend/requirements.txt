@@ -11,3 +11,4 @@ httpx==0.28.1
 eccodes==2.50.0
 numpy==2.5.3
 tzdata==2026.5
+skyfield-data==7.0.0

@@ -22,6 +22,7 @@ from routes.weather import router as weather_router
 from routes.natural_events import router as events_router
 from routes.account import router as account_router, AccountFeatureUnavailable
 from routes.alerts import router as alerts_router
+from routes.visibility import router as visibility_router
 from services.natural_events import shutdown as shutdown_events
 from workers.satellite_refresh import run_satellite_refresh_worker
 from services.providers.budget import refresh_owner
@@ -58,6 +59,7 @@ app.include_router(weather_router)
 app.include_router(events_router)
 app.include_router(account_router)
 app.include_router(alerts_router)
+app.include_router(visibility_router)
 
 
 @app.get("/health/live", include_in_schema=False)

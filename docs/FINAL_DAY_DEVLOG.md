@@ -588,3 +588,123 @@ sizes and future account growth needs monitoring. Physical touch, Google 3D and
 real event-marker integration remain on the accepted final integration checklist.
 Future subscriptions/inbox work is a separate batch; this foundation deliberately
 emits nothing. **No commits or pushes. Stop after Batch 04.**
+
+## Batch 05 — Subscriptions, Inbox & Supabase Activation
+
+Handoff repaired in Batch 06 after inspecting committed implementation (8d5395f9).
+Implemented authenticated subscriptions, canonical 143-satellite/eight-celestial/
+13-event validation, private bounded inbox, trusted deduplicating writer, account
+controller, four account tabs, Skywatch cards and notification centre. Key files:
+backend models/schemas/routes alerts, services account_targets/account_inbox,
+apply_account_migrations.py, migrations 003/004; frontend MySkywatch,
+NotificationCentre, AccountTabs, AccountWorkspace.css and accountSettings/API wiring.
+
+Genuine preceding local execution evidence: migrations 002–004 were applied to
+configured Supabase fingerprint 91629c91746ef7a1 in one additive transaction.
+SQL database bytes were 12,979,347 before and 13,184,147 after (+204,800), leaving
+486,815,853 against nominal 500 MB; legacy counts unchanged (five users, 143 live
+satellites, zero history, 1,019 archive). No production notifications were seeded.
+Executed checks: SQLite 101 HTTP checks; disposable PostgreSQL 119 HTTP checks;
+14 focused frontend tests; ESLint and production build passed. Fixed UTC read
+serialization and SSR dependency scanning. Browser setup began but completed
+visual verification was not recorded; no successful Batch 05 browser smoke is
+claimed. Production authenticated verification output was not retained in the
+handoff, so Batch 06 rechecks it. Scheduled delivery and push remain absent.
+
+## Batch 06 — Visibility Predictions
+
+Completed on 2026-11-02; starting HEAD 8d5395f9db5eeb237b6c30a1db0172bd74dad689.
+Repaired missing Batch 05 entry first. Rechecked configured Supabase fingerprint
+91629c91746ef7a1: all four account tables from migrations 002–004 exist with RLS;
+column compatibility verified. No migration was missing, so no DDL was repeated.
+Seven real authenticated auth/readiness/account GETs returned 200. Both new
+visibility endpoints returned the expected 409 for an existing account without
+saved locations. Database measured 13,192,339 bytes before and after read-only
+verification, leaving 486,807,661 bytes of nominal 500 MB; normal 300 MB and
+emergency 400 MB ceilings remain untouched. Legacy counts remain 5/143/0/1019.
+No production records, inbox entries, provider budgets or tables were reset.
+
+New backend services visibility.py / visibility_forecast.py and routes/visibility.py
+provide authenticated GET /api/account/visibility/satellites and /celestial.
+Owned saved UUID location, optional followed canonical target, 1–48 hour horizon,
+20/8 target caps; default location selected server-side. Current orbital table only,
+no historical fallback or Space-Track access. Skyfield 1.55/SGP4 find_events groups
+rise/set with multiple culminations and clipped-window handling; exact culmination
+candidates plus 241 samples/pass find maxima and screened useful segments. Reject
+missing, invalid/mismatched or >7-day-old elements. Seven days is a conservative
+screen, not an accuracy guarantee. Sun <= -6 degrees and altitude >=10 degrees
+screen satellite opportunities; eclipse is calculated separately; brightness is
+explicitly unverified. Local times use saved IANA zones including DST.
+
+Installed pinned skyfield-data==7.0.0 (17 MB local file storage, separate from DB).
+DE421 is locally loaded only after SHA-256 verification:
+a20a7139da04cbc462454634918e9a9ca69127044e2cc9d4f9c16e238d2deedc.
+No startup/request kernel downloads. Missing/corrupt/out-of-range ephemeris yields
+unavailable calculations. Built-in Skyfield timescale is used, not the package's
+expired finals2000A data. Eight celestial targets use topocentric apparent DE421
+positions, rise/set transitions, RA/declination, 120-second altitude/twilight
+screening and Moon illumination. Moon screening allows Sun<=0; planets <=-6.
+Uranus/Neptune carry telescope wording. No terrain/refraction or brightness model,
+and no naked-eye guarantee. Scientific references reviewed:
+https://rhodesmill.org/skyfield/earth-satellites.html and
+https://rhodesmill.org/skyfield/api-position.html.
+
+Prediction RAM cache: 256 entries, five-minute forecast buckets, exact observer,
+IANA zone, target, TLE digest/epoch and horizon; two concurrent calculations;
+six-second between-target processing budget with honest per-target deferral;
+maximum eight opportunities/target. API releases DB transaction before calculation.
+Forecast service uses one 72-hour hourly dataset/location, 60 KB/96-row ceiling,
+one-hour shared persistent cache and existing cross-process weather lease. It
+reserves the SAME open_meteo gate (60/hour, 500/day), with existing backoff and
+Retry-After accounting; no quota resets or immediate retries. Requests are bounded
+by connect/read timeout and streaming deadline. No forecast request for windowless
+astronomy. Nearest hourly valid time must be within 30 minutes; stale datasets and
+current weather are never substituted. Terms/pricing reviewed at
+https://open-meteo.com/en/pricing and variables at https://open-meteo.com/en/docs;
+free service is for non-commercial use, with attribution. Commercial deployment
+must configure an appropriate licensed provider rather than expand the free gate.
+One real, quota-accounted public New York forecast request returned 72 rows and
+correct matching; subsequent target previews reused it. No NOAA forecast fetch.
+
+MySkywatch retains its existing cards/tabs and adds VisibilityPreview with saved
+location selector, next pass/window, local timestamps, details, elevation/azimuth,
+illumination/equipment, source epoch and weather facts. Bounded manual refresh,
+loading/unavailable/cached-age wording; no fake predictions. Controller cancels and
+rejects late location/target responses; logout/unmount discards private requests.
+Adjusted existing tab word wrapping after actual mobile inspection. New frontend
+files: components/VisibilityPreview.jsx, services/visibilityPreview.js and focused
+test; existing MySkywatch, account CSS and authenticated API transport updated.
+
+Executed verification: check_visibility.py passed fixed ISS rise/max comparison
+against independent one-second sampling, sunlight/eclipse and twilight, stale and
+mismatched epoch rejection, clipped pass and UTC-midnight crossing, all eight
+celestial targets, polar rise/set, Moon illumination, missing ephemeris, DST,
+forecast age/valid-time matching, two-account ownership, invalid horizons/targets,
+no public writes and 15 counted authenticated HTTP checks plus location switching.
+The first standalone test run passed assertions but exposed a Windows SQLite pool
+cleanup lock; explicit client close/engine disposal fixed it and final run exited 0.
+Existing check_account_alerts.py: 101 HTTP checks PASS. Frontend focused suite:
+15/15 PASS including cancellation/late-result isolation. Production build PASS;
+existing large-chunk/plugin timing warnings remain. Final lint status recorded below.
+Read-only real Supabase ISS test used epoch 2026-10-29T13:31:42Z, returned eight
+bounded 48-hour passes; first peak 13.52 degrees, correctly eclipsed at dark sky.
+
+Real browser smoke used disposable SQLite users/location fixtures, genuine current
+DE421 calculations and existing cached genuine weather, with upstream requests
+disabled. Login/restore, satellite missing-elements state, Moon details and saved
+New York-to-London switch succeeded; EST changed to GMT with different geometry.
+Desktop and 390x844 inspected; document width 390 and preview scroll width 258 within
+260-pixel box (no horizontal overflow). Proof images saved in visualization workspace.
+No production browser writes. Time Explorer and Live routes unchanged; no broad
+unrelated suite was run. No scheduler, inbox generation, push or delivery added.
+Remaining limits: approximate sampling boundaries, unknown intrinsic brightness,
+unmodeled terrain/refraction, conservative TLE freshness, single-host provider
+lease, and free-provider licensing for commercial deployment. Install pinned data
+requirements when deploying; source failures degrade honestly. Next batch is real
+scheduled notification generation/delivery. Only this Markdown file changed.
+No commits or pushes.
+
+Final checks: ESLint PASS with no warnings after replacing render-time clock access
+with the response generation timestamp; final production build PASS (2,115 modules).
+Python compile and diff whitespace checks PASS. Temporary visibility API/Vite and
+browser tab stopped; viewport override reset. No production services were started.

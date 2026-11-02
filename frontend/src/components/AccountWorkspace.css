@@ -73,3 +73,22 @@
 .inbox-more { width:100%; margin-top:12px; }
 @media(max-width:720px) { .account-tabs > button { flex-direction:column; font-size:var(--ui-type-9); min-height:48px; padding:6px 2px; gap:4px; }.sky-object-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }.sky-event-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }.sky-satellite-list li { gap:7px; padding:10px 7px; }.sky-satellite-list li > svg,.sky-satellite-symbol { display:none; }.sky-follow { min-width:73px; padding:5px; }.inbox-card { padding:11px; }.account-feature-intro { padding:12px; }.inbox-toolbar { flex-wrap:wrap; } }
 @media(prefers-reduced-motion:reduce) { .account-workspace * { transition:none!important; animation:none!important; } }
+.visibility-preview { margin:18px 0; padding:14px; border:1px solid #739abb44; background:linear-gradient(135deg,#16344677,#0a152388); min-width:0; }
+.visibility-preview h3 { display:flex; gap:8px; align-items:center; }
+.visibility-preview button { color:#a7d7e5; background:#23405166; border:1px solid #6a91a355; padding:6px; cursor:pointer; }
+.visibility-location { display:flex; align-items:center; gap:8px; color:#b9ced9; font-size:12px; flex-wrap:wrap; }
+.visibility-location select { background:#102334; color:#d0e4ed; border:1px solid #55788e66; padding:8px; min-width:0; max-width:100%; flex:1; }
+.visibility-cards { display:grid; gap:10px; margin-top:12px; }
+.visibility-card { min-width:0; border-left:2px solid #79bdd0; padding:10px 12px; background:#142c3c77; overflow-wrap:anywhere; }
+.visibility-card strong { color:#e0eff7; font-size:13px; }
+.visibility-card p { color:#b8cedc; font-size:12px; line-height:1.6; margin:7px 0; }
+.visibility-card small,.visibility-card summary { font-size:11px; color:#9fc3d0; line-height:1.7; }
+.visibility-card summary { cursor:pointer; margin-top:8px; }
+.visibility-card :focus-visible,.visibility-preview :focus-visible { outline:2px solid #9ed9ee; outline-offset:3px; }
+@media(max-width:480px) { .visibility-preview { padding:10px; }.visibility-location select { flex-basis:100%; } }
+
+/* Keep account tab words readable at the actual narrow panel width. */
+.account-tabs > button { font-size:12px; }
+.account-tabs > button > span { overflow-wrap:normal; }
+.account-tabs > button > svg { flex:none; }
+@media(max-width:560px) { .account-tabs > button { font-size:10px; padding-left:1px; padding-right:1px; letter-spacing:0; } }

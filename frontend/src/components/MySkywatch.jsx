@@ -5,6 +5,7 @@ import {SPACE_OBJECTS} from '../data/spaceObjects.js';
 import {EVENT_CATEGORIES} from '../data/eventCategories.js';
 import AccountTabs from './AccountTabs.jsx';
 import AccountNotificationSettings from './AccountNotificationSettings.jsx';
+import VisibilityPreview from './VisibilityPreview.jsx';
 import {satelliteMatches} from '../services/accountSettings.js';
 
 const PLANETS=['mercury','venus','mars','jupiter','saturn','uranus','neptune','moon'];
@@ -25,6 +26,7 @@ export default function MySkywatch({account,catalog=SPACE_OBJECTS,tab='satellite
     <AccountTabs id="skywatch" label="Skywatch collections" tabs={tabs} value={tab} onChange={onTab}/>
     {state.subscriptionError&&<p className="account-inline-error" role="alert">{state.subscriptionError}<button type="button" onClick={()=>owner.loadSubscriptions(true)}>Retry</button></p>}
     {state.subscriptionPhase==='loading'&&<p role="status" className="account-muted">Loading your skywatch…</p>}
+    {(tab==='satellite'||tab==='celestial')&&<VisibilityPreview key={tab} account={account} kind={tab}/>}
     <div role="tabpanel" id={`skywatch-${tab}-panel`} aria-labelledby={`skywatch-${tab}-tab`}>
       {tab==='satellite'&&<>
         <div className="account-section-title"><h3>Satellite watchlist</h3><span>{satellites.length}/20</span></div>
@@ -38,10 +40,10 @@ export default function MySkywatch({account,catalog=SPACE_OBJECTS,tab='satellite
       </>}
       {tab==='celestial'&&<><div className="account-section-title"><h3>Planets & Moon</h3><span>{followed.filter(row=>row.kind==='celestial').length}/8</span></div>
         <div className="sky-object-grid">{PLANETS.map(id=>{const body=CELESTIAL_BODIES[id],active=chosen('celestial',id);return <button type="button" key={id} className={`sky-object-tile ${active?'is-following':''}`} aria-label={`${active?'Unfollow':'Follow'} ${body.name}`} aria-pressed={active} disabled={disabled} onClick={()=>owner.toggleTarget('celestial',id)}>
-          <span className={`sky-object-orb is-${id}`} style={{'--body-color':body.color}}><img src={body.texture} alt="" loading="lazy"/></span><strong>{body.name}</strong><small>{state.alertBusy===`celestial:${id}`?'Saving…':active?'Following':'Follow'}</small>{active&&<Check className="sky-tile-check" size={14}/>}</button>;})}</div><p className="account-muted">Earth-based observation interests. Visibility predictions are upcoming.</p></>}
+          <span className={`sky-object-orb is-${id}`} style={{'--body-color':body.color}}><img src={body.texture} alt="" loading="lazy"/></span><strong>{body.name}</strong><small>{state.alertBusy===`celestial:${id}`?'Saving…':active?'Following':'Follow'}</small>{active&&<Check className="sky-tile-check" size={14}/>}</button>;})}</div><p className="account-muted">Earth-based observation interests. Real observation previews use your saved Earth location.</p></>}
       {tab==='event'&&<><div className="account-section-title"><h3>Natural-event interests</h3><span>{followed.filter(row=>row.kind==='event').length} selected</span></div><div className="sky-event-grid">{Object.entries(EVENT_CATEGORIES).map(([id,spec])=>{const Icon=ICONS[id],active=chosen('event',id);return <button type="button" key={id} className={`sky-event-tile ${active?'is-following':''}`} style={{'--event-color':spec.color}} aria-label={`${active?'Unfollow':'Follow'} ${spec.label}`} aria-pressed={active} disabled={disabled} onClick={()=>owner.toggleTarget('event',id)}><Icon size={20}/><span>{spec.label}</span>{active&&<Check size={13}/>}</button>;})}</div><p className="account-muted">Future alerts depend on saved locations, your radius, genuine source reports, event severity, confidence, freshness and alert eligibility. A reported event does not automatically mean current danger.</p></>}
       {tab==='locations'&&<AccountNotificationSettings account={account} section="locations"/>}
     </div>
-    {tab!=='locations'&&<p className="account-upcoming"><span/>Watchlists are active. Predictions and alert delivery are upcoming.</p>}
+    {tab!=='locations'&&<p className="account-upcoming"><span/>Watchlists are active. On-demand previews are available. Scheduled alert delivery is upcoming.</p>}
   </div>;
 }

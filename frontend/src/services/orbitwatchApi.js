@@ -37,8 +37,8 @@ async function requestJson(path, options = {}) {
   }
 
   const signal = options.signal
-    ? AbortSignal.any([options.signal, AbortSignal.timeout(10000)])
-    : AbortSignal.timeout(10000);
+    ? AbortSignal.any([options.signal, AbortSignal.timeout(options.timeoutMs??10000)])
+    : AbortSignal.timeout(options.timeoutMs??10000);
   let response;
   try {
     response = await fetch(`${API_BASE}${path}`, { ...options, headers, signal });
@@ -206,3 +206,9 @@ export function fetchInboxCount(signal) {return requestJson('/api/account/notifi
 export function markInboxRead(id,signal) {return accountWrite(`/api/account/notifications/${encodeURIComponent(id)}/read`,'PUT',{},signal);}
 export function markAllInboxRead(signal) {return accountWrite('/api/account/notifications/read-all','POST',{},signal);}
 export function dismissInboxItem(id,signal) {return requestJson(`/api/account/notifications/${encodeURIComponent(id)}`,{method:'DELETE',signal});}
+
+export async function fetchVisibilityPreview(kind,locationId,signal) {
+  const collection=kind==='satellite'?'satellites':'celestial';
+  const data=await requestJson(`/api/account/visibility/${collection}?${new URLSearchParams({location_id:locationId,hours:'24'})}`,{signal,timeoutMs:20000});
+  return {...data,collectionKind:kind};
+}

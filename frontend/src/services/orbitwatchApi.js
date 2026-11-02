@@ -198,3 +198,11 @@ export function addAccountLocation(body,signal) {return accountWrite('/api/accou
 export function updateAccountLocation(id,body,signal) {return accountWrite(`/api/account/locations/${encodeURIComponent(id)}`,'PUT',body,signal);}
 export function deleteAccountLocation(id,version,signal) {return requestJson(`/api/account/locations/${encodeURIComponent(id)}?expected_version=${version}`,{method:'DELETE',signal});}
 export function saveNotificationPreferences(body,signal) {return accountWrite('/api/account/notification-preferences','PUT',body,signal);}
+export function fetchAlertSubscriptions(signal) {return requestJson('/api/account/alert-subscriptions',{signal});}
+export function followAlertTarget(body,signal) {return accountWrite('/api/account/alert-subscriptions','POST',body,signal);}
+export function unfollowAlertTarget(id,signal) {return requestJson(`/api/account/alert-subscriptions/${encodeURIComponent(id)}`,{method:'DELETE',signal});}
+export function fetchInbox({cursor,signal}={}) {return requestJson(`/api/account/notifications?${new URLSearchParams({limit:'20',...(cursor?{cursor}:{})})}`,{signal});}
+export function fetchInboxCount(signal) {return requestJson('/api/account/notifications/unread-count',{signal});}
+export function markInboxRead(id,signal) {return accountWrite(`/api/account/notifications/${encodeURIComponent(id)}/read`,'PUT',{},signal);}
+export function markAllInboxRead(signal) {return accountWrite('/api/account/notifications/read-all','POST',{},signal);}
+export function dismissInboxItem(id,signal) {return requestJson(`/api/account/notifications/${encodeURIComponent(id)}`,{method:'DELETE',signal});}

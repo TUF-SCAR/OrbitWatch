@@ -6,7 +6,7 @@ function ZoneInput({id,value,onChange,required=false}) {
 }
 const zones=typeof Intl.supportedValuesOf==='function'?Intl.supportedValuesOf('timeZone'):[];
 
-export default function AccountNotificationSettings({account}) {
+export default function AccountNotificationSettings({account,section='all'}) {
   const {state,owner}=account,[removing,setRemoving]=useState(null);
   const {locations,preferences,preferenceDraft:form,locationDraft:draft,busy,phase}=state;
   const ready=phase==='ready',disabled=busy||!ready;
@@ -17,7 +17,7 @@ export default function AccountNotificationSettings({account}) {
     {state.error&&<p className="account-foundation__error" role="alert">{state.error}</p>}
     {state.notice&&<p role="status">{state.notice}</p>}
     {(phase==='error'||phase==='unavailable'||state.conflict)&&<button type="button" disabled={busy||phase==='loading'} onClick={()=>owner.load(true)}>{state.conflict?'Reload saved versions (keep edits)':'Retry loading account settings'}</button>}
-    <section className="profile-panel__section" aria-labelledby="account-locations-title">
+    {section!=='preferences'&&<section className="profile-panel__section" aria-labelledby="account-locations-title">
       <h3 id="account-locations-title">Saved observation locations</h3>
       <p>Save up to five locations deliberately. Clicking the globe never saves one.</p>
       {ready&&!locations.length&&<p>No saved locations yet.</p>}
@@ -42,8 +42,8 @@ export default function AccountNotificationSettings({account}) {
           <div className="account-actions"><button type="submit" disabled={!draft.id&&locations.length>=5}>{busy?'Saving…':'Save location'}</button><button type="button" onClick={()=>owner.cancelLocation()}>Cancel edit</button></div>
         </fieldset>
       </form>}
-    </section>
-    <section className="profile-panel__section" aria-labelledby="account-preferences-title"><h3 id="account-preferences-title">Notification preferences</h3>
+    </section>}
+    {section!=='locations'&&<section className="profile-panel__section" aria-labelledby="account-preferences-title"><h3 id="account-preferences-title">Notification preferences</h3>
       {form&&<form className="account-form" aria-label="Notification preferences" onSubmit={event=>{event.preventDefault();owner.savePreferences();}}><fieldset disabled={disabled}>
         <legend className="sr-only">Future alert preferences</legend>
         {[['notifications_enabled','Enable future notifications'],['satellite_alerts','Satellite visibility alerts'],['celestial_alerts','Planet / Moon viewing alerts'],['natural_event_alerts','Natural-event alerts']].map(([key,label])=><label className="account-toggle" key={key}><input type="checkbox" checked={form[key]} onChange={event=>owner.changePreference({[key]:event.target.checked})}/>{label}</label>)}
@@ -59,6 +59,6 @@ export default function AccountNotificationSettings({account}) {
         </>}
         <button type="submit">{busy?'Saving…':'Save alert preferences'}</button><small>Preferences are stored for this account. Live alert delivery remains inactive.</small>
       </fieldset></form>}
-    </section>
+    </section>}
   </div>;
 }

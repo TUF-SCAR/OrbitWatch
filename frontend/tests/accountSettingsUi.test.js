@@ -7,7 +7,7 @@ import react from '@vitejs/plugin-react';
 import {createAccountSettings} from '../src/services/accountSettings.js';
 
 test('profile foundation presents saved actions, four toggles, explicit timezone and honest loading/unavailable states',async()=>{
-  const server=await createServer({configFile:false,plugins:[react()],server:{middlewareMode:true},appType:'custom'});
+  const server=await createServer({configFile:false,plugins:[react()],optimizeDeps:{noDiscovery:true,include:[]},server:{middlewareMode:true},appType:'custom'});
   try {
     const {default:Settings}=await server.ssrLoadModule('/src/components/AccountNotificationSettings.jsx');
     const {default:Card}=await server.ssrLoadModule('/src/components/LocationWeatherCard.jsx');

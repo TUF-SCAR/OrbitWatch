@@ -1,7 +1,11 @@
 import { AnimatePresence } from "motion/react";
-import { CalendarDays, Clock3, LogOut, Mail, ShieldCheck, UserRound, X } from "lucide-react";
+import { Bell, CalendarDays, Clock3, LogOut, Mail, Orbit, Settings2, ShieldCheck, UserRound, X } from "lucide-react";
 import SpatialSurface from "./SpatialSurface.jsx";
 import AccountNotificationSettings from './AccountNotificationSettings.jsx';
+import AccountTabs from './AccountTabs.jsx';
+import MySkywatch from './MySkywatch.jsx';
+import NotificationCentre from './NotificationCentre.jsx';
+import './AccountWorkspace.css';
 
 function dateText(value) {
   if (!value) return "—";
@@ -9,14 +13,17 @@ function dateText(value) {
   return Number.isNaN(date.getTime()) ? "—" : date.toLocaleDateString(undefined, { day: "2-digit", month: "short", year: "numeric" });
 }
 
-export default function ProfilePanel({ open, user, onClose, onLogout, settings, onSettingsChange, account }) {
+export default function ProfilePanel({ open, user, onClose, onLogout, settings, onSettingsChange, account,tab='profile',onTab,skywatchTab='satellite',onSkywatchTab,liveCatalog,onOpenNotification }) {
   if (!user) return null;
-  return <AnimatePresence>{open && <SpatialSurface as="aside" side="right" strength={3} className="profile-panel hud-panel hud-panel--right" aria-label="Profile and settings">
+  return <AnimatePresence>{open && <SpatialSurface as="aside" side="right" strength={3} className="profile-panel account-workspace hud-panel hud-panel--right" aria-label="Profile and settings">
     <header className="profile-panel__header hud-panel__header" data-depth="4">
       <div><small className="eyebrow">ORBITWATCH IDENTITY</small><h2>Profile & settings</h2></div>
       <button className="icon-button" type="button" aria-label="Close profile" onClick={onClose}><X size={18} /></button>
     </header>
+    <AccountTabs id="account" label="Account navigation" tabs={[{id:'profile',label:'Profile',icon:UserRound},{id:'skywatch',label:'My Skywatch',icon:Orbit},{id:'notifications',label:'Notifications',icon:Bell},{id:'preferences',label:'Preferences',icon:Settings2}]} value={tab} onChange={onTab}/>
     <div className="hud-panel__body profile-panel__body">
+      <div className="account-workspace__content" role="tabpanel" id={`account-${tab}-panel`} aria-labelledby={`account-${tab}-tab`}>
+      {tab==='profile'&&<>
       <section className="profile-panel__identity" aria-label="User identity" data-depth="6">
         <span className="profile-panel__avatar" aria-hidden="true"><UserRound size={28} /></span>
         <div><small>AUTHENTICATED USER</small><strong>{user.username}</strong><span>User #{user.id}</span></div>
@@ -29,7 +36,6 @@ export default function ProfilePanel({ open, user, onClose, onLogout, settings, 
           <div><dt><Clock3 size={14} /> Session</dt><dd className="profile-panel__online">Active</dd></div>
         </dl>
       </section>
-      {account&&<AccountNotificationSettings account={account}/>}
       <section className="profile-panel__section profile-settings" aria-labelledby="profile-settings-title" data-depth="4">
         <h3 id="profile-settings-title">Display settings</h3>
         <div className="profile-setting">
@@ -44,6 +50,11 @@ export default function ProfilePanel({ open, user, onClose, onLogout, settings, 
           <p id="profile-preview-help">Show verified spacecraft models in the Inspector. Previews use additional memory and GPU resources.</p>
         </div>
       </section>
+      </>}
+      {account&&tab==='skywatch'&&<MySkywatch account={account} tab={skywatchTab} onTab={onSkywatchTab} catalog={liveCatalog}/>}
+      {account&&tab==='notifications'&&<NotificationCentre account={account} onOpen={onOpenNotification}/>}
+      {account&&tab==='preferences'&&<AccountNotificationSettings account={account} section="preferences"/>}
+      </div>
     </div>
     <footer className="profile-panel__footer hud-panel__footer" data-depth="5"><span>Authenticated session</span><button type="button" onClick={onLogout}><LogOut size={16} /> Logout</button></footer>
   </SpatialSurface>}</AnimatePresence>;

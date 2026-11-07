@@ -64,7 +64,7 @@
 .weather-credits { display:flex; flex-wrap:wrap; gap:8px 14px; font-size:var(--ui-font-xs); }
 .weather-credits a,.weather-legend a { color:var(--accent); }
 .weather-legend { position:absolute; z-index:25; left:var(--ui-content-left,90px); bottom:calc(var(--hud-dock-height,60px) + 28px); width:270px; border:1px solid var(--line); background:var(--panel); padding:10px 12px; color:var(--ui-text); }
-.weather-legend>div:first-child { display:flex; justify-content:space-between; gap:8px; font-size:var(--ui-font-xs); }
+.weather-legend>div:first-child { display:block; }
 .weather-legend i { display:block; height:8px; margin-top:8px; border-radius:2px; }
 .weather-legend small { display:block; margin-top:7px; color:var(--ui-text-muted); font-size:var(--ui-font-xs); }
 @media(max-width:720px) { .weather-legend { left:var(--ui-content-left,80px); right:var(--ui-edge,12px); width:auto; bottom:calc(var(--hud-dock-height,107px) + 24px); } }
@@ -134,3 +134,29 @@
 .cloud-playback label { display:flex; flex-direction:column; gap:6px; flex:1; min-width:100px; color:var(--ui-text-muted); font-size:var(--ui-font-sm); }
 .cloud-playback input { width:100%; }
 .observed-clouds > .secondary-action { margin:4px 6px 8px 0; }
+
+/* Shared, physically positioned scales for panel, map HUD and ERA5. */
+.weather-scale { --weather-scale-height:28px; margin-top:12px; min-width:0; }
+.weather-scale__heading { display:flex; align-items:baseline; justify-content:space-between; gap:8px; margin-bottom:8px; font-size:11px; }
+.weather-scale__heading strong { font-weight:500; letter-spacing:.02em; }
+.weather-scale__heading>span { color:var(--ui-text-muted); white-space:nowrap; }
+.weather-scale__ramp { height:var(--weather-scale-height); border-radius:6px; box-shadow:inset 0 0 0 1px #ffffff24; }
+.weather-scale__ticks { position:relative; height:var(--weather-scale-height); margin:calc(-1 * var(--weather-scale-height)) 0 0; color:#fff; font-size:11px; font-weight:650; font-variant-numeric:tabular-nums; text-shadow:0 1px 3px #000c,0 0 2px #0008; }
+.weather-scale__ticks>span { position:absolute; top:7px; transform:translateX(-50%); white-space:nowrap; }
+.weather-scale__ticks>span:first-child { transform:none; padding-left:6px; }
+.weather-scale__ticks>span:last-child { transform:translateX(-100%); padding-right:6px; }
+.weather-scale__bands { display:flex; justify-content:space-between; padding:0 8px; color:var(--ui-text-muted); font-size:10px; margin-top:2px; }
+.weather-legend { width:340px; max-width:calc(100vw - var(--ui-content-left,90px) - 24px); border-radius:12px; background:linear-gradient(135deg,#14212cf0,#0a141ef0); box-shadow:0 6px 24px #0003; padding:13px 16px; }
+.weather-legend .weather-scale { margin-top:0; }
+.orbitwatch-shell:has(.location-weather-card) .weather-legend { left:auto; right:var(--ui-edge,24px); }
+.orbitwatch-shell:has(.object-explorer) .weather-legend { left:auto; right:var(--ui-edge,24px); }
+.weather-legend .weather-scale__heading { display:flex; font-size:11px; }
+.weather-legend .weather-scale { --weather-scale-height:26px; }
+.weather-legend small { font-size:10px; line-height:1.45; margin-top:5px; }
+.historical-weather-legend>strong { display:none; }
+.weather-hover { position:absolute; top:0; left:0; z-index:29; pointer-events:none; user-select:none; padding:10px 14px; border:1px solid #ffffff18; border-radius:10px; background:#20272df5; color:#fff; font:600 17px/1.15 Inter,system-ui,sans-serif; font-variant-numeric:tabular-nums; white-space:nowrap; box-shadow:0 3px 12px #0004; }
+.weather-hover[hidden] { display:none; }
+.weather-hover::after { content:''; position:absolute; left:var(--weather-hover-pointer,50%); bottom:-8px; width:14px; height:14px; background:#20272d; transform:translateX(-50%) rotate(45deg); border-right:1px solid #ffffff18; border-bottom:1px solid #ffffff18; z-index:-1; }
+.weather-hover.is-below::after { bottom:auto; top:-8px; transform:translateX(-50%) rotate(225deg); }
+@media(max-width:720px) { .weather-legend { width:auto; padding:11px 13px; } .weather-scale__heading { font-size:10px; } }
+@media(hover:none) { .weather-hover { display:none; } }

@@ -4,6 +4,45 @@ import { Event } from 'cesium';
 import {createWeatherPresentation} from '../src/services/weatherPresentation.js';
 import {selectWeatherField,sampleModel,weatherPixels,validateModelField} from '../src/services/weatherFields.js';
 import {createNaturalEventLayer} from '../src/services/naturalEventLayer.js';
+import {TEMPERATURE_PALETTE,HUMIDITY_PALETTE,PRESSURE_PALETTE,PRECIPITATION_PALETTE,paletteColor,paletteGradient,palettePosition} from '../src/services/weatherPalettes.js';
+import {temperatureColor,temperaturePixels} from '../src/services/temperatureGrid.js';
+import {modelColor,WEATHER_FIELDS} from '../src/services/weatherFields.js';
+import {rainColor} from '../src/services/precipitationStyle.js';
+
+test('fixed reference ticks use shared map/legend colours, including logarithmic precipitation spacing',()=>{
+  for(const [palette,color,log] of [[TEMPERATURE_PALETTE,temperatureColor,false],[HUMIDITY_PALETTE,v=>modelColor('humidity',v),false],[PRESSURE_PALETTE,v=>modelColor('pressure',v),false],[PRECIPITATION_PALETTE,rainColor,true]]){
+    for(const [value,...rgb] of palette){
+      assert.deepEqual(color(value).slice(0,3),rgb);
+      assert.deepEqual(paletteColor(palette,value,255,log).slice(0,3),rgb);
+      assert.match(paletteGradient(palette,log),new RegExp(`rgb\\(${rgb.join(',')}\\)`));
+    }
+  }
+  assert.deepEqual(WEATHER_FIELDS.temperature.ticks,['−30','−20','−10','0','10','20','30','40','50']);
+  assert.deepEqual(WEATHER_FIELDS.pressure.ticks,['970','985','1000','1015','1030','1045']);
+  assert.deepEqual(WEATHER_FIELDS.humidity.ticks,['0','25','50','75','100']);
+  assert.ok(Math.abs(palettePosition(1,PRECIPITATION_PALETTE,true)-Math.log(10)/Math.log(500))<1e-12);
+  assert.deepEqual(temperatureColor(-133),temperatureColor(-30));assert.deepEqual(temperatureColor(80),temperatureColor(50));
+  assert.equal(rainColor(0)[3],0);assert.doesNotMatch(WEATHER_FIELDS.precipitation.title,/snow|radar/i);
+});
+
+test('constant scientific node values yield exactly the palette RGB in raster pixels; missing cells remain transparent',()=>{
+  const grid={width:360,height:181,west:-180,north:90,step:1};
+  const temperature={units:'°C',grid,valid_at:'2026-11-07T06:00:00Z',values_c:Array(65160).fill(30)};
+  const pixel=temperaturePixels(temperature,4,2);assert.deepEqual([...pixel.slice(0,4)],temperatureColor(30));
+  for(const [variable,value,metadata] of [['humidity',75,{grib_parameter:'RH',level:'2 m above ground',source_units:'%',units:'%'}],['pressure',1015,{grib_parameter:'PRMSL',level:'mean sea level',source_units:'Pa',units:'hPa'}],['precipitation',5,{units:'mm/h'}]]){
+    const field={grid,display_variable:variable,step_type:'instant',values:Array(65160).fill(value),...metadata};
+    const raster=weatherPixels(field,4,2);assert.deepEqual([...raster.slice(0,4)],modelColor(variable,value));
+    field.values.fill(null);assert.ok(weatherPixels(field,4,2).every(channel=>channel===0));
+  }
+});
+
+test('precipitation composites only a validated same-bundle model cloud fraction, with no invented precipitation phase',()=>{
+  const field={display_variable:'precipitation',units:'mm/h',step_type:'instant',values:Array(65160).fill(0),fields:{clouds:{units:'%',step_type:'instant',values:Array(65160).fill(100)}}};
+  const cloudy=weatherPixels(field,4,2);assert.equal(cloudy[3],110);assert.deepEqual([...cloudy.slice(0,3)],[236,243,249]);
+  field.fields.clouds.values.fill(null);assert.equal(weatherPixels(field,4,2)[3],0);
+  field.fields.clouds={units:'brightness',step_type:'instant',values:Array(65160).fill(100)};
+  assert.equal(weatherPixels(field,4,2)[3],0);
+});
 
 test('weather presentation reduces scattering only, retains all atmosphere/shading flags and restores the exact prior intensity',()=>{
   for(const initial of [true,false]){

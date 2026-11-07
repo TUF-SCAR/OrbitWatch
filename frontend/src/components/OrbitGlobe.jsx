@@ -48,6 +48,9 @@ import { applyBaseMap as updateBaseMap, providerErrorSummary, setEarthMapVisibil
 import { createPlaceLabelLayer } from "../services/placeLabelLayer.js";
 import {pickEarthLocation,createSurfaceClickGate,routeEarthWeatherClick} from '../services/earthWeatherPicking.js';
 import {createWeatherLocationMarker} from '../services/weatherLocationMarker.js';
+import {createWeatherHover} from '../services/weatherHover.js';
+import {createPressureLayer} from '../services/pressureLayer.js';
+import {createWeatherCompute} from '../services/weatherCompute.js';
 import { createPlaceSearch } from "../services/placeSearch.js";
 import { prepareTimeScene, updateSceneTime } from "../services/timeScenePreparation.js";
 import { cameraDuration } from "../utils/motionPreferences.js";
@@ -361,6 +364,12 @@ export default function OrbitGlobe({
   const cloudLayerRef = useRef(null);
   const rainLayerRef = useRef(null);
   const temperatureLayerRef = useRef(null);
+  const pressureLayerRef=useRef(null),weatherHoverRef=useRef(null),weatherComputeRef=useRef(null);
+  const weatherHoverStateRef=useRef({field:weatherField,enabled:false});
+  useEffect(()=>{
+    weatherHoverStateRef.current={field:weatherField,enabled:weatherVisible&&weatherCompatible&&weatherOpacity>0&&selectedCelestialBody==='earth'&&(mode==='live'||weatherField?.source_kind==='era5')};
+    weatherHoverRef.current?.hide();
+  },[weatherField,weatherVisible,weatherCompatible,weatherOpacity,selectedCelestialBody,mode]);
   const windLayerRef = useRef(null);
   const windFieldRef = useRef(null);
   const naturalEventLayerRef=useRef(null),onEventSelectRef=useRef(onEventSelect);
@@ -610,19 +619,25 @@ export default function OrbitGlobe({
     const touchCamera = () => { lastInteractionRef.current = performance.now(); if (idleState === "framing") viewer.camera.cancelFlight(); idleState = "waiting"; };
     const heldPointers = new Set();
     let pointerStart = null, cameraDragged = false, weatherGestureBlocked=false;
-    const pointerDown = (event) => { heldPointers.add(event.pointerId);pointerHeld = true; pointerStart = { x: event.clientX, y: event.clientY }; cameraDragged = heldPointers.size>1;weatherGestureBlocked=cameraDragged;surfaceClicks.cancel();touchCamera(); };
-    const pointerMove = (event) => { if (pointerHeld && pointerStart && Math.hypot(event.clientX - pointerStart.x, event.clientY - pointerStart.y) > 5) {cameraDragged=true;weatherGestureBlocked=true;surfaceClicks.cancel(true);} };
+    let mousePointer=window.matchMedia('(hover: hover) and (pointer: fine)').matches;
+    weatherComputeRef.current=createWeatherCompute();
+    const weatherHover=createWeatherHover({mount:mountRef.current,canvas:viewer.scene.canvas,
+      getState:()=>({...weatherHoverStateRef.current,enabled:weatherHoverStateRef.current.enabled&&earthActiveRef.current&&locationInteractionRef.current.enabled&&!followStateRef.current&&!viewer.trackedEntity&&weatherAltitudeAlpha(viewer.camera.positionCartographic.height)>0,dragging:pointerHeld||!mousePointer}),
+      pickLocation:position=>pickEarthLocation(viewer,position,googleTilesRef.current)});
+    weatherHoverRef.current=weatherHover;
+    const pointerDown = (event) => { weatherHover.hide();heldPointers.add(event.pointerId);pointerHeld = true; pointerStart = { x: event.clientX, y: event.clientY }; cameraDragged = heldPointers.size>1;weatherGestureBlocked=cameraDragged;surfaceClicks.cancel();touchCamera(); };
+    const pointerMove = (event) => { mousePointer=event.pointerType==='mouse';if(!mousePointer)weatherHover.hide();if (pointerHeld && pointerStart && Math.hypot(event.clientX - pointerStart.x, event.clientY - pointerStart.y) > 5) {cameraDragged=true;weatherGestureBlocked=true;surfaceClicks.cancel(true);} };
     const pointerUp = event => { heldPointers.delete(event.pointerId);if(pointerHeld) {pointerHeld=heldPointers.size>0;touchCamera();} };
     viewer.scene.canvas.addEventListener("pointerdown", pointerDown);
     viewer.scene.canvas.addEventListener("pointermove", pointerMove);
     window.addEventListener("pointerup", pointerUp);
     window.addEventListener('pointercancel',pointerUp);
     viewer.scene.canvas.addEventListener("wheel", touchCamera, { passive: true });
-    const cancelSurfaceGesture=()=>{weatherGestureBlocked=true;surfaceClicks.cancel(true);};
+    const cancelSurfaceGesture=()=>{weatherHover.hide();weatherGestureBlocked=true;surfaceClicks.cancel(true);};
     viewer.scene.canvas.addEventListener('wheel',cancelSurfaceGesture,{passive:true});
     // HUD gestures reset inactivity without initiating any camera operation.
-    const uiInteraction = event => { if (!viewer.scene.canvas.contains(event.target)) {surfaceClicks.cancel(true);touchCamera();} };
-    const resetVisibility = () => { heldPointers.clear();pointerHeld=false;surfaceClicks.cancel(true); lastIdleFrame=performance.now(); touchCamera(); };
+    const uiInteraction = event => { if (!viewer.scene.canvas.contains(event.target)) {weatherHover.hide();surfaceClicks.cancel(true);touchCamera();} };
+    const resetVisibility = () => { weatherHover.hide();heldPointers.clear();pointerHeld=false;surfaceClicks.cancel(true); lastIdleFrame=performance.now(); touchCamera(); };
     document.addEventListener('pointerdown',uiInteraction,true);
     document.addEventListener('keydown',touchCamera,true);
     document.addEventListener('wheel',uiInteraction,{passive:true,capture:true});
@@ -871,6 +886,7 @@ export default function OrbitGlobe({
 
     handler.setInputAction((movement) => {
       const picked = viewer.scene.pick(movement.endPosition);
+      if(mousePointer&&!pointerHeld)weatherHover.move(movement.endPosition,picked);else weatherHover.hide();
       const nextId = Number(picked?.id?.properties?.noradId?.getValue?.()) || null;
       if (nextId !== hoveredIdRef.current) {
         const previous = entityMapRef.current.get(hoveredIdRef.current)?.entity;
@@ -921,19 +937,20 @@ export default function OrbitGlobe({
         : staleOrbits ? `${staleOrbits} orbit${staleOrbits === 1 ? " is" : "s are"} awaiting updated propagation. Moving highlights resume when aligned.` : "";
       if (status !== lastSatelliteStatus) { lastSatelliteStatus = status; callbacksRef.current.onSatelliteStatus?.(status); }
     });
-    const removeWeatherAltitude=mountWeatherAltitudeFade(viewer,()=>[temperatureLayerRef.current,cloudLayerRef.current,rainLayerRef.current,windLayerRef.current]);
+    const removeWeatherAltitude=mountWeatherAltitudeFade(viewer,()=>[temperatureLayerRef.current,pressureLayerRef.current,cloudLayerRef.current,rainLayerRef.current,windLayerRef.current]);
     const removePreRender = viewer.scene.preRender.addEventListener((_scene, time) => {
       const now = performance.now();
       const height = viewer.camera.positionCartographic.height;
       for (const [id, data] of entityMap) styleSatelliteOrbit(data, CATEGORY_COLORS[getSpaceObject(id)?.category] || Color.WHITE, id === selectedIdRef.current, shownOrbitIdsRef.current.size, height);
       placeLabels.update(now, labelsEnabledRef.current && earthActiveRef.current, mapRequestRef.activeMap,placeWeatherRef.current);
+      if(weatherAltitudeAlpha(height)===0||!earthActiveRef.current||!locationInteractionRef.current.enabled||followStateRef.current||viewer.trackedEntity)weatherHover.hide();
       if (now - lastViewTelemetryAtRef.current > 500) {
         lastViewTelemetryAtRef.current = now;
         // Development-only browser evidence; no camera mutation or extra clock.
         if(import.meta.env.DEV) {
           mountRef.current?.setAttribute('data-camera-diagnostics',JSON.stringify({state:idleState,target:solarSystemLayerRef.current?.idleTarget(),local:solarSystemLayerRef.current?.cameraDiagnostics(),position:[viewer.camera.positionWC.x,viewer.camera.positionWC.y,viewer.camera.positionWC.z],sceneTime:JulianDate.toIso8601(viewer.clock.currentTime),mode:modeRef.current}));
           const weatherLayers=Array.from({length:viewer.imageryLayers.length},(_,i)=>viewer.imageryLayers.get(i)).filter(layer=>layer.orbitwatchWeather);
-          mountRef.current?.setAttribute('data-weather-diagnostics',JSON.stringify({labels:placeLabels.diagnostics(),altitudeAlpha:weatherAltitudeAlpha(height),rain:rainLayerRef.current?.diagnostics(),clouds:cloudLayerRef.current?.diagnostics(),wind:windLayerRef.current?.diagnostics(),groundIntensity:viewer.scene.globe.atmosphereLightIntensity,groundAtmosphere:viewer.scene.globe.showGroundAtmosphere,skyAtmosphere:viewer.scene.skyAtmosphere.show,lighting:viewer.scene.globe.enableLighting,fog:viewer.scene.fog.enabled,eventSources:viewer.dataSources.length,events:naturalEventLayerRef.current?.diagnostics(),layers:weatherLayers.length,alpha:weatherLayers[0]?.alpha??0,following:followStateRef.current?.noradId??null,selected:selectedIdRef.current,tracked:entityMap.size,earth:earthActiveRef.current,mode:modeRef.current}));
+          mountRef.current?.setAttribute('data-weather-diagnostics',JSON.stringify({pressure:pressureLayerRef.current?.diagnostics(),hover:weatherHover.diagnostics(),labels:placeLabels.diagnostics(),altitudeAlpha:weatherAltitudeAlpha(height),rain:rainLayerRef.current?.diagnostics(),clouds:cloudLayerRef.current?.diagnostics(),wind:windLayerRef.current?.diagnostics(),groundIntensity:viewer.scene.globe.atmosphereLightIntensity,groundAtmosphere:viewer.scene.globe.showGroundAtmosphere,skyAtmosphere:viewer.scene.skyAtmosphere.show,lighting:viewer.scene.globe.enableLighting,fog:viewer.scene.fog.enabled,eventSources:viewer.dataSources.length,events:naturalEventLayerRef.current?.diagnostics(),layers:weatherLayers.length,alpha:weatherLayers[0]?.alpha??0,following:followStateRef.current?.noradId??null,selected:selectedIdRef.current,tracked:entityMap.size,earth:earthActiveRef.current,mode:modeRef.current}));
         }
         const cameraCartographic = viewer.scene.globe.ellipsoid.cartesianToCartographic(viewer.camera.positionWC);
         onViewTelemetryRef.current?.({
@@ -962,6 +979,9 @@ export default function OrbitGlobe({
     return () => {
       destroyed = true;
       removeWeatherAltitude();
+      weatherHover.destroy();weatherHoverRef.current=null;
+      pressureLayerRef.current?.destroy();pressureLayerRef.current=null;
+      weatherComputeRef.current?.destroy();weatherComputeRef.current=null;
       windLayerRef.current?.destroy();windLayerRef.current=null;
       rainLayerRef.current?.destroy();rainLayerRef.current=null;
       cloudLayerRef.current?.destroy();cloudLayerRef.current=null;
@@ -1087,9 +1107,11 @@ export default function OrbitGlobe({
 
   useEffect(()=>{
     const viewer=viewerRef.current;if(!viewer||viewer.isDestroyed())return;
-    temperatureLayerRef.current ||= createTemperatureLayer(viewer);
+    temperatureLayerRef.current ||= createTemperatureLayer(viewer,{compute:weatherComputeRef.current});
     temperatureLayerRef.current.update({field:weatherField,visible:weatherVisible&&(mode==='live'||weatherField?.source_kind==='era5')&&selectedCelestialBody==='earth',
       quality,opacity:weatherOpacity,compatible:weatherCompatible,immediate:mode==='time'||selectedCelestialBody!=='earth'||!weatherField});
+    pressureLayerRef.current ||= createPressureLayer(viewer,{compute:weatherComputeRef.current});
+    pressureLayerRef.current.update({field:weatherField,visible:weatherVisible&&(mode==='live'||weatherField?.source_kind==='era5')&&selectedCelestialBody==='earth',compatible:weatherCompatible,opacity:weatherOpacity});
   },[weatherField,weatherVisible,weatherOpacity,weatherCompatible,mode,selectedCelestialBody,quality]);
 
   useEffect(()=>{

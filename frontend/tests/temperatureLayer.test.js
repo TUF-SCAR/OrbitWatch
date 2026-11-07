@@ -2,7 +2,34 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { Event } from 'cesium';
 import {sampleTemperature,temperatureColor,temperaturePixels,validateTemperatureField,weatherFreshness} from '../src/services/temperatureGrid.js';
-import {createTemperatureLayer} from '../src/services/temperatureLayer.js';
+import {createTemperatureLayer,weatherTextureWidth} from '../src/services/temperatureLayer.js';
+import {createWeatherCompute} from '../src/services/weatherCompute.js';
+test('display texture budgets are bounded, use four samples per source degree by default and preserve low-memory fallback',()=>{
+  assert.equal(weatherTextureWidth('balanced'),1440);assert.equal(weatherTextureWidth('quality'),2160);
+  assert.equal(weatherTextureWidth('performance'),720);assert.equal(weatherTextureWidth('auto',4),720);assert.equal(weatherTextureWidth('auto',8),1440);
+});
+
+test('late asynchronous rasters cannot restore hidden or older fields; pending opacity changes reuse one job',async()=>{
+  const entries=[],preRender=new Event(),jobs=[];
+  const viewer={isDestroyed:()=>false,scene:{preRender,requestRender(){}},imageryLayers:{contains:layer=>entries.includes(layer),addImageryProvider:provider=>{const layer={provider};entries.push(layer);return layer;},remove:layer=>entries.splice(entries.indexOf(layer),1)}};
+  const owner=createTemperatureLayer(viewer,{makeProvider:field=>new Promise(resolve=>jobs.push({id:field.id,resolve})),reduced:()=>true});
+  owner.update({field:{id:'older'},visible:true});owner.update({field:{id:'older'},visible:true,opacity:.2});assert.equal(jobs.length,1);
+  owner.update({field:{id:'newer'},visible:true});jobs[0].resolve({id:'older'});await Promise.resolve();assert.equal(entries.length,0);
+  jobs[1].resolve({id:'newer'});await Promise.resolve();preRender.raiseEvent();assert.equal(entries[0].provider.id,'newer');
+  owner.update({field:{id:'pending'},visible:true});owner.update({visible:false,immediate:true});jobs[2].resolve({id:'pending'});await Promise.resolve();assert.equal(entries.length,0);
+  owner.destroy();assert.equal(preRender.numberOfListeners,0);
+});
+
+test('one weather worker coalesces queued changes and aborts outstanding work on destroy',async()=>{
+  const sent=[];let terminated=false;
+  const worker={postMessage:job=>sent.push(job),terminate:()=>{terminated=true;}};
+  const compute=createWeatherCompute({makeWorker:()=>worker}),field={id:'fixture',values_c:Array(65160).fill(20)};
+  const first=compute.raster(field,4,2),obsolete=compute.raster(field,8,4).catch(error=>error.name),latest=compute.raster(field,16,8);
+  assert.equal(sent.length,1);assert.equal(await obsolete,'AbortError');
+  worker.onmessage({data:{id:sent[0].id,result:new Uint8ClampedArray(32)}});await first;
+  assert.equal(sent.length,2);assert.equal(sent[1].width,16);
+  const cancelled=latest.catch(error=>error.name);compute.destroy();assert.equal(await cancelled,'AbortError');assert.equal(terminated,true);
+});
 function field() {
   return {id:'test-generated',units:'°C',valid_at:'2026-10-23T12:00:00Z',retrieved_at:'2026-10-23T12:05:00Z',state:'available',
     grid:{width:360,height:181,west:-180,north:90,step:1},values_c:Array.from({length:65160},(_,i)=>(90-Math.floor(i/360))*.1+Math.sin((i%360-180)*Math.PI/180))};

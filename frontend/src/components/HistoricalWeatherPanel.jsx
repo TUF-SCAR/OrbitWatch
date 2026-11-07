@@ -1,17 +1,16 @@
 import {Thermometer,X,MapPin} from 'lucide-react';
 import SpatialSurface from './SpatialSurface.jsx';
 import {HISTORICAL_FIELDS,hasHistoricalVariable} from '../services/historicalWeather.js';
-import {WEATHER_FIELDS} from '../services/weatherFields.js';
+import WeatherScale from './WeatherScale.jsx';
 import './WeatherPanel.css';
 const date=value=>new Date(value).toISOString().replace('T',' ').replace(/\.\d{3}Z$/,' UTC');
 const attribution=<a href="https://cds.climate.copernicus.eu/datasets/reanalysis-era5-single-levels" target="_blank" rel="noreferrer">Copernicus / ECMWF ERA5 reanalysis</a>;
 
 export function HistoricalWeatherLegend({weather,time}){
-  const spec=HISTORICAL_FIELDS[weather.variable],style=WEATHER_FIELDS[weather.variable];
+  const spec=HISTORICAL_FIELDS[weather.variable];
   return <div className="historical-weather-legend"><strong>{spec.label} · {spec.units}</strong>
     {weather.snapshot?.metadata?.provenance?.isolated_fixture&&<small>ISOLATED TEST FIXTURE · not downloaded ERA5</small>}
-    <div className="weather-palette" style={{background:style.gradient}}/>
-    <div className="weather-legend__ticks">{style.ticks.map(tick=><span key={tick}>{tick}</span>)}</div>
+    <WeatherScale variable={weather.variable} units={spec.units}/>
     <p className="weather-source">{weather.variable==='precipitation'?'Precipitation during the preceding hour · mm. ':''}{date(time)} · 1° display grid.</p>
   </div>;
 }

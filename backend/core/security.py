@@ -9,81 +9,40 @@ from services.auth import decode_access_token
 bearer_scheme = HTTPBearer(auto_error=False)
 
 
-def check_username_char(username: str) -> bool:
-    char_check = True
-    for char in username:
-        if not char.isalpha() and not char.isnumeric() and char != "." and char != "_":
-            char_check = False
-            break
+USERNAME_MIN_LENGTH = 3
+USERNAME_MAX_LENGTH = 50
 
-    return char_check
+
+def check_username_char(username: str) -> bool:
+    """Validate the complete username; preserve Unicode letters and digits."""
+    if not isinstance(username, str) or not USERNAME_MIN_LENGTH <= len(username) <= USERNAME_MAX_LENGTH:
+        return False
+    if username.startswith(".") or username.endswith(".") or ".." in username:
+        return False
+    return all(char.isalpha() or char.isdecimal() or char in "._" for char in username)
 
 
 def check_email(email: str) -> bool:
-    if email != "":
-        if len(email) <= 254:
-            if email.count("@") == 1:
-                local_email = email.split("@")[0]
-                domain_email = email.split("@")[1]
-                if local_email != "":
-                    if len(local_email) >= 3 and len(local_email) <= 64:
-                        local_check = True
-                        local_char_check = False
-                        for char in local_email:
-                            if (
-                                not char.isalpha()
-                                and not char.isnumeric()
-                                and char != "."
-                                and char != "-"
-                                and char != "_"
-                                and char != "+"
-                            ):
-                                local_char_check = True
-                                break
-                        if (
-                            local_char_check
-                            or local_email.startswith(".")
-                            or local_email.endswith(".")
-                            or ".." in local_email
-                        ):
-                            local_check = False
-
-                        if local_check:
-                            if domain_email != "" and len(domain_email) <= 253:
-                                if (
-                                    domain_email.count(".") >= 1
-                                    and not domain_email.startswith(".")
-                                    and not domain_email.endswith(".")
-                                    and " " not in domain_email
-                                ):
-                                    domain_labels = domain_email.split(".")
-                                    TLD = domain_labels[-1]
-                                    label_check = True
-
-                                    for label in domain_labels:
-                                        domain_char_check = False
-                                        for char in label:
-                                            if (
-                                                not char.isalpha()
-                                                and not char.isnumeric()
-                                                and char != "-"
-                                            ):
-                                                domain_char_check = True
-                                                break
-
-                                        if (
-                                            label == ""
-                                            or domain_char_check
-                                            or label.startswith("-")
-                                            or label.endswith("-")
-                                        ):
-                                            label_check = False
-                                            break
-
-                                    if label_check:
-                                        if len(TLD) >= 2 and TLD.isalpha():
-                                            return True
-    return False
+    """Deterministic app-level validation of ordinary, unquoted email addresses."""
+    if not isinstance(email, str) or not email.isascii() or len(email) > 254 or email.count("@") != 1:
+        return False
+    local, domain = email.split("@")
+    if not 1 <= len(local) <= 64 or local.startswith(".") or local.endswith(".") or ".." in local:
+        return False
+    allowed_local = ".!#$%&'*+-/=?^_`{|}~"
+    if not all(char.isalnum() or char in allowed_local for char in local):
+        return False
+    if not domain or len(domain) > 253:
+        return False
+    labels = domain.split(".")
+    if len(labels) < 2 or not 2 <= len(labels[-1]) <= 63 or not labels[-1].isalpha():
+        return False
+    for label in labels:
+        if not 1 <= len(label) <= 63 or label.startswith("-") or label.endswith("-"):
+            return False
+        if not all(char.isalnum() or char == "-" for char in label):
+            return False
+    return True
 
 
 def get_token_user_id(

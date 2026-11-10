@@ -1,5 +1,7 @@
 import {sampleTemperature} from './temperatureGrid.js';
 import {sampleModel} from './weatherFields.js';
+import {classifyPrecipitationHover,precipitationContext} from './precipitationHover.js';
+import {renderPrecipitationHover} from './precipitationHoverVisual.js';
 
 export function sampleHoverWeather(field,longitude,latitude){
   if(!field)return null;
@@ -14,6 +16,10 @@ export function sampleHoverWeather(field,longitude,latitude){
   if(value===null||!Number.isFinite(value))return null;
   const units=variable==='temperature'?'°C':variable==='pressure'?' hPa':variable==='precipitation'?field.source_kind==='era5'?' mm':' mm/h':variable==='wind'?' km/h':'%';
   const text=variable==='precipitation'?`${value<.05?'0':value<10?value.toFixed(1):Math.round(value)}${units}`:`${Math.round(value)}${units}`;
+  if(variable==='precipitation'){
+    const condition=classifyPrecipitationHover(value,precipitationContext(field,longitude,latitude,sampleModel));
+    return {value,variable,units:units.trim(),...condition,text:`${condition.icon?`${condition.icon} `:''}${condition.title}${condition.secondary?`\n${condition.secondary}`:''}`};
+  }
   return {value,variable,text,units:units.trim()};
 }
 export function weatherHoverBlocked(picked){
@@ -41,7 +47,11 @@ export function createWeatherHover({mount,canvas,getState,pickLocation,
     if(destroyed||!movement||!state.enabled||state.dragging||!state.field||weatherHoverBlocked(movement.picked)){hide();return;}
     const location=pickLocation(movement.position),reading=location&&sampleHoverWeather(state.field,location.longitude,location.latitude);
     if(!reading){hide();return;}
-    if(lastText!==reading.text){bubble.textContent=reading.text;lastText=reading.text;updates++;}
+    if(lastText!==reading.text){
+      if(reading.variable==='precipitation')renderPrecipitationHover(bubble,reading,doc);
+      else bubble.textContent=reading.text;
+      lastText=reading.text;updates++;
+    }
     bubble.dataset.variable=reading.variable;
     bubble.title=`${state.field.source_kind==='era5'?'ERA5 reanalysis':'GFS model'} · ${state.field.valid_at}`;
     bubble.hidden=false;

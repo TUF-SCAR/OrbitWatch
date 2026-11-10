@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from models.user import User
 from core.database import get_database_session
-from core.security import check_username_char, check_email, get_current_user
+from core.security import check_username_char, check_email, get_current_user, USERNAME_MIN_LENGTH, USERNAME_MAX_LENGTH
 from schemas.auth import RegisterRequest, LoginRequest, AuthResponse, UserResponse
 from services.auth import hash_password, verify_password, create_access_token
 
@@ -18,9 +18,9 @@ def Registration(
 ) -> AuthResponse:
     username = user.username.strip()
     email = user.email.strip()
-    password = user.password.strip()
+    password = user.password
 
-    if len(username) < 3 or len(username) > 50:
+    if len(username) < USERNAME_MIN_LENGTH or len(username) > USERNAME_MAX_LENGTH:
         raise HTTPException(
             status_code=400,
             detail="Invalid username length",
@@ -56,7 +56,7 @@ def Registration(
             detail="Email already exists",
         )
 
-    if len(password) < 8:
+    if len(password) < 8 or not password.strip():
         raise HTTPException(
             status_code=400,
             detail="Invalid password length",
@@ -91,7 +91,7 @@ def Login(
     user: LoginRequest, database: Session = Depends(get_database_session)
 ) -> AuthResponse:
     username_or_email = user.username_or_email.strip()
-    password = user.password.strip()
+    password = user.password
 
     if "@" in username_or_email:
         if not check_email(email=username_or_email):
@@ -101,7 +101,7 @@ def Login(
             )
 
     else:
-        if len(username_or_email) < 3 or len(username_or_email) > 50:
+        if len(username_or_email) < USERNAME_MIN_LENGTH or len(username_or_email) > USERNAME_MAX_LENGTH:
             raise HTTPException(
                 status_code=400,
                 detail="Invalid username length",

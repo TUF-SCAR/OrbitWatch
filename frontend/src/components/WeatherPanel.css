@@ -156,6 +156,10 @@
 .historical-weather-legend>strong { display:none; }
 .weather-hover { position:absolute; top:0; left:0; z-index:29; pointer-events:none; user-select:none; padding:10px 14px; border:1px solid #ffffff18; border-radius:10px; background:#20272df5; color:#fff; font:600 17px/1.15 Inter,system-ui,sans-serif; font-variant-numeric:tabular-nums; white-space:nowrap; box-shadow:0 3px 12px #0004; }
 .weather-hover[hidden] { display:none; }
+.weather-hover[data-variable=precipitation] { white-space:nowrap; font-size:15px; line-height:1.5; text-align:center; padding:8px 13px; color:var(--precipitation-foreground,#f5f7fa); }
+.weather-hover__condition { display:flex; align-items:center; justify-content:center; gap:6px; }
+.weather-hover__icon { display:inline-block; flex:0 0 20px; width:20px; height:20px; background:center/contain no-repeat; }
+.weather-hover__forecast { display:block; }
 .weather-hover::after { content:''; position:absolute; left:var(--weather-hover-pointer,50%); bottom:-8px; width:14px; height:14px; background:#20272d; transform:translateX(-50%) rotate(45deg); border-right:1px solid #ffffff18; border-bottom:1px solid #ffffff18; z-index:-1; }
 .weather-hover.is-below::after { bottom:auto; top:-8px; transform:translateX(-50%) rotate(225deg); }
 @media(max-width:720px) { .weather-legend { width:auto; padding:11px 13px; } .weather-scale__heading { font-size:10px; } }

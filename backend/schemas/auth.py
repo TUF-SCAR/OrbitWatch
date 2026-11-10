@@ -3,14 +3,12 @@ from pydantic import BaseModel, ConfigDict
 
 
 class RegisterRequest(BaseModel):
-    model_config = ConfigDict(str_strip_whitespace=True)
     username: str
     email: str
     password: str
 
 
 class LoginRequest(BaseModel):
-    model_config = ConfigDict(str_strip_whitespace=True)
     username_or_email: str
     password: str
 

@@ -5,12 +5,12 @@ import {sampleHoverWeather,weatherHoverBlocked,weatherHoverPosition,createWeathe
 test('hover samples local physical units, with truthful precipitation period and no invented observed cloud fraction',()=>{
   const values=Array(65160).fill(27),temperature={values_c:values};
   assert.equal(sampleHoverWeather(temperature,0,0).text,'27°C');
-  for(const [variable,value,text,units] of [['humidity',84,'84%','%'],['pressure',1011,'1011 hPa','hPa'],['precipitation',2.4,'2.4 mm/h','mm/h'],['clouds',75,'75%','%']]){
+  for(const [variable,value,text,units] of [['humidity',84,'84%','%'],['pressure',1011,'1011 hPa','hPa'],['clouds',75,'75%','%']]){
     const field={display_variable:variable,units,values:Array(65160).fill(value)};
     assert.equal(sampleHoverWeather(field,179.99,0).text,text);assert.equal(sampleHoverWeather(field,-180,0).value,sampleHoverWeather(field,180,0).value);
     field.values[90*360+180]=null;assert.equal(sampleHoverWeather(field,0,0),null);
   }
-  assert.equal(sampleHoverWeather({display_variable:'precipitation',source_kind:'era5',values:Array(65160).fill(2.4)},0,0).text,'2.4 mm');
+  assert.equal(sampleHoverWeather({display_variable:'precipitation',source_kind:'era5',values:Array(65160).fill(2.4)},0,0).secondary,'2.4 mm (Preceding hour)');
   assert.equal(sampleHoverWeather({display_variable:'observedClouds'},0,0),null);assert.equal(sampleHoverWeather(temperature,0,91),null);
 });
 test('satellites/events/other celestial bodies suppress weather without consuming or changing their picks',()=>{

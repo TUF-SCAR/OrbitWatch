@@ -8,7 +8,9 @@
 .cinematic-stage__loader i { width:20px; height:20px; border:1px solid var(--accent-line); border-top-color:var(--accent); border-radius:50%; animation:hud-spin calc(var(--ui-motion-spinner) * 1ms) linear infinite; }
 .cinematic-stage[data-hud-phase="waiting"] .cinematic-stage__loader i { animation-play-state:paused; }
 .cinematic-stage[data-hud-phase="morph"] .cinematic-stage__loader { opacity:0; transition:opacity calc(var(--ui-motion-morph) * .65ms) ease; }
-.cinematic-stage[data-hud-phase="morph"] .cinematic-stage__content { opacity:1; transition:opacity calc(var(--ui-motion-morph) * .35ms) ease calc(var(--ui-motion-morph) * .65ms); }
+/* Content becomes visible together with the coordinator releasing inert/input.
+   Revealing live buttons during morph made early clicks appear to be ignored. */
+.cinematic-stage[data-hud-phase="morph"] .cinematic-stage__content { visibility:hidden; }
 .cinematic-stage[data-hud-phase="ready"] .cinematic-stage__content { opacity:1; }
 .cinematic-stage[data-hud-phase="ready"] .cinematic-stage__morph { border-color:transparent; background:transparent; box-shadow:none; }
 .cinematic-stage[data-hud-phase="ready"] .cinematic-stage__loader { display:none; }

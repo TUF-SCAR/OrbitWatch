@@ -4,6 +4,7 @@ import { createCloudImageryService } from './cloudImagery.js';
 
 export function useObservedClouds(active,quality) {
   const service=useRef(null);
+  const usable=useRef(false);
   const [frames,setFrames]=useState([]),[index,setIndex]=useState(0),[playing,setPlaying]=useState(false);
   const [status,setStatus]=useState('idle'),[error,setError]=useState(''),[revision,setRevision]=useState(0);
   const [hidden,setHidden]=useState(document.hidden),[reduced,setReduced]=useState(()=>matchMedia('(prefers-reduced-motion: reduce)').matches);
@@ -31,10 +32,10 @@ export function useObservedClouds(active,quality) {
         // Show the newest verified slot first; older frames prepare serially.
         for(const time of [...times].reverse()){
           const frame=await owner.frame(time,budget,signal);if(signal.aborted)return;
-          loaded.unshift(frame);setFrames([...loaded]);setIndex(loaded.length-1);setDiagnostics(owner.diagnostics());
+          usable.current=true;loaded.unshift(frame);setFrames([...loaded]);setIndex(loaded.length-1);setDiagnostics(owner.diagnostics());
         }
         setStatus('ready');
-      } catch(e){if(!signal.aborted){setError(e.message||'Observed imagery unavailable');setStatus('unavailable');setDiagnostics(owner.diagnostics());}}
+      } catch(e){if(!signal.aborted){setError(e.message||'Observed imagery unavailable');setStatus(usable.current?'stale':'unavailable');setDiagnostics(owner.diagnostics());}}
     })();
     return()=>controller.abort();
   },[active,quality,hidden,revision]);
@@ -55,6 +56,11 @@ export function useObservedClouds(active,quality) {
     select(value){setPlaying(false);setIndex(Number(value));},
     toggle(){if(playing){setPlaying(false);return;}if(reduced||frames.length<2)return;setIndex(0);setPlaying(true);},
     refresh(){setRevision(value=>value+1);},
-    reportError(message){setPlaying(false);setFrames([]);setIndex(0);setStatus('unavailable');setError(`Cloud display unavailable: ${message}`);},
+    reportError(message,retained){
+      // The label/time must describe the image Cesium actually retained, not the
+      // replacement that failed to display. No first-frame success is invented.
+      usable.current=Boolean(retained);setPlaying(false);setFrames(retained?[retained]:[]);setIndex(0);
+      setStatus(retained?'stale':'unavailable');setError(`Cloud display unavailable: ${message}`);
+    },
   };
 }

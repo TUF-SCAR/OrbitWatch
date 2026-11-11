@@ -1,4 +1,5 @@
 export function weatherTime(value) {
+  if(value===null||value===undefined||value==='')return 'Unavailable';
   const time=new Date(value);return Number.isFinite(time.getTime())?`${time.toLocaleString('en-GB',{timeZone:'UTC',day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit',hour12:false})} UTC`:'Unavailable';
 }
 export function weatherCondition(code) {

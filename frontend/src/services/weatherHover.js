@@ -53,7 +53,7 @@ export function createWeatherHover({mount,canvas,getState,pickLocation,
       lastText=reading.text;updates++;
     }
     bubble.dataset.variable=reading.variable;
-    bubble.title=`${state.field.source_kind==='era5'?'ERA5 reanalysis':'GFS model'} · ${state.field.valid_at}`;
+    bubble.title=`${state.field.source_kind==='era5'?'ERA5 reanalysis':'GFS model'} · ${state.field.valid_at}${reading.variable==='precipitation'?` · Liquid equivalent · ${state.field.precipitation_phase_status==='available'?'Categorical phase at nearest node':'Precipitation type unavailable'}`:''}`;
     bubble.hidden=false;
     const placement=weatherHoverPosition(movement.position,canvas.clientWidth,canvas.clientHeight,bubble.offsetWidth,bubble.offsetHeight);
     bubble.style.transform=`translate3d(${placement.x}px,${placement.y}px,0)`;

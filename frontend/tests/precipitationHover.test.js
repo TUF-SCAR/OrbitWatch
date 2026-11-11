@@ -6,14 +6,14 @@ import {precipitationAppearance} from '../src/services/precipitationHoverVisual.
 
 test('dry sky conditions use cloud fraction with no forced numeric line',()=>{
   for(const [clouds,title] of [[0,'Sunny'],[10,'Sunny'],[11,'Mostly Sunny'],[30,'Mostly Sunny'],[31,'Partly Cloudy'],[70,'Partly Cloudy'],[71,'Cloudy'],[100,'Cloudy']]){
-    const result=classifyPrecipitationHover(.05,{clouds});assert.equal(result.title,title);assert.equal(result.secondary,null);assert.ok(result.icon);
+    const result=classifyPrecipitationHover(.05,{clouds,isDay:true});assert.equal(result.title,title);assert.equal(result.secondary,null);assert.ok(result.icon);
   }
   assert.equal(classifyPrecipitationHover(0).title,'No precipitation');
   assert.equal(classifyPrecipitationHover(0,{clouds:0,isDay:false}).title,'Clear');
 });
 test('explicit rain/snow phase uses stable intensity bands rather than exact example values',()=>{
   for(const [rate,title] of [[.1,'Sunshine & Showers'],[.3,'Very Light Rain'],[.5,'Light Rain'],[1.7,'Light Rain'],[2.5,'Moderate Rain'],[3,'Moderate Rain'],[7.5,'Heavy Rain'],[8,'Heavy Rain']]){
-    const result=classifyPrecipitationHover(rate,{phase:'rain',clouds:50});assert.equal(result.title,title);assert.equal(result.secondary,`${rate} mm/h (Forecast)`);
+    const result=classifyPrecipitationHover(rate,{phase:'rain',clouds:50,isDay:true});assert.equal(result.title,title);assert.equal(result.secondary,`${rate} mm/h (Forecast)`);
   }
   for(const [rate,title] of [[2,'Light Snow'],[2.5,'Moderate Snow'],[22,'Moderate Snow'],[25,'Heavy Snow'],[33,'Heavy Snow']]){
     const result=classifyPrecipitationHover(rate,{phase:'snow'});assert.equal(result.title,title);assert.equal(result.secondary,`${rate} mm/h (Forecast)`);
@@ -22,10 +22,10 @@ test('explicit rain/snow phase uses stable intensity bands rather than exact exa
   assert.equal(classifyPrecipitationHover(NaN),null);assert.equal(classifyPrecipitationHover(-1),null);
 });
 test('sampling combines local cloud/explicit phase context and retains missing data and historical units',()=>{
-  const field={display_variable:'precipitation',values:Array(65160).fill(0),fields:{clouds:{units:'%',values:Array(65160).fill(20)}}};
+  const field={valid_at:'2026-03-20T12:00:00Z',display_variable:'precipitation',values:Array(65160).fill(0),fields:{clouds:{units:'%',values:Array(65160).fill(20)}}};
   assert.equal(sampleHoverWeather(field,0,0).text,'☀️ Mostly Sunny');
   field.values.fill(3);assert.equal(sampleHoverWeather(field,0,0).title,'Moderate Precipitation');
-  field.precipitation_phase={values:Array(65160).fill('snow')};assert.equal(sampleHoverWeather(field,0,0).title,'Moderate Snow');
+  field.precipitation_phase={units:'category',level:'surface',step_type:'instant',valid_at:field.valid_at,values:Array(65160).fill('snow')};assert.equal(sampleHoverWeather(field,0,0).title,'Moderate Snow');
   assert.equal(sampleHoverWeather(field,-180,0).title,sampleHoverWeather(field,180,0).title);
   field.source_kind='era5';assert.equal(sampleHoverWeather(field,0,0).secondary,'3 mm (Preceding hour)');
   field.values[90*360+180]=null;assert.equal(sampleHoverWeather(field,0,0),null);
@@ -56,7 +56,7 @@ test('vector symbols and text colours distinguish intensity and explicit snow',(
     [3,{phase:'rain'},'rain-moderate','#efc4e5'],[8,{phase:'rain'},'rain-heavy','#fff2a6'],
     [2,{phase:'snow'},'snow-light','#baf4f8'],[22,{phase:'snow'},'snow-moderate','#9feaf5'],[33,{phase:'snow'},'snow-heavy','#80dff4'],
   ]){
-    const view=precipitationAppearance(classifyPrecipitationHover(rate,context));
+    const view=precipitationAppearance(classifyPrecipitationHover(rate,{...context,isDay:true}));
     assert.equal(view.icon,icon);assert.equal(view.color,color);assert.match(view.image,/^url\("data:image\/svg\+xml,/);
     assert.doesNotMatch(decodeURIComponent(view.image),/<script|https?:\/\/(?!www.w3.org)/);
   }

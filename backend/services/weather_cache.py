@@ -54,9 +54,10 @@ class WeatherCache:
             db.execute("DELETE FROM data WHERE kind=? AND key NOT IN (SELECT key FROM data WHERE kind=? ORDER BY retrieved DESC LIMIT ?)", (kind, kind, limit))
 
     @contextmanager
-    def lease(self):
+    def lease(self, scope='download'):
+        if scope not in {'download','noaa','open_meteo','infrared'}: raise ValueError('Invalid weather lease')
         self.root.mkdir(parents=True, exist_ok=True)
-        file = open(self.root / 'download.lock', 'a+b'); owned = False
+        file = open(self.root / f'{scope}.lock', 'a+b'); owned = False
         try:
             file.seek(0, 2)
             if file.tell() == 0: file.write(b'0'); file.flush()

@@ -13,7 +13,7 @@ from services.weather_fields import decode_fields
 
 cache = WeatherCache()
 logger = logging.getLogger('orbitwatch.weather')
-CURRENT_VARIABLES = 'temperature_2m,apparent_temperature,relative_humidity_2m,pressure_msl,wind_speed_10m,wind_direction_10m,precipitation,cloud_cover,weather_code'
+CURRENT_VARIABLES = 'temperature_2m,apparent_temperature,relative_humidity_2m,pressure_msl,wind_speed_10m,wind_direction_10m,precipitation,cloud_cover,weather_code,is_day'
 # Lazily used only after a weather request, never on API startup/status reads.
 executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix='weather')
 pending_lock = threading.Lock()
@@ -66,10 +66,10 @@ def download(url, params, limit):
 
 def refresh_global():
     cycle, step, file = target()
-    with cache.lease() as owned:
+    with cache.lease('noaa') as owned:
         if not owned: raise WeatherDeferred()
         existing = cache.latest_global()
-        if existing and existing.get('bundle_version') == 2 and existing['source_file'] == f'{cycle:%Y%m%d}/{file}': return existing
+        if existing and existing.get('phase_version') == 1 and existing['source_file'] == f'{cycle:%Y%m%d}/{file}': return existing
         database_availability.ensure()
         if not enabled('ORBITWATCH_WEATHER_PROVIDER_REQUESTS', True): raise WeatherDeferred()
         # Check our local decoder before spending an upstream reservation.
@@ -85,6 +85,7 @@ def refresh_global():
             data = download('https://nomads.ncep.noaa.gov/cgi-bin/filter_gfs_1p00.pl',
                 {'file':file,'lev_2_m_above_ground':'on','lev_10_m_above_ground':'on','lev_surface':'on',
                  'lev_entire_atmosphere':'on','lev_mean_sea_level':'on','var_TMP':'on','var_TCDC':'on','var_PRATE':'on','var_UGRD':'on','var_VGRD':'on','var_RH':'on','var_PRMSL':'on',
+                 'var_CRAIN':'on','var_CSNOW':'on','var_CFRZR':'on','var_CICEP':'on',
                  'dir':f'/gfs.{cycle:%Y%m%d}/{cycle:%H}/atmos',
                  'leftlon':0,'rightlon':360,'toplat':90,'bottomlat':-90}, 16000000)
             cache.record('noaa', 'decoding')
@@ -113,7 +114,7 @@ def global_availability(raw=None):
     field = annotate(raw, 'global')
     gate, event = cache.gate('noaa'), cache.event('noaa')
     active = pending is not None and not pending.done()
-    with cache.lease() as free:
+    with cache.lease('noaa') as free:
         shared_active = not free
     phase = event['phase'] if event else None
     if active or shared_active:
@@ -145,7 +146,7 @@ def global_temperature(require_fields=False):
     raw = cache.latest_global()
     field = annotate(raw, 'global')
     cycle, step, file = target()
-    needs_refresh = not field or field['source_file'] != f'{cycle:%Y%m%d}/{file}' or (require_fields and field.get('bundle_version') != 2)
+    needs_refresh = not field or field['source_file'] != f'{cycle:%Y%m%d}/{file}' or (require_fields and field.get('phase_version') != 1)
     if needs_refresh: revalidate_global()
     availability = global_availability(raw)
     if not field:
@@ -183,9 +184,10 @@ def parse_location(data, latitude, longitude, retrieved_at):
     for variable in CURRENT_VARIABLES.split(','):
         value = current.get(variable)
         if value is not None and (not isinstance(value,(int,float)) or not math.isfinite(value)):
-            if variable in {'relative_humidity_2m','pressure_msl'}: value=None
+            if variable in {'relative_humidity_2m','pressure_msl','is_day'}: value=None
             else: raise ValueError('Invalid weather value')
         values[variable] = value
+    if values['is_day'] not in (0,1) or units.get('is_day')!='': values['is_day']=None
     # Optional location fields retain explicit identity/units. Invalid optional
     # values are unavailable rather than breaking temperature or wind readings.
     for variable, expected_units, low, high in [('relative_humidity_2m','%',0,100),('pressure_msl','hPa',800,1200)]:
@@ -210,7 +212,7 @@ def location_weather(latitude, longitude):
     cached = annotate(cache.get(key),'location')
     if cached and cached['cache_age_seconds'] < 900: return cached
     try:
-        with cache.lease() as owned:
+        with cache.lease('open_meteo') as owned:
             if not owned: raise WeatherDeferred()
             # Recheck after taking the cross-process lease.
             latest = annotate(cache.get(key),'location')

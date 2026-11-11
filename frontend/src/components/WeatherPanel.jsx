@@ -13,7 +13,7 @@ import './WeatherPanel.css';
 
 export function TemperatureLegend({field,state,labelWeatherNote}) {
   const style=WEATHER_FIELDS[field.display_variable||'temperature'];
-  return <aside className="weather-legend" aria-label="Weather legend"><WeatherScale variable={field.display_variable||'temperature'}/><small>{state==='stale'?'CACHED · STALE · ':''}GFS · 1° · {weatherTime(field.valid_at)} · <a href="https://nomads.ncep.noaa.gov/" target="_blank" rel="noreferrer">NOAA/NCEP</a></small>{style.units==='mm/h'&&<small>Liquid equivalent · {field.fields?.clouds?'GFS model clouds · ':''}phase unavailable</small>}{labelWeatherNote&&<small>{labelWeatherNote}</small>}</aside>;
+  return <aside className="weather-legend" aria-label="Weather legend"><WeatherScale variable={field.display_variable||'temperature'}/><small>{state==='stale'?'CACHED · STALE · ':''}GFS · 1° · {weatherTime(field.valid_at)} · <a href="https://nomads.ncep.noaa.gov/" target="_blank" rel="noreferrer">NOAA/NCEP</a></small>{style.units==='mm/h'&&<small>Liquid equivalent · {field.fields?.clouds?'GFS model clouds · ':''}{field.precipitation_phase_status==='available'?'GFS categorical phase · nearest node':'phase unavailable'}</small>}{labelWeatherNote&&<small>{labelWeatherNote}</small>}</aside>;
 }
 export default function WeatherPanel({onFocusEvent,onReturnEvent,windEnabled=false,onWindEnabled,windField,cameraAltitudeKm,cloudFallback=false,observedClouds,tab,onTab,events,eventsEnabled,onEventsEnabled,eventCategory,onEventCategory,selectedEventId,onEventSelect,open,onClose,weather,variable='temperature',onVariable,enabled,onEnabled,opacity,onOpacity,compatible,onCompatibleMap,onRefresh,refreshCooling,onViewCenter,locationWeather,labelWeatherNote}) {
   const bodyRef=useRef(null);

@@ -31,6 +31,11 @@ export function validateModelField(variable,field) {
     if(values?.length!==65160||values.some(v=>v!==null&&(!Number.isFinite(v)||v<spec[0]||v>spec[1])))throw Error('Invalid model nodes');
   }
 }
+export function validatePrecipitationPhase(phase,time){
+  const allowed=['rain','snow','freezing_rain','ice_pellets','mixed','unknown'];
+  if(phase?.units!=='category'||phase.level!=='surface'||phase.step_type!=='instant'||phase.valid_at!==time||phase.values?.length!==65160||phase.values.some(value=>!allowed.includes(value)))throw Error('Invalid categorical precipitation phase');
+  return phase;
+}
 export function needsModelWeather(variable,cloudFallback,windEnabled,labelWeather=false) {
   return variable!=='observedClouds'||cloudFallback||windEnabled||labelWeather;
 }

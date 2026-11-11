@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Event } from 'cesium';
 import { CLOUD_STYLE, cloudBudget } from '../src/services/cloudConfig.js';
-import { cloudSlots, cloudMapUrl, emphasizeInfrared, createCloudImageryService } from '../src/services/cloudImagery.js';
+import { cloudSlots, cloudMapUrl, emphasizeInfrared, createCloudImageryService,validateCloudJpeg } from '../src/services/cloudImagery.js';
 import { createCloudLayer } from '../src/services/cloudLayer.js';
 
 const NOW=Date.parse('2026-10-25T16:00:00Z');
@@ -66,7 +66,7 @@ test('cloud request ceiling cannot be bypassed by quality changes/cancellation',
   let calls=0,n=0;
   const service=createCloudImageryService({now:()=>NOW,parse:()=>domain,fetcher:async()=>{calls++;return response();},decode:async()=>`blob:${++n}`,revoke(){}});
   const signal=new AbortController().signal,[time]=await service.slots(1,signal);
-  for(let i=0;i<CLOUD_STYLE.requestsPerWindow-1;i++)await service.frame(time,{width:100+i,frames:1},signal);
+  for(let i=0;i<CLOUD_STYLE.requestsPerWindow-1;i++)await service.frame(time,{width:100+i*2,frames:1},signal);
   await assert.rejects(service.frame(time,{width:1000,frames:1},signal),/budget/);
   assert.equal(calls,CLOUD_STYLE.requestsPerWindow);service.destroy();
 });
@@ -98,9 +98,48 @@ test('invalid server payloads cannot masquerade as observations; cached display 
   await assert.rejects(service.frame(time,cloudBudget('balanced'),signal),/image unavailable/);
   assert.equal(service.diagnostics().cachedFrames,0);service.destroy();
   await assert.rejects(service.slots(1,signal),{name:'AbortError'});
-  const f=sceneFixture();let message;
-  const owner=createCloudLayer(f.viewer,{makeProvider:async frame=>{if(frame.id==='bad')throw Error('decode');return frame;},onError:error=>{message=error;}});
+  const f=sceneFixture();let message,retained;
+  const owner=createCloudLayer(f.viewer,{makeProvider:async frame=>{if(frame.id==='bad')throw Error('decode');return frame;},onError:(error,frame)=>{message=error;retained=frame;}});
   await owner.update({visible:true,frame:{id:'good'}});
   await owner.update({visible:true,frame:{id:'bad'}});
-  assert.equal(message,'decode');assert.equal(f.entries.length,0);assert.equal(f.preRender.numberOfListeners,0);owner.destroy();
+  assert.equal(message,'decode');assert.equal(f.entries.length,1);assert.equal(f.entries[0].provider.id,'good');assert.equal(f.preRender.numberOfListeners,0);owner.destroy();
+  assert.equal(retained.id,'good');
+});
+
+test('one cancelled subscriber cannot abort a shared frame; height is part of its identity',async()=>{
+  let release,calls=0;
+  const service=createCloudImageryService({now:()=>NOW,parse:()=>domain,revoke(){},decode:async(_blob,width,_signal,height)=>`blob:${width}x${height}`,
+    fetcher:async()=>{calls++;if(calls===2)await new Promise(resolve=>release=resolve);return response();}});
+  const a=new AbortController(),b=new AbortController(),[time]=await service.slots(1,b.signal),budget=cloudBudget('balanced');
+  const first=service.frame(time,budget,a.signal);const rejected=assert.rejects(first,{name:'AbortError'});
+  const second=service.frame(time,budget,b.signal);
+  while(!release)await new Promise(resolve=>setTimeout(resolve,0));a.abort();release();
+  await rejected;const frame=await second;assert.equal(calls,2);
+  const other=await service.frame(time,{...budget,height:512},b.signal);assert.notEqual(frame.id,other.id);assert.equal(calls,3);service.destroy();
+});
+
+test('bounded response bodies reject a lying/absent Content-Length before decode',async()=>{
+  let decodeCount=0,calls=0;
+  const service=createCloudImageryService({now:()=>NOW,parse:()=>domain,revoke(){},decode:async()=>{decodeCount++;return 'blob:no';},fetcher:async()=>{
+    if(++calls===1)return response();
+    return new Response(new ReadableStream({start(controller){controller.enqueue(new Uint8Array(8000001));controller.enqueue(new Uint8Array(8000001));controller.close();}}),{headers:{'Content-Type':'image/jpeg'}});
+  }});
+  const signal=new AbortController().signal,[time]=await service.slots(1,signal);
+  await assert.rejects(service.frame(time,cloudBudget('performance'),signal),/size limit/);assert.equal(decodeCount,0);service.destroy();
+});
+
+test('encoded JPEG dimensions are checked before browser pixel allocation',async()=>{
+  const jpeg=new Blob([new Uint8Array([255,216,255,192,0,11,8,2,0,4,0,1,1,17,0,255,217])]);
+  await validateCloudJpeg(jpeg,1024,512);
+  await assert.rejects(validateCloudJpeg(jpeg,2048,1024),/dimensions/);
+  await assert.rejects(validateCloudJpeg(new Blob(['XML error']),1024,512),/Invalid cloud JPEG/);
+});
+
+test('invalid capabilities use the same cooldown instead of repeated metadata downloads',async()=>{
+  let calls=0;
+  const service=createCloudImageryService({now:()=>NOW,fetcher:async()=>{calls++;return response();},parse:()=>{throw Error('Invalid metadata');}});
+  const signal=new AbortController().signal;
+  await assert.rejects(service.slots(1,signal),/Invalid metadata/);
+  await assert.rejects(service.slots(1,signal),/cooling/);
+  assert.equal(calls,1);service.destroy();
 });

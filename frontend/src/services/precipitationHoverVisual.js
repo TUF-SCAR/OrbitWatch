@@ -14,7 +14,7 @@ const icons=Object.fromEntries(Object.entries(symbols).map(([key,body])=>[key,`u
 export function precipitationAppearance(condition){
   const intensity=condition.title.startsWith('Heavy')?'heavy':condition.title.startsWith('Moderate')?'moderate':'light';
   const color=condition.kind==='dry'?'#f5f7fa':condition.kind==='snow'?{light:'#baf4f8',moderate:'#9feaf5',heavy:'#80dff4'}[intensity]:{light:'#a8d5fa',moderate:'#efc4e5',heavy:'#fff2a6'}[intensity];
-  const icon=condition.kind==='snow'?`snow-${intensity}`:condition.kind==='rain'?(condition.title==='Sunshine & Showers'?'showers':`rain-${intensity}`):condition.kind!=='dry'?'drop':condition.title.includes('Sunny')?'sun':condition.title.includes('Clear')?'moon':condition.title==='Partly Cloudy'?'partly':condition.title==='Cloudy'?'cloud':null;
+  const icon=condition.kind==='snow'?`snow-${intensity}`:condition.kind==='rain'?(condition.title==='Sunshine & Showers'?'showers':`rain-${intensity}`):condition.kind!=='dry'?'drop':condition.title.includes('Sunny')?'sun':condition.title.includes('Clear')?(condition.light==='night'?'moon':null):condition.title==='Partly Cloudy'?(condition.light==='day'?'partly':'cloud'):condition.title==='Cloudy'?'cloud':null;
   return {color,icon,image:icon?icons[icon]:null};
 }
 

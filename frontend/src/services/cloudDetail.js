@@ -24,7 +24,7 @@ export function createCloudDetail(viewer,options={}) {
     const region=cloudRegion(viewBounds(),state.quality);
     if(!region){regional=null;paint();return;}
     if(cachedRegion?.time===state.frame.time&&cachedRegion.width===region.width&&covers(cachedRegion)){regional=cachedRegion;paint(regional);return;}
-    const next=`${state.frame.time}:${region.width}:${region.bounds}`;
+    const next=`${state.frame.time}:${region.width}x${region.height}:${region.bounds}`;
     if(next===key&&regional){paint(regional);return;}
     if(next===pendingKey)return;
     if(pendingKey)cancel();

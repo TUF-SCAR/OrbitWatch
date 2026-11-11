@@ -1,5 +1,5 @@
 import { validateTemperatureField } from './temperatureGrid.js';
-import { validateModelField } from './weatherFields.js';
+import { validateModelField,validatePrecipitationPhase } from './weatherFields.js';
 
 const STATES = new Set(['preparing','downloading','decoding','cooldown','failed','unavailable']);
 
@@ -12,6 +12,10 @@ export function temperatureResult(payload, now = Date.now()) {
       if(!field.fields[variable])continue;
       try {validateModelField(variable,field.fields[variable]);}
       catch {field={...field,fields:{...field.fields}};delete field.fields[variable];}
+    }
+    if(field.precipitation_phase){
+      try {validatePrecipitationPhase(field.precipitation_phase,field.valid_at);}
+      catch {field={...field,precipitation_phase:null,precipitation_phase_status:'unavailable'};}
     }
     const availability = field.availability;
     const waiting = field.state === 'stale' && availability;

@@ -14,6 +14,7 @@ import LiveDock from "./components/LiveDock.jsx";
 import TimePreparation from "./components/TimePreparation.jsx";
 import TimeDock from "./components/TimeDock.jsx";
 import SceneDock from "./components/SceneDock.jsx";
+import {toggleWeatherLayers} from './services/weatherPanelState.js';
 import CameraMenu from "./components/CameraMenu.jsx";
 import MapSettings from "./components/MapSettings.jsx";
 import SpatialSurface from "./components/SpatialSurface.jsx";
@@ -169,9 +170,9 @@ export default function App({ currentUser, onLogout, hudActive = true, onSceneRe
   const menu = layers.find((item) => ["map", "camera", "system"].includes(item) && navigation[item]);
   const allOrbitsVisible = activeTrackedIds.length > 0 && activeTrackedIds.every((id) => shownOrbitIds.has(id));
 
-  const closeLayer = useCallback((name) => {
+  const closeLayer = useCallback((name,update=true) => {
     if(name==='weather'){globeRef.current?.returnFromNaturalEvent();setEventFocus(null);}
-    setLayers((current) => current.filter((item) => item !== name));
+    if(update)setLayers((current) => current.filter((item) => item !== name));
     cancelAnimationFrame(focusFrameRef.current);
     focusFrameRef.current = requestAnimationFrame(() => {
       const trigger = layerTriggersRef.current.get(name);
@@ -204,7 +205,13 @@ export default function App({ currentUser, onLogout, hudActive = true, onSceneRe
   useEffect(() => {
     globeRef.current?.selectCelestialMarker(layers.includes("celestial") ? celestialMarker : null);
   }, [layers, celestialMarker]);
-  const toggleLayer = (name) => layers.includes(name) ? closeLayer(name) : openLayer(name);
+  const toggleLayer = (name) => {
+    if(name!=='weather'){if(layers.includes(name))closeLayer(name);else openLayer(name);return;}
+    if(!atEarth||travelLockRef.current||!hudActive)return;
+    if(layers.includes(name))closeLayer(name,false);
+    else layerTriggersRef.current.set(name,document.activeElement);
+    setLayers(current=>toggleWeatherLayers(current,window.innerWidth));
+  };
   const releaseCamera = useCallback(() => { globeRef.current?.releaseCamera(); setCameraFollowing(false); }, []);
 
   useEffect(() => {

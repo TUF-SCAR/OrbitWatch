@@ -37,6 +37,7 @@ with TemporaryDirectory(dir=ROOT/'.setup-cache') as tmp:
     with patch.dict(os.environ,{'ORBITWATCH_INFRARED_ENABLED':'true','ORBITWATCH_INFRARED_LICENSE_CONFIRMED':'true','ORBITWATCH_WEATHER_PROVIDER_REQUESTS':'true'}):
         slots=service.slots();assert len(slots['times'])==2 and len(calls)==1
         observation=slots['times'][-1]
+        now[0]+=61 # shared per-layer minute gate includes capabilities and maps
         data,info=service.frame(observation);validate_jpeg(data,1024)
         assert not info['stale'] and info['time']==observation and len(calls)==2
         restarted=InfraredService(root,lambda:now[0],client=lambda **_: (_ for _ in ()).throw(AssertionError('cache must not download')))
@@ -46,7 +47,7 @@ with TemporaryDirectory(dir=ROOT/'.setup-cache') as tmp:
         for i in range(8):
             old=root/f'{i:064x}.jpg';old.write_bytes(jpeg(1024));os.utime(old,(1,1))
         (root/('f'*64+'.part')).write_bytes(b'partial')
-        now[0]+=4;service.frame(observation,2048)
+        now[0]+=61;service.frame(observation,2048)
         assert len(list(root.glob('*.jpg')))<=MAX_FILES and not list(root.glob('*.part'))
         with WeatherCache(root).lease('infrared') as first:
             with WeatherCache(root).lease('infrared') as second: assert first and not second

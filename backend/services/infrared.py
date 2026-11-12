@@ -93,7 +93,9 @@ def validate_jpeg(data, width):
 
 class InfraredCache(WeatherCache):
     def policy(self, provider):
-        return (900,4,96) if provider=='eumetsat_metadata' else (2,24,160)
+        # Helpdesk guidance: one shared per-layer request/minute across BOTH
+        # GetCapabilities and GetMap, not separate burstable provider buckets.
+        return (60,24,160)
 
 
 class InfraredService:
@@ -125,14 +127,14 @@ class InfraredService:
                 if not owned: raise WeatherDeferred()
                 latest=self.cache.get('capabilities')
                 if latest and now-latest['checked_at']<900: return self.describe(latest)
-                self.cache.reserve('eumetsat_metadata')
+                self.cache.reserve('eumetsat_layer')
                 try:
                     xml=self.retrieve(dict(service='WMS',version='1.3.0',request='GetCapabilities'),1000000,{'text/xml','application/xml'})
                     value=dict(times=advertised(xml,now),checked_at=now)
-                    self.cache.put('capabilities','infrared_metadata',value);self.cache.succeeded('eumetsat_metadata')
+                    self.cache.put('capabilities','infrared_metadata',value);self.cache.succeeded('eumetsat_layer')
                     return self.describe(value)
                 except Exception as error:
-                    self.cache.failed('eumetsat_metadata',error);raise WeatherDeferred() from None
+                    self.cache.failed('eumetsat_layer',error);raise WeatherDeferred() from None
         except WeatherDeferred:
             if cached and now-cached['checked_at']<=MAX_AGE: return self.describe(cached,True)
             raise
@@ -168,7 +170,7 @@ class InfraredService:
                 value=cached()
                 if value: return value
             except (ValueError,OSError): pass
-            self.cache.reserve('eumetsat_images')
+            self.cache.reserve('eumetsat_layer')
             try:
                 data=self.retrieve(dict(service='WMS',version='1.1.1',request='GetMap',layers=LAYER,styles='',
                     format='image/jpeg',bgcolor='0x000000',srs='EPSG:4326',bbox='-180,-90,180,90',
@@ -184,10 +186,10 @@ class InfraredService:
                 try: temp.write_bytes(data);os.replace(temp,path)
                 finally: temp.unlink(missing_ok=True)
                 info=dict(time=observation,retrieved_at=iso(self.clock()),attribution=ATTRIBUTION,width=width,height=width//2)
-                self.cache.put(key,'infrared_frame',info);self.cache.succeeded('eumetsat_images')
+                self.cache.put(key,'infrared_frame',info);self.cache.succeeded('eumetsat_layer')
                 return data,{**info,'stale':self.clock()-stamp>21600}
             except Exception as error:
-                self.cache.failed('eumetsat_images',error);raise WeatherDeferred() from None
+                self.cache.failed('eumetsat_layer',error);raise WeatherDeferred() from None
 
 
 infrared=InfraredService()

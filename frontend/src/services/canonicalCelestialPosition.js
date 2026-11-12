@@ -4,15 +4,17 @@ import { bodyPositionFixed, inertialToFixedMatrix } from "../data/solarSystemEph
 
 // One resolved center per body/timestamp. Callbacks copy into Cesium's result;
 // models, picking, labels and the local camera consume this same center.
-export function createCanonicalPositions(resolve = bodyPositionFixed) {
+export function createCanonicalPositions(resolve = bodyPositionFixed,{frameMatrix=resolve===bodyPositionFixed?inertialToFixedMatrix:null,getRevision=()=>0}={}) {
   const cache = new Map(ALL_CELESTIAL_IDS.map((id) => [id, { time: null, center: new Cartesian3() }]));
   const frame = new Matrix3(), candidate = new Matrix3();
-  let frameTime = null;
+  let frameTime = null,revision=null;
   return (id, time, result) => {
     const item = cache.get(id);
     if (!item) return undefined;
-    if (resolve === bodyPositionFixed) {
-      inertialToFixedMatrix(time, candidate);
+    const nextRevision=getRevision();
+    if(nextRevision!==revision){for(const entry of cache.values())entry.time=null;revision=nextRevision;}
+    if (frameMatrix) {
+      frameMatrix(time, candidate);
       // ICRF data can finish loading while Time Explorer's clock is paused.
       // A timestamp alone is therefore insufficient to identify the frame.
       if (!frameTime || !JulianDate.equals(frameTime, time) || !Matrix3.equals(frame, candidate)) {

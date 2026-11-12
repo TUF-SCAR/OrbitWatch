@@ -20,6 +20,8 @@ from routes.satellites import router as satellite_router
 from routes.historical import router as historical_router
 from routes.historical_weather import router as historical_weather_router
 from routes.weather import router as weather_router
+from routes.small_bodies import router as small_bodies_router
+from services.small_bodies import small_bodies
 from routes.natural_events import router as events_router
 from routes.account import router as account_router, AccountFeatureUnavailable
 from routes.alerts import router as alerts_router
@@ -45,6 +47,7 @@ async def lifespan(app: FastAPI):
             yield
         finally:
             shutdown_events()
+            small_bodies.shutdown()
             if refresh_task:
                 refresh_task.cancel()
                 try:
@@ -59,6 +62,7 @@ app.include_router(historical_router)
 app.include_router(historical_weather_router)
 app.include_router(auth_router)
 app.include_router(weather_router)
+app.include_router(small_bodies_router)
 app.include_router(events_router)
 app.include_router(account_router)
 app.include_router(alerts_router)

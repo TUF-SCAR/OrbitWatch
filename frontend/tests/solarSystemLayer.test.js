@@ -7,6 +7,9 @@ import { AU_METERS, bodyPositionFixed, bodyPositionInertial } from "../src/data/
 import { ALL_CELESTIAL_IDS } from "../src/data/celestialBodies.js";
 import { MAX_SOLAR_RANGE, SOLAR_OVERVIEW_IDS, solarSystemScales, rangeToScale } from "../src/services/solarSystemLod.js";
 import { createSolarSystemLayer, pickSolarSystemObject } from "../src/services/solarSystemLayer.js";
+import {createLiveEphemeris} from '../src/services/liveEphemeris.js';
+import {modeEphemeris} from '../src/services/liveScience.js';
+import {readFile} from 'node:fs/promises';
 
 function harness(context) {
   const listeners = new Map(), actions = new Map(), timers = new Set();
@@ -53,6 +56,25 @@ function harness(context) {
   const symbol = (id, Type = PointPrimitiveCollection) => { const collection = [...primitives].find(item => item instanceof Type); return Array.from({ length: collection.length }, (_, i) => collection.get(i)).find(item => item.id.id === `celestial-${id}`); };
   return { viewer, actions, primitives, models, listeners, timers, start, dispose, symbol, failModels: () => { failModel = true; }, failFlights: () => { failFlight = true; } };
 }
+
+test('actual Live entities/models/camera consume refreshed shared JPL centers and Time reuses its previous resolver',async context=>{
+  const fixture=harness(context),{viewer}=fixture;
+  viewer.clock.currentTime=JulianDate.fromIso8601('2026-11-12T00:00:00Z');
+  let mode='live',items=[],revision=0;const store={snapshot:()=>({items,revision})};
+  const live=createLiveEphemeris(()=>items),ephemeris=modeEphemeris(()=>mode,store,live);
+  const layer=createSolarSystemLayer(viewer,{ephemeris});context.after(()=>{layer.destroy();fixture.dispose();});
+  const time=viewer.clock.currentTime,entity=viewer.entities.getById('celestial-ceres'),before=entity.position.getValue(time);
+  items=JSON.parse(await readFile(new URL('../../tests/fixtures/jpl-compact-orbits.json',import.meta.url),'utf8'));revision++;
+  layer.updatePositions(true);
+  const actual=entity.position.getValue(time),expected=live.position('ceres',time);
+  assert.ok(Cartesian3.distance(before,actual)>AU_METERS);assert.ok(Cartesian3.distance(actual,expected)<.01);
+  await layer.focus('ceres');layer.updatePositions(true);
+  const model=fixture.models.find(model=>model.url==='/models/celestial/ceres.glb');
+  assert.ok(Cartesian3.distance(Matrix4.getTranslation(model.modelMatrix,new Cartesian3()),expected)<.01);
+  assert.ok(Cartesian3.distance(Matrix4.getTranslation(viewer.camera.transform,new Cartesian3()),expected)<.01);
+  mode='time';layer.updatePositions(true);
+  assert.ok(Cartesian3.distance(entity.position.getValue(time),bodyPositionFixed('ceres',time))<.01);
+});
 
 test('idle local camera uses each destination frame, suspends for drag/travel, and never advances scene time',async context=>{
   const fixture=harness(context),{viewer,actions}=fixture;

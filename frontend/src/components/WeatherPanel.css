@@ -171,3 +171,8 @@
 .weather-hover.is-below::after { bottom:auto; top:-8px; transform:translateX(-50%) rotate(225deg); }
 @media(max-width:720px) { .weather-legend { width:auto; padding:11px 13px; } .weather-scale__heading { font-size:10px; } }
 @media(hover:none) { .weather-hover { display:none; } }
+
+.weather-phase-key { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:5px 12px; margin-top:10px; font-size:10px; }
+.weather-phase-key > span { display:flex; align-items:center; gap:5px; min-width:0; }
+.weather-phase-key i { flex:0 0 18px; height:18px; background:center/contain no-repeat; }
+.weather-phase-key b { flex:0 0 24px; height:7px; border-radius:2px; }

@@ -221,3 +221,5 @@ export async function fetchVisibilityPreview(kind,locationId,signal) {
 export function fetchDeliveryStatus(signal) {return requestJson('/api/account/notification-delivery',{signal});}
 export function savePushSubscription(body,signal) {return accountWrite('/api/account/push-subscriptions','POST',body,signal);}
 export function revokePushSubscription(id,signal) {return requestJson(`/api/account/push-subscriptions/${encodeURIComponent(id)}`,{method:'DELETE',signal,timeoutMs:4000,keepalive:true});}
+
+export function fetchSmallBodyElements(signal){return requestJson("/api/solar-system/small-bodies",{signal});}

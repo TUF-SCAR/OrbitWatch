@@ -1,31 +1,38 @@
 import { X } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useState,useSyncExternalStore } from "react";
 import { Cartesian3, JulianDate } from "cesium";
 import SpatialSurface from "./SpatialSurface.jsx";
 import { CELESTIAL_BODIES } from "../data/celestialBodies.js";
 import { bodyRepresentation, bodyTextureSource, BODY_SOURCES } from "../data/celestialFacts.js";
 import { bodyScienceSource, bodyAdditionalSources, CELESTIAL_NOTES } from "../data/celestialNotes.js";
 import { AU_METERS, bodyOrbitalReference, bodyPositionFixed } from "../data/solarSystemEphemeris.js";
+import {liveEphemeris} from '../services/liveScience.js';
+import {smallBodyStore} from '../services/solarSystemData.js';
 const number = (value, digits = 2) => value.toLocaleString(undefined, { maximumFractionDigits: digits });
 function PositionReadout({ bodyId, sceneTime }) {
   const [liveTime, setLiveTime] = useState(() => JulianDate.now());
   useEffect(() => { if (sceneTime) return; const timer = window.setInterval(() => setLiveTime(JulianDate.now()), 5000); return () => window.clearInterval(timer); }, [sceneTime]);
   const time = sceneTime ? JulianDate.fromDate(sceneTime) : liveTime;
-  const position = bodyPositionFixed(bodyId, time);
+  useSyncExternalStore(smallBodyStore.subscribe,smallBodyStore.snapshot,smallBodyStore.snapshot);
+  const positionOf=sceneTime?bodyPositionFixed:liveEphemeris.position;
+  const position = positionOf(bodyId, time);
   const parentId = CELESTIAL_BODIES[bodyId].parent;
-  const parent = parentId && bodyPositionFixed(parentId, time);
+  const parent = parentId && positionOf(parentId, time);
+  const science=sceneTime?null:liveEphemeris.describe(bodyId,time);
   const distance = (point) => {
     const meters = Cartesian3.distance(position, point);
     return meters > AU_METERS / 10 ? `${number(meters / AU_METERS, 4)} AU` : `${number(meters / 1000, 0)} km`;
   };
   return <><h3>Calculated position</h3><p>At {JulianDate.toDate(time).toISOString().replace("T", " ").slice(0, 19)} UTC. Distances are center to center.</p>
     <dl className="celestial-measurements"><div><dt>From Earth</dt><dd>{distance(Cartesian3.ZERO)}</dd></div>{parent && <div><dt>From {CELESTIAL_BODIES[parentId].name}</dt><dd>{distance(parent)}</dd></div>}</dl>
-    <p>Approximate educational ephemeris. Moon planes and small-body elements are simplified; encounters, terrain and body rotation are not precision simulations.</p></>;
+    {science?<><p>{science.source}. {science.limitation}</p>{science.record&&<p>Osculation epoch JD {science.record.epoch_tdb} TDB · {science.record.state}. Retrieved {new Date(science.record.retrieved_at*1000).toISOString()}. This date is not the orbital epoch.</p>}</>:<p>Approximate educational ephemeris. Moon planes and small-body elements are simplified; encounters, terrain and body rotation are not precision simulations.</p>}</>;
 }
 export default function CelestialInspector({ bodyId, sceneTime, onClose, detailState }) {
+  useSyncExternalStore(smallBodyStore.subscribe,smallBodyStore.snapshot,smallBodyStore.snapshot);
   const body = CELESTIAL_BODIES[bodyId];
   if (!body) return null;
-  const orbit = bodyOrbitalReference(bodyId);
+  const record=!sceneTime&&liveEphemeris.describe(bodyId,JulianDate.now()).record;
+  const orbit = record?{semimajorAu:record.a,semimajorKm:record.a*AU_METERS/1000,eccentricity:record.e,inclination:record.i,periodDays:360/record.n}:bodyOrbitalReference(bodyId);
   const axis = orbit && (orbit.semimajorAu ? `${number(orbit.semimajorAu, 4)} AU` : `${number(orbit.semimajorKm)} km`);
   const children = Object.values(CELESTIAL_BODIES).filter((item) => item.parent === bodyId);
   const rows = [
@@ -40,7 +47,7 @@ export default function CelestialInspector({ bodyId, sceneTime, onClose, detailS
     <a className="inspector-reference" href={bodyScienceSource(bodyId)} target="_blank" rel="noreferrer">Scientific reference ↗</a>
     <div className="inspector-scroll">
     <h3>Physical & orbital reference</h3><dl className="celestial-measurements">{rows.map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}</dl>
-    <p>Rounded catalog values. Radius is a size reference for irregular bodies. Planetary elements use the J2000 reference epoch; moon reference planes are simplified.</p>
+    <p>{record?'Orbital values use the shared JPL solution and its stated osculation epoch.':'Rounded catalog values. Planetary elements use the J2000 reference epoch; moon reference planes are simplified.'} Radius is a size reference for irregular bodies.</p>
     {orbit && <p>The semimajor axis measures the size of the orbital ellipse. Eccentricity describes its departure from a circle; inclination describes the tilt from the model's reference plane.</p>}
     {children.length > 0 && <><h3>In this catalog</h3><p>{children.map((item) => item.name).join(", ")}. This is a selection of destinations, not a complete census of satellites.</p></>}
     <PositionReadout key={bodyId} bodyId={bodyId} sceneTime={sceneTime} />

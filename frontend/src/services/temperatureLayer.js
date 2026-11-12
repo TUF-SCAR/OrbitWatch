@@ -2,6 +2,7 @@ import { Credit, Rectangle, SingleTileImageryProvider, TextureMagnificationFilte
 import { weatherPixels } from './weatherFields.js';
 import { createWeatherPresentation } from './weatherPresentation.js';
 import { prefersReducedMotion } from '../utils/motionPreferences.js';
+import {phaseNodes} from './precipitationPhase.js';
 
 export function weatherTextureWidth(quality='auto',memory=globalThis.navigator?.deviceMemory??8){
   return quality==='performance'||quality==='auto'&&memory<=4?720:quality==='quality'?2160:1440;
@@ -48,15 +49,16 @@ export function createTemperatureLayer(viewer,{compute,makeProvider=(field,quali
       if(destroyed||viewer.isDestroyed())return;
       if(!visible||!field||!compatible){if(immediate||!compatible||!layer)remove();else fade(0);return;}
       targetOpacity=Math.max(0,Math.min(.8,Number(opacity)||0));
-      const nextKey=`${field.id}:${weatherTextureWidth(quality)}`;
+      const categorical=field.display_variable==='precipitation'&&Boolean(phaseNodes(field));
+      const nextKey=`${field.id}:${weatherTextureWidth(quality)}:${categorical?'phase':'scalar'}`;
       if(key!==nextKey||layer&&!viewer.imageryLayers.contains(layer)) {
         remove();key=nextKey;const token=generation;
         const install=provider=>{
           if(token!==generation||destroyed||viewer.isDestroyed())return;
           layer=viewer.imageryLayers.addImageryProvider(provider);
           layer.orbitwatchWeather=true;layer.alpha=0;
-          layer.magnificationFilter=TextureMagnificationFilter.LINEAR;
-          layer.minificationFilter=TextureMinificationFilter.LINEAR;fade(targetOpacity);
+          layer.magnificationFilter=categorical?TextureMagnificationFilter.NEAREST:TextureMagnificationFilter.LINEAR;
+          layer.minificationFilter=categorical?TextureMinificationFilter.NEAREST:TextureMinificationFilter.LINEAR;fade(targetOpacity);
         };
         const provider=makeProvider(field,quality);
         if(provider?.then)provider.then(install).catch(error=>{if(token===generation){key=null;if(error.name!=='AbortError')console.error('Weather raster unavailable',error);}});

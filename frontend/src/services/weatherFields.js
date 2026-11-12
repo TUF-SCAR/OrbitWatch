@@ -2,6 +2,7 @@ import { rainColor, RAIN_GRADIENT } from './precipitationStyle.js';
 import { sampleTemperature, temperaturePixels, TEMPERATURE_GRADIENT, rasterizeScalar } from './temperatureGrid.js';
 import {validateHistoricalField} from './historicalWeather.js';
 import {HUMIDITY_PALETTE,PRESSURE_PALETTE,PRECIPITATION_PALETTE,paletteColor,paletteGradient,paletteWriter} from './weatherPalettes.js';
+import {phaseNodes,phaseAtNodes,phaseColor} from './precipitationPhase.js';
 
 
 export const WEATHER_FIELDS={
@@ -55,6 +56,14 @@ export function weatherPixels(field,width=720,height=360) {
   if(variable==='humidity'||variable==='pressure')return rasterizeScalar(field.values,width,height,paletteWriter(variable==='humidity'?HUMIDITY_PALETTE:PRESSURE_PALETTE));
   if(variable==='precipitation'){
     const rain=rasterizeScalar(field.values,width,height,paletteWriter(PRECIPITATION_PALETTE,value=>value<=.05?0:Math.round((165+65*Math.min(1,Math.log1p(value)/Math.log(51)))*Math.min(1,(value-.05)/.15)),true));
+    const phases=phaseNodes(field);
+    if(phases)for(let y=0;y<height;y++)for(let x=0;x<width;x++){
+      const offset=(y*width+x)*4;if(!rain[offset+3])continue;
+      const longitude=-180+(x+.5)*360/width,latitude=90-(y+.5)*180/height;
+      const phase=phaseAtNodes(phases,longitude,latitude);
+      if(phase==='rain'||phase==='unknown')continue;
+      rain.set(phaseColor(sampleModel(field.values,longitude,latitude),phase),offset);
+    }
     const clouds=field.precipitation_clouds||field.fields?.clouds;
     if(!clouds||field.source_kind==='era5')return rain;
     try{validateModelField('clouds',clouds);}catch{return rain;}

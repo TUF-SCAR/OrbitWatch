@@ -35,6 +35,7 @@ import {
 import { fetchSatelliteOrbit, fetchSatelliteTrajectories } from "../services/orbitwatchApi.js";
 import { getSpaceObject } from "../data/spaceObjects.js";
 import { createSolarSystemLayer, pickSolarSystemObject } from "../services/solarSystemLayer.js";
+import {modeEphemeris,bindLiveScience} from '../services/liveScience.js';
 import { attachSatelliteOrbit, removeSatelliteOrbit, styleSatelliteOrbit, updateSatelliteOrbit } from "../services/orbitVisuals.js";
 import { createSatelliteOrbitState, createSatelliteTrack, satelliteOrbitRefreshDue, satelliteTrajectoryRefreshDue } from "../services/satelliteOrbitState.js";
 import { createSatelliteRequestQueue } from "../services/satelliteRequestQueue.js";
@@ -412,6 +413,7 @@ export default function OrbitGlobe({
   const modeRef = useRef(mode);
   const shownOrbitIdsRef = useRef(shownOrbitIds);
   const solarSystemLayerRef = useRef(null);
+  const liveScienceRef=useRef(null);
   const satelliteModelDetailRef = useRef(null);
   const satelliteOrbitCollectionRef = useRef(null);
   const onCelestialSelectRef = useRef(onCelestialSelect);
@@ -760,6 +762,7 @@ export default function OrbitGlobe({
       solarSystemLayerRef.current = createSolarSystemLayer(
         viewer,
         {
+          ephemeris:modeEphemeris(()=>modeRef.current),
           isLive: () => true,
           onDetailReady: (id) => callbacksRef.current.onDetailReady?.(id),
           onScaleChange: (state) => callbacksRef.current.onScaleChange?.(state),
@@ -849,6 +852,8 @@ export default function OrbitGlobe({
       solarSystemLayerRef.current?.setSelected(
         "earth",
       );
+      liveScienceRef.current=bindLiveScience(viewer,solarSystemLayerRef.current,()=>modeRef.current);
+      liveScienceRef.current.sync();
     }
 
     const handler = new ScreenSpaceEventHandler(viewer.scene.canvas);
@@ -1015,6 +1020,7 @@ export default function OrbitGlobe({
       handler.destroy();
 
       const solarLayer = solarSystemLayerRef.current;
+      liveScienceRef.current?.destroy();liveScienceRef.current=null;
       solarSystemLayerRef.current = null;
       solarLayer?.destroy();
 
@@ -1098,6 +1104,8 @@ export default function OrbitGlobe({
     }, cameraDuration(0.47) * 1000);
     return () => window.clearTimeout(timer);
   }, [mode]);
+
+  useEffect(()=>{liveScienceRef.current?.sync();},[mode]);
 
   useEffect(()=>{
     const viewer=viewerRef.current;if(!viewer||viewer.isDestroyed())return;

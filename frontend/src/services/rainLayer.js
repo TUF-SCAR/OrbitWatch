@@ -1,6 +1,7 @@
 import { BillboardCollection, Cartesian2, Cartesian3, Cartographic, Color, Math as CesiumMath } from 'cesium';
 import { sampleModel } from './weatherFields.js';
 import { rainBudget } from './precipitationStyle.js';
+import {phaseNodes,phaseAtNodes} from './precipitationPhase.js';
 import { prefersReducedMotion } from '../utils/motionPreferences.js';
 
 function streakImage(){
@@ -40,7 +41,10 @@ export function createRainLayer(viewer,{now=()=>performance.now(),doc=document,r
         p.rate=null;p.billboard.show=false;
         if(!hit)continue;
         viewer.scene.globe.ellipsoid.cartesianToCartographic(hit,geo);
-        const rate=sampleModel(field.values,CesiumMath.toDegrees(geo.longitude),CesiumMath.toDegrees(geo.latitude));
+        const longitude=CesiumMath.toDegrees(geo.longitude),latitude=CesiumMath.toDegrees(geo.latitude);
+        const phase=phaseAtNodes(phaseNodes(field),longitude,latitude);
+        if(phase!=='rain'&&phase!=='unknown')continue;
+        const rate=sampleModel(field.values,longitude,latitude);
         if(rate===null||rate<.15)continue;
         p.rate=rate;p.billboard.position=Cartesian3.fromRadians(geo.longitude,geo.latitude,1500);
       }

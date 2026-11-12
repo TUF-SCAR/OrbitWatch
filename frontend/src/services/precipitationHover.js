@@ -1,6 +1,7 @@
 // Classification is confined to the precipitation inspector. A liquid-equivalent
 // rate alone cannot establish rain/snow phase, and temperature is not a proxy.
 import {solarLight} from './solarLight.js';
+import {phaseAtNodes,phaseNodes} from './precipitationPhase.js';
 export function classifyPrecipitationHover(rate,{clouds=null,phase=null,historical=false,isDay=null,light='unknown'}={}){
   if(!Number.isFinite(rate)||rate<0)return null;
   const amount=`${Number(rate.toFixed(1))} ${historical?'mm (Preceding hour)':'mm/h (Forecast)'}`;
@@ -25,10 +26,6 @@ export function precipitationContext(field,longitude,latitude,sample){
   const cloudField=field.fields?.clouds||field.precipitation_clouds;
   const clouds=cloudField?.units==='%'&&cloudField.values?.length===65160?sample(cloudField.values,longitude,latitude):null;
   // Categorical phase must be explicit; never bilinearly interpolate enum codes.
-  const phaseValues=field.precipitation_phase?.values;
-  const x=((Math.round(longitude+180)%360)+360)%360,y=Math.max(0,Math.min(180,Math.round(90-latitude)));
-  const phase=phaseValues?.length===65160?phaseValues[y*360+x]:null;
-  const metadata=field.precipitation_phase;
-  const validPhase=metadata?.units==='category'&&metadata.level==='surface'&&metadata.step_type==='instant'&&metadata.valid_at===field.valid_at&&['rain','snow','freezing_rain','ice_pellets','mixed','unknown'].includes(phase);
-  return {clouds,phase:validPhase?phase:null,historical:field.source_kind==='era5',light:solarLight(field.valid_at,longitude,latitude,field.is_day)};
+  const phase=phaseAtNodes(phaseNodes(field),longitude,latitude);
+  return {clouds,phase:phase==='unknown'?null:phase,historical:field.source_kind==='era5',light:solarLight(field.valid_at,longitude,latitude,field.is_day)};
 }

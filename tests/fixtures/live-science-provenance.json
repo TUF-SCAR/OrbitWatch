@@ -1,0 +1,25 @@
+{
+  "purpose": "Public provider samples for offline regression; never production data or credentials",
+  "jpl_queries": [
+    "https://ssd-api.jpl.nasa.gov/sbdb.api?des=1&full-prec=true&nv-fmt=jd",
+    "https://ssd-api.jpl.nasa.gov/sbdb.api?des=433&full-prec=true&nv-fmt=jd",
+    "https://ssd-api.jpl.nasa.gov/sbdb.api?des=134340&full-prec=true&nv-fmt=jd"
+  ],
+  "noaa": "NOAA NOMADS GFS 1-degree categorical surface filter: CRAIN, CSNOW, CFRZR, CICEP; frame metadata embedded in GRIB",
+  "verification": "Bounded serial public requests captured during this task on 2026-11-11/12; all subsequent tests read these local fixtures",
+  "horizons_vectors": {
+    "endpoint": "https://ssd.jpl.nasa.gov/api/horizons.api",
+    "parameters": {"EPHEM_TYPE":"VECTORS","CENTER":"500@399","REF_SYSTEM":"ICRF","REF_PLANE":"FRAME","OUT_UNITS":"KM-S","VEC_CORR":"NONE","CSV_FORMAT":"YES","TLIST":"2451545.0 2461200.5 2461356.5","TIME_TYPE":"TDB"},
+    "commands": {"mercury":"199","venus":"299","mars":"499","jupiter":"599","neptune":"899","moon":"301","io":"501","pluto":"999","ceres":"1;","eros":"433;"},
+    "schema": "Actual response version1.2; source and geometric ICRF/TDB metadata preserved in each raw JSON fixture"
+  },
+  "horizons_elements": {
+    "endpoint":"https://ssd.jpl.nasa.gov/api/horizons.api",
+    "parameters":{"COMMAND":"999","EPHEM_TYPE":"ELEMENTS","CENTER":"500@10","REF_PLANE":"ECLIPTIC","REF_SYSTEM":"ICRF","OUT_UNITS":"AU-D","CSV_FORMAT":"YES","TLIST":"2461356.5","TIME_TYPE":"TDB"},
+    "purpose":"Pluto SBDB v1.3 epoch2457588.5 is outside the Live propagation guard. Current-epoch Horizons elements are validated instead; source version1.2 and plu060_merged solution preserved."
+  },
+  "normalization":"jpl-compact-orbits.json uses backend parse_orbit/parse_horizons contracts on the raw Ceres/Eros/Pluto samples; acquisition/check timestamps are deterministic test values, not observations. Retrieved date is distinct from the source osculation epoch.",
+  "noaa_fixture":"noaa-gfs-phase.grib2 is the original29434-byte categorical-only response (4 instant +4 avg). noaa-gfs-live-contract.json records identities/status from the separate complete712160-byte18-record filter. Offline check_weather_live_phase.py combines the recorded categorical bytes with explicitly synthetic matching core fields; browser proof buttons are explicitly synthetic uniform phase planes.",
+  "accuracy_policy":"Geometric vectors in matching ICRF/TDB only; JPL approximate Table1 fit tolerances plus Earth-center error are conservative regression envelopes, not hard navigation guarantees. Source-valid small-body comparisons use50,000km bound including approximate Earth vector. Moon analytical1000km. Io is measured and explicitly schematic, without a fabricated precision assertion.",
+  "official_references":["https://ssd-api.jpl.nasa.gov/doc/sbdb.html","https://ssd-api.jpl.nasa.gov/doc/","https://ssd-api.jpl.nasa.gov/doc/horizons.html","https://ssd.jpl.nasa.gov/planets/approx_pos.html","https://ssd.jpl.nasa.gov/astro_par.html"]
+}

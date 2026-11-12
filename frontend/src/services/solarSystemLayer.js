@@ -1,7 +1,7 @@
 import { ArcType, BoundingSphere, CallbackPositionProperty, CallbackProperty, Cartesian2, Cartesian3, Color, CustomDataSource, HeadingPitchRange, JulianDate, Matrix3, Matrix4, Model, SceneTransforms, ScreenSpaceEventHandler, ScreenSpaceEventType } from "cesium";
 import { StableOrbitCollection } from "./stableOrbitCollection.js";
 import { ALL_CELESTIAL_IDS, CELESTIAL_BODIES } from "../data/celestialBodies.js";
-import { AU_METERS, bodyLocalTransform, inertialToFixedMatrix, sampleBodyOrbitFixed } from "../data/solarSystemEphemeris.js";
+import { AU_METERS, bodyPositionFixed, inertialToFixedMatrix, sampleBodyOrbitFixed } from "../data/solarSystemEphemeris.js";
 import { MAX_SOLAR_RANGE, SOLAR_OVERVIEW_IDS, distanceFade, representationWeights, surfaceSymbolicHandoff, rangeToScale, scaleToRange, solarSystemLod, solarSystemScales } from "./solarSystemLod.js";
 import { createCelestialSymbols } from "./celestialSymbols.js";
 import { solarOrbitStyle } from "./orbitVisuals.js";
@@ -42,9 +42,11 @@ export function createSolarSystemLayer(viewer, options = {}) {
   const originalFar = viewer.camera.frustum?.far;
   const alive = () => !destroyed && !viewer.isDestroyed();
   const delay = (ms) => new Promise((resolve) => { const timer = window.setTimeout(() => { timers.delete(timer); resolve(false); }, ms); timers.set(timer, resolve); });
-  const canonicalPosition = createCanonicalPositions();
+  const canonicalPosition = createCanonicalPositions(options.ephemeris?.position||bodyPositionFixed,
+    {frameMatrix:inertialToFixedMatrix,getRevision:()=>options.ephemeris?.revision()??0});
   let sceneTime = viewer.clock.currentTime, labelSlots = new Map(), scaleVisible = false, publishedScale = null, visualTime = null;
   const positionOf = (id, time = sceneTime) => canonicalPosition(id, time);
+  const bodyLocalTransform=(id,time,basis)=>Matrix4.fromRotationTranslation(Matrix3.multiply(inertialToFixedMatrix(time),basis,new Matrix3()),positionOf(id,time),new Matrix4());
   const scaleMinimum = () => scales.localStart;
   const symbols = createCelestialSymbols(viewer.scene, positionOf);
   const populations = createProceduralPopulationLayer(viewer.scene, options);
@@ -101,16 +103,18 @@ export function createSolarSystemLayer(viewer, options = {}) {
   function ensureOrbit(id) {
     if (id === "sun" || orbits.has(id)) return;
     const center = CELESTIAL_BODIES[id].type === "Moon" ? CELESTIAL_BODIES[id].parent : "sun";
-    const item = { center, sampledAt: null, evaluatedAt: null, vectors: [], points: [] };
+    const item = { center, sampledAt: null, evaluatedAt: null, vectors: [], points: [], revision:null };
     // Sample 96 segments only when scene time changes substantially. Camera
     // movement only changes styling; it never re-samples orbital elements.
     // Reuse the output array and vectors. Same-time rotation/translation keeps
     // every orbit in the existing inertial local camera frame.
     item.sample = (time) => {
-      if (!item.sampledAt || Math.abs(JulianDate.secondsDifference(time, item.sampledAt)) > 60) {
+      const revision=options.ephemeris?.revision()??0;
+      if (!item.sampledAt || revision!==item.revision || Math.abs(JulianDate.secondsDifference(time, item.sampledAt)) > 60) {
         const origin = positionOf(center, time);
         const inverse = Matrix3.transpose(inertialToFixedMatrix(time), new Matrix3());
-        item.vectors = sampleBodyOrbitFixed(id, time, 96).map((point) => Matrix3.multiplyByVector(inverse, Cartesian3.subtract(point, origin, point), point));
+        item.vectors = (options.ephemeris?.orbit||sampleBodyOrbitFixed)(id, time, 96).map((point) => Matrix3.multiplyByVector(inverse, Cartesian3.subtract(point, origin, point), point));
+        item.revision=revision;
         item.points = item.vectors.map(() => new Cartesian3());
         item.sampledAt = JulianDate.clone(time);
         item.evaluatedAt = null;
@@ -558,6 +562,7 @@ export function createSolarSystemLayer(viewer, options = {}) {
     placeholders.clear(); pending.clear();
   }
   return { focus, setSelected, updatePositions, setScale, canonicalPosition, idleOrbit,
+    scientificReference:()=>options.ephemeris?.describe?.(selectedId,sceneTime),
     idleTarget: () => ({id:selectedId, local:!!localView, ready:!travelling && !drag && (selectedId==='earth'||!!localView)}),
     cameraDiagnostics: () => localView ? {heading:localView.heading,pitch:localView.pitch,range:localView.range} : null,
     selectMarker: (id) => { markerId = placeholders.has(id) ? id : null; updateLod(true); viewer.scene.requestRender(); },

@@ -1,0 +1,138 @@
+{
+  "source_file": "20261111/gfs.t06z.pgrb2.1p00.f009",
+  "bytes": 712160,
+  "records": [
+    {
+      "shortName": "prmsl",
+      "typeOfLevel": "meanSea",
+      "level": 0,
+      "stepType": "instant",
+      "units": "Pa"
+    },
+    {
+      "shortName": "t",
+      "typeOfLevel": "surface",
+      "level": 0,
+      "stepType": "instant",
+      "units": "K"
+    },
+    {
+      "shortName": "2t",
+      "typeOfLevel": "heightAboveGround",
+      "level": 2,
+      "stepType": "instant",
+      "units": "K"
+    },
+    {
+      "shortName": "2r",
+      "typeOfLevel": "heightAboveGround",
+      "level": 2,
+      "stepType": "instant",
+      "units": "%"
+    },
+    {
+      "shortName": "10u",
+      "typeOfLevel": "heightAboveGround",
+      "level": 10,
+      "stepType": "instant",
+      "units": "m s**-1"
+    },
+    {
+      "shortName": "10v",
+      "typeOfLevel": "heightAboveGround",
+      "level": 10,
+      "stepType": "instant",
+      "units": "m s**-1"
+    },
+    {
+      "shortName": "prate",
+      "typeOfLevel": "surface",
+      "level": 0,
+      "stepType": "instant",
+      "units": "kg m**-2 s**-1"
+    },
+    {
+      "shortName": "prate",
+      "typeOfLevel": "surface",
+      "level": 0,
+      "stepType": "avg",
+      "units": "kg m**-2 s**-1"
+    },
+    {
+      "shortName": "csnow",
+      "typeOfLevel": "surface",
+      "level": 0,
+      "stepType": "instant",
+      "units": "(Code table 4.222)"
+    },
+    {
+      "shortName": "cicep",
+      "typeOfLevel": "surface",
+      "level": 0,
+      "stepType": "instant",
+      "units": "(Code table 4.222)"
+    },
+    {
+      "shortName": "cfrzr",
+      "typeOfLevel": "surface",
+      "level": 0,
+      "stepType": "instant",
+      "units": "(Code table 4.222)"
+    },
+    {
+      "shortName": "crain",
+      "typeOfLevel": "surface",
+      "level": 0,
+      "stepType": "instant",
+      "units": "(Code table 4.222)"
+    },
+    {
+      "shortName": "csnow",
+      "typeOfLevel": "surface",
+      "level": 0,
+      "stepType": "avg",
+      "units": "(Code table 4.222)"
+    },
+    {
+      "shortName": "cicep",
+      "typeOfLevel": "surface",
+      "level": 0,
+      "stepType": "avg",
+      "units": "(Code table 4.222)"
+    },
+    {
+      "shortName": "cfrzr",
+      "typeOfLevel": "surface",
+      "level": 0,
+      "stepType": "avg",
+      "units": "(Code table 4.222)"
+    },
+    {
+      "shortName": "crain",
+      "typeOfLevel": "surface",
+      "level": 0,
+      "stepType": "avg",
+      "units": "(Code table 4.222)"
+    },
+    {
+      "shortName": "tcc",
+      "typeOfLevel": "atmosphere",
+      "level": 0,
+      "stepType": "instant",
+      "units": "%"
+    },
+    {
+      "shortName": "tcc",
+      "typeOfLevel": "atmosphere",
+      "level": 0,
+      "stepType": "avg",
+      "units": "%"
+    }
+  ],
+  "field_status": {
+    "humidity": "available",
+    "pressure": "available"
+  },
+  "phase_status": "available",
+  "valid_at": "2026-11-11T15:00:00Z"
+}

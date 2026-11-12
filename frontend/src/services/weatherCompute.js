@@ -23,7 +23,8 @@ export function createWeatherCompute({makeWorker=()=>new Worker(new URL('./weath
     const {grid,display_variable,source_kind,valid_at,units,step_type,source_units,grib_parameter,level,values,values_c,u,v}=field;
     const plane={grid,display_variable,source_kind,valid_at,units,step_type,source_units,grib_parameter,level,
       values,values_c:!display_variable||display_variable==='temperature'?values_c:undefined,u:display_variable==='wind'?u:undefined,v:display_variable==='wind'?v:undefined,
-      precipitation_clouds:display_variable==='precipitation'?field.fields?.clouds:undefined};
+      precipitation_clouds:display_variable==='precipitation'?field.fields?.clouds:undefined,
+      precipitation_phase:display_variable==='precipitation'?field.precipitation_phase:undefined};
     return new Promise((resolve,reject)=>{
       queued.get(kind)?.reject(aborted());queued.set(kind,{id:++serial,field:plane,width,height,resolve,reject});dispatch();
     });

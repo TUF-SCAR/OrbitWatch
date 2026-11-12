@@ -44,6 +44,7 @@ def run(postgres=False,serve=False):
             from models.alerts import AlertSubscription,InboxNotification
             from models.satellite_orbital_data import SatelliteOrbitalData,SatelliteOrbitalDataHistory
             from models.notification_delivery import PushDevice,NotificationRun,NotificationDelivery
+            from models.viewing_opportunity import ViewingOpportunity,VisibilityPlan
             from services.notification_policy import quiet,distance,event_candidate,astronomy_candidate
             from services.notification_runner import lease,persist,process_outbox,run_once
             from services.browser_push import validate_subscription,configuration,encrypt_subscription
@@ -54,11 +55,11 @@ def run(postgres=False,serve=False):
                 def foreign_keys(connection,record):connection.execute('PRAGMA foreign_keys=ON')
             DatabaseBase.metadata.create_all(engine,tables=[User.__table__,SatelliteOrbitalData.__table__,SatelliteOrbitalDataHistory.__table__])
             if postgres:
-                migrations=sorted((ROOT/'backend/migrations').glob('00[2345]_*.sql'))
+                migrations=sorted((ROOT/'backend/migrations').glob('00[23458]_*.sql'))
                 with psycopg.connect(host='127.0.0.1',port=55444,user='orbitwatch_test',dbname='orbitwatch_delivery_test',autocommit=True) as db:
                     for file in migrations:db.execute(file.read_text(),prepare=False);db.execute(file.read_text(),prepare=False)
             else:
-                for model in (ObservationLocation,NotificationPreferences,AlertSubscription,InboxNotification,PushDevice,NotificationRun,NotificationDelivery):model.__table__.create(engine)
+                for model in (ObservationLocation,NotificationPreferences,AlertSubscription,InboxNotification,PushDevice,NotificationRun,NotificationDelivery,ViewingOpportunity,VisibilityPlan):model.__table__.create(engine)
             client=TestClient(app,raise_server_exceptions=False);cleanup.callback(client.close);auth={};users={};locations={};subscriptions={};checks=0
             def request(method,path,expected=200,who=1,**kwargs):
                 nonlocal checks
@@ -189,13 +190,13 @@ def run(postgres=False,serve=False):
             event_subscription=request('POST','/api/account/alert-subscriptions',201,json={'kind':'event','target_id':'earthquake'}).json()['id']
             with Session(engine) as db:
                 db.get(NotificationPreferences,users[1]).natural_event_alerts=True;db.commit()
-            with patch('services.notification_runner.prediction',return_value={'state':'unavailable','windows':[]}),patch('services.notification_runner.current_events',return_value={'events':[event]}),patch('services.notification_runner.process_outbox'):
+            with patch('services.notification_runner.shared_prediction',return_value={'state':'unavailable','windows':[]}),patch('services.notification_runner.current_events',return_value={'events':[event]}),patch('services.notification_runner.process_outbox'):
                 assert run_once(engine)['generated']==1
                 assert run_once(engine)['generated']==0
             # No configuration: queue is preserved for later, not reported rejected.
             with patch('services.notification_runner.configuration',return_value=None):process_outbox(engine,'unused',time.monotonic()+1,lambda *_:None)
             # Runner heartbeat; no network providers are invoked by this fixture.
-            with patch('services.notification_runner.prediction',return_value={'state':'unavailable','windows':[]}),patch('services.notification_runner.current_events',return_value={'events':[]}):
+            with patch('services.notification_runner.shared_prediction',return_value={'state':'unavailable','windows':[]}),patch('services.notification_runner.current_events',return_value={'events':[]}):
                 result=run_once(engine);assert result['state']=='completed'
                 assert run_once(engine)['generated']==0
             assert request('GET','/api/account/notification-delivery').json()['scheduler_state']=='recent_success'

@@ -80,7 +80,7 @@ jobs:
           echo "command_id=$command_id" >> "$GITHUB_OUTPUT"
           echo "Dispatched AWS SSM command: $command_id"
 
-      - name: Wait for deployment and show result
+      - name: Wait for API and notification worker health
         shell: bash
         env:
           COMMAND_ID: ${{ steps.send.outputs.command_id }}

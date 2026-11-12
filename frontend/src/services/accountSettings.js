@@ -22,8 +22,8 @@ export function locationPayload(draft) {
 // Synchronous mutation guard also rejects double submits before React rerenders.
 export function createAccountSettings({transport=api}={}) {
   const empty=()=>({phase:'idle',locations:[],preferences:null,preferenceDraft:null,locationDraft:null,busy:false,error:'',notice:'',conflict:false,
-    subscriptions:[],subscriptionPhase:'idle',subscriptionError:'',alertBusy:null,inbox:[],inboxPhase:'idle',inboxError:'',inboxCursor:null,inboxBusy:null,unreadCount:null,navigationNotice:'',delivery:null,deliveryError:''});
-  let state=empty(),dead=false,loading=false,inboxEpoch=0;
+    subscriptions:[],subscriptionPhase:'idle',subscriptionError:'',alertBusy:null,inbox:[],inboxPhase:'idle',inboxError:'',inboxCursor:null,inboxBusy:null,unreadCount:null,navigationNotice:'',delivery:null,deliveryError:'',activeNotice:null});
+  let state=empty(),dead=false,loading=false,inboxEpoch=0,noticeEpoch=0;
   const pending=new Set(),request=()=>{const controller=new AbortController();pending.add(controller);return controller;};
   const listeners=new Set();
   function publish(patch){if(!dead){state={...state,...patch};listeners.forEach(fn=>fn());}}
@@ -115,6 +115,14 @@ export function createAccountSettings({transport=api}={}) {
   return {
     subscribe(fn){listeners.add(fn);return()=>listeners.delete(fn);},snapshot:()=>state,load,
     loadUnread,loadSubscriptions,toggleTarget,loadInbox,loadDelivery,
+    async openNotice(id){
+      if(dead||!id||!/^[a-f0-9-]{36}$/.test(id)||!transport.fetchInboxDetail)return;
+      const controller=request(),epoch=++noticeEpoch;publish({navigationNotice:'Opening private viewing details…'});
+      try{const item=await transport.fetchInboxDetail(id,controller.signal);if(epoch===noticeEpoch)publish({activeNotice:item,navigationNotice:''});}
+      catch(error){if(!controller.signal.aborted&&epoch===noticeEpoch)publish({navigationNotice:error.message});}
+      finally{pending.delete(controller);}
+    },
+    closeNotice(){noticeEpoch++;publish({activeNotice:null});},
     markRead:id=>inboxAction(id,'read'),markAllRead:()=>inboxAction('all','all'),dismiss:id=>inboxAction(id,'dismiss'),
     navigationNotice:message=>publish({navigationNotice:message}),
     startNew(seed={}){if(state.busy)return;if(state.locationDraft){publish({notice:'Finish or cancel your current location edit before adding another point.'});return;}publish({locationDraft:{name:seed.name||'',latitude:seed.latitude===undefined?'':String(seed.latitude),longitude:seed.longitude===undefined?'':String(seed.longitude),timezone:'',is_default:false},error:'',notice:''});},

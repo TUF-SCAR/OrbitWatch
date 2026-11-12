@@ -1,0 +1,11 @@
+{
+  "id":"/",
+  "name":"OrbitWatch",
+  "short_name":"OrbitWatch",
+  "start_url":"/",
+  "scope":"/",
+  "display":"standalone",
+  "background_color":"#02060c",
+  "theme_color":"#02060c",
+  "icons":[{"src":"/orbitwatch-mark.svg","sizes":"any","type":"image/svg+xml","purpose":"any"}]
+}

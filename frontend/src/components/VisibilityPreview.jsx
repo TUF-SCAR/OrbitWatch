@@ -1,6 +1,7 @@
 import {useEffect,useMemo,useState} from 'react';
 import {Clock,CloudMoon,MapPin,RefreshCw} from 'lucide-react';
 import {createVisibilityPreview} from '../services/visibilityPreview.js';
+import ViewingDetails,{ViewingScore} from './ViewingDetails.jsx';
 
 function timeLabel(value,zone) {
   return new Intl.DateTimeFormat(undefined,{timeZone:zone,weekday:'short',month:'short',day:'numeric',hour:'2-digit',minute:'2-digit',timeZoneName:'short'}).format(new Date(value));
@@ -33,6 +34,7 @@ export default function VisibilityPreview({account,kind}) {
         const window=item.windows[0],weather=window?.weather;
         return <article className="visibility-card" key={item.target_id}><strong>{item.target_name}</strong>
           {window?<><p><Clock size={13}/> <time dateTime={window.start_utc}>{timeLabel(window.start_utc,location.timezone)}</time></p><p>{Math.round(window.max_elevation_degrees)}° maximum elevation · {window.status}</p><small>{weather?.state==='available'?`${weather.cloud_cover_percent}% cloud · ${weather.precipitation_probability_percent}% precipitation probability`:'Weather forecast unavailable'}</small>
+            <ViewingScore assessment={window.assessment}/><details><summary>Viewing guide</summary><ViewingDetails details={{...item,...(window.useful_segments?.[0]||{}),window:{...window,...(window.useful_segments?.[0]||{})},target_name:item.target_name,location_name:location.name,observer:location,assessment:window.assessment,weather}}/></details>
             <details><summary>Prediction details</summary><p>Ends {timeLabel(window.end_utc,location.timezone)} · azimuth at maximum {window.azimuth_degrees}°</p><p>Sun altitude {window.sun_altitude_degrees===null?'unavailable':`${window.sun_altitude_degrees}°`}{window.sunlit_at_maximum!==undefined&&window.sunlit_at_maximum!==null?` · satellite ${window.sunlit_at_maximum?'sunlit':'eclipsed'} at maximum`:''}</p>{window.useful_segments?.length>0&&<p>First screened segment: {timeLabel(window.useful_segments[0].start_utc,location.timezone)} – {timeLabel(window.useful_segments[0].end_utc,location.timezone)}</p>}<p>{item.brightness||item.equipment}</p>{item.moon_illumination_percent!==null&&item.moon_illumination_percent!==undefined&&<p>Moon illuminated: {item.moon_illumination_percent}%</p>}{item.rise_set?.map(event=><p key={event.utc}>{event.event}: {timeLabel(event.utc,location.timezone)}</p>)}<p>{item.source}</p>{item.element_epoch&&<p>Element epoch: {item.element_epoch} · age {item.element_age_days} days</p>}<p>Calculated {timeLabel(item.computed_at,location.timezone)} · interval screening precision {window.segment_precision_seconds} s</p>{weather?.state==='available'&&<p>{weather.attribution} · valid {timeLabel(weather.valid_at,location.timezone)} · fetched {timeLabel(weather.retrieved_at,location.timezone)}</p>}<p>Geometric altitude; local obstructions and atmospheric refraction are not modeled. Never aim optical equipment at the Sun.</p></details>
           </>:<p className="account-muted">{item.reason||'Prediction unavailable'}</p>}
         </article>;

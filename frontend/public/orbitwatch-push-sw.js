@@ -16,7 +16,7 @@ async function deviceState(value,write=false) {
 }
 function destination(payload) {
   if(!payload||!['satellite','celestial','event'].includes(payload.kind)||typeof payload.target_id!=='string'||! /^[A-Za-z0-9_:.-]{1,120}$/.test(payload.target_id))return '/?notifications=1';
-  return '/?'+new URLSearchParams({notifications:'1',kind:payload.kind,target:payload.target_id});
+  return '/?'+new URLSearchParams({notifications:'1',kind:payload.kind,target:payload.target_id,...(/^[a-f0-9-]{36}$/.test(payload.notification_id||'')?{notice:payload.notification_id}:{})});
 }
 self.addEventListener('install',event=>event.waitUntil(self.skipWaiting()));
 self.addEventListener('activate',event=>event.waitUntil(self.clients.claim()));
@@ -47,7 +47,7 @@ self.addEventListener('notificationclick',event=>{
     const requested=event.notification.data?.url;
     const safe=typeof requested==='string'&&requested.startsWith('/?notifications=1')&&!requested.startsWith('//')?requested:'/?notifications=1';
     const url=new URL(safe,self.location.origin);
-    if(Date.parse(event.notification.data?.expires_at)<=Date.now())url.search='?notifications=1&expired=1';
+    if(Date.parse(event.notification.data?.expires_at)<=Date.now())url.searchParams.set('expired','1');
     const windows=await self.clients.matchAll({type:'window',includeUncontrolled:true});
     const existing=windows.find(client=>new URL(client.url).origin===self.location.origin);
     if(existing){await existing.navigate(url.href);await existing.focus();}else await self.clients.openWindow(url.href);

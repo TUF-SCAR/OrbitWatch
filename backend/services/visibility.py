@@ -9,12 +9,14 @@ from collections import OrderedDict
 from datetime import datetime, timedelta, timezone
 from functools import lru_cache
 import hashlib
+import math
 import threading
 from zoneinfo import ZoneInfo
 import numpy as np
 from skyfield.api import EarthSatellite, load, load_file, wgs84
 from skyfield import almanac
 from services.visibility_forecast import match_forecast
+from services.viewing_score import assessment,equipment
 
 TS=load.timescale(builtin=True)
 SATELLITE_MIN_ALT=10.0
@@ -57,6 +59,15 @@ def groups(mask):
     return np.split(indexes,np.where(np.diff(indexes)>1)[0]+1) if len(indexes) else []
 
 
+def boundary(left,right,qualifies,right_state):
+    """Refine one already bracketed transition to <=1s; choose eligible side."""
+    while (right-left).total_seconds()>1:
+        middle=left+(right-left)/2
+        if bool(qualifies(middle))==right_state:right=middle
+        else:left=middle
+    return right if right_state else left
+
+
 def satellite_windows(record, location, start, hours, eph):
     epoch=utc(record.epoch)
     result={'windows':[],'element_epoch':stamp(epoch),'element_age_days':round((start-epoch).total_seconds()/86400,3),
@@ -81,9 +92,13 @@ def satellite_windows(record, location, start, hours, eph):
         elif event==2 and active is not None:
             spans.append((active,moment)); active=None
     if active is not None: spans.append((active,end))
-    for begin,finish in spans[:MAX_WINDOWS]:
-        # At most 241 samples/pass, including exact culminations for maximum elevation.
-        dates=[begin+(finish-begin)*i/240 for i in range(241)]
+    for begin,finish in spans[:32]:
+        if len(result['windows'])>=MAX_WINDOWS: break
+        if (finish-epoch).total_seconds()>MAX_ELEMENT_AGE_DAYS*86400: continue
+        # Long/near-geostationary spans need finer screening than241 samples/48h.
+        # Bounded4321 nodes plus exact culminations; refine detected transitions.
+        intervals=min(4320,max(240,math.ceil((finish-begin).total_seconds()/20)))
+        dates=[begin+(finish-begin)*i/intervals for i in range(intervals+1)]
         dates+= [m for m,e in zip(times.utc_datetime(),events) if e==1 and begin<=m<=finish]
         dates=sorted(set(dates)); t=TS.from_datetimes(dates)
         position=sat.at(t)
@@ -96,16 +111,27 @@ def satellite_windows(record, location, start, hours, eph):
             sun_alt=(eph['earth']+observer).at(t).observe(eph['sun']).apparent().altaz()[0].degrees
             sunlit=position.is_sunlit(eph)
             mask=(sun_alt<=-6)&sunlit&(alt.degrees>=SATELLITE_MIN_ALT)
+            def qualifies(moment):
+                instant=TS.from_datetime(moment)
+                return (sat-observer).at(instant).altaz()[0].degrees>=SATELLITE_MIN_ALT and (eph['earth']+observer).at(instant).observe(eph['sun']).apparent().altaz()[0].degrees<=-6 and sat.at(instant).is_sunlit(eph)
             for group in groups(mask):
-                if len(group)>1: useful.append({'start_utc':stamp(dates[int(group[0])]),'end_utc':stamp(dates[int(group[-1])])})
+                if len(group)>1:
+                    a,b=int(group[0]),int(group[-1]);p=int(group[np.argmax(alt.degrees[group])])
+                    first=boundary(dates[a-1],dates[a],qualifies,True) if a else dates[a]
+                    last=boundary(dates[b],dates[b+1],qualifies,False) if b<len(dates)-1 else dates[b]
+                    useful.append({'start_utc':stamp(first),'end_utc':stamp(last),'maximum_at_utc':stamp(dates[p]),'boundary_precision_seconds':1,
+                        'max_elevation_degrees':round(float(alt.degrees[p]),2),'azimuth_degrees':round(float(az.degrees[p]),1),
+                        'start_azimuth_degrees':round(float((sat-observer).at(TS.from_datetime(first)).altaz()[1].degrees),1),'end_azimuth_degrees':round(float((sat-observer).at(TS.from_datetime(last)).altaz()[1].degrees),1),
+                        'sun_altitude_degrees':round(float(sun_alt[p]),2),'sunlit':True})
             status='Potentially observable; brightness unverified' if useful else ('Daylight / difficult viewing conditions' if np.all(sun_alt>-6) else 'Eclipsed / not sunlit during dark segment')
         row={'start_utc':stamp(begin),'end_utc':stamp(finish),'start_local':local(begin,location),'end_local':local(finish,location),
              'duration_seconds':round((finish-begin).total_seconds()),'max_elevation_degrees':round(float(alt.degrees[peak]),2),
              'maximum_at_utc':stamp(dates[peak]),'azimuth_degrees':round(float(az.degrees[peak]),1),
+             'start_azimuth_degrees':round(float(az.degrees[0]),1),'end_azimuth_degrees':round(float(az.degrees[-1]),1),
              'sun_altitude_degrees':round(float(sun_alt[peak]),2) if sun_alt is not None else None,
              'sunlit_at_maximum':bool(sunlit[peak]) if sunlit is not None else None,
              'useful_segments':useful[:8],'status':status,'conditions_available':eph is not None,
-             'segment_precision_seconds':round((finish-begin).total_seconds()/240,1),
+             'segment_precision_seconds':round((finish-begin).total_seconds()/intervals,1),
              'window_clipped':begin==start or finish==end}
         result['windows'].append(row)
     return {**result,'state':'available','reason':None if spans else 'No pass above 10° in this forecast window'}
@@ -123,13 +149,20 @@ def celestial_windows(target, location, start, hours, eph):
     alt,az,_=apparent.altaz()
     sun=earth_observer.at(t).observe(eph['sun']).apparent().altaz()[0].degrees
     mask=(alt.degrees>=10)&(sun<=(0 if target=='moon' else -6))
+    def qualifies(moment):
+        instant=TS.from_datetime(moment)
+        return earth_observer.at(instant).observe(body).apparent().altaz()[0].degrees>=10 and earth_observer.at(instant).observe(eph['sun']).apparent().altaz()[0].degrees<=(0 if target=='moon' else -6)
     windows=[]
     for group in groups(mask)[:MAX_WINDOWS]:
         if len(group)<2: continue
         a,b=int(group[0]),int(group[-1]); peak=int(group[np.argmax(alt.degrees[group])])
-        windows.append({'start_utc':stamp(dates[a]),'end_utc':stamp(dates[b]),'start_local':local(dates[a],location),'end_local':local(dates[b],location),
-                        'maximum_at_utc':stamp(dates[peak]),'max_elevation_degrees':round(float(alt.degrees[peak]),2),
+        first=boundary(dates[a-1],dates[a],qualifies,True) if a else dates[a]
+        last=boundary(dates[b],dates[b+1],qualifies,False) if b<len(dates)-1 else dates[b]
+        windows.append({'start_utc':stamp(first),'end_utc':stamp(last),'start_local':local(first,location),'end_local':local(last,location),
+                        'maximum_at_utc':stamp(dates[peak]),'max_elevation_degrees':round(float(alt.degrees[peak]),2),'boundary_precision_seconds':1,
                         'azimuth_degrees':round(float(az.degrees[peak]),1),'sun_altitude_degrees':round(float(sun[peak]),2),
+                        'start_azimuth_degrees':round(float(earth_observer.at(TS.from_datetime(first)).observe(body).apparent().altaz()[1].degrees),1),'end_azimuth_degrees':round(float(earth_observer.at(TS.from_datetime(last)).observe(body).apparent().altaz()[1].degrees),1),
+                        'moon_illumination_percent':round(float(almanac.fraction_illuminated(eph,'moon',t[peak]))*100,1) if target=='moon' else None,
                         'status':'Astronomical viewing window; weather and local horizon apply','segment_precision_seconds':120,
                         'window_clipped':a==0 or b==len(dates)-1})
     f=almanac.risings_and_settings(eph,body,observer,horizon_degrees=0)
@@ -140,8 +173,8 @@ def celestial_windows(target, location, start, hours, eph):
             'altitude_now_degrees':round(float(alt.degrees[0]),2),'azimuth_now_degrees':round(float(az.degrees[0]),2),
             'ra_hours':float(ra.hours),'declination_degrees':float(dec.degrees),
             'moon_illumination_percent':round(float(almanac.fraction_illuminated(eph,'moon',t[0]))*100,1) if target=='moon' else None,
-            'equipment':'Telescope generally required; no naked-eye guarantee' if target in ('uranus','neptune') else 'Visibility depends on brightness, twilight and local horizon',
-            'source':'JPL DE421 / Skyfield 1.55; topocentric apparent, unrefracted; two-minute screening'}
+            'equipment':equipment('celestial',target),
+            'source':'JPL DE421 / Skyfield 1.55; topocentric apparent, unrefracted; two-minute peak screening, detected useful boundaries refined to one second'}
 
 
 def prediction(kind, target, record, location, start, hours, dataset):
@@ -169,5 +202,29 @@ def prediction(kind, target, record, location, start, hours, dataset):
         if datetime.fromisoformat(window['end_utc'])<=start: continue
         useful=window.get('useful_segments',[])
         moment=datetime.fromisoformat(useful[0]['start_utc'] if useful else window['maximum_at_utc'])
-        result['windows'].append({**window,'weather':match_forecast(dataset,moment)})
+        weather=match_forecast(dataset,moment)
+        segment=useful[0] if useful else window
+        geometry={'altitude_degrees':segment.get('max_elevation_degrees'),'azimuth_degrees':segment.get('start_azimuth_degrees',segment.get('azimuth_degrees')),
+                  'sun_altitude_degrees':segment.get('sun_altitude_degrees'),'sunlit':segment.get('sunlit',window.get('sunlit_at_maximum'))}
+        result['windows'].append({**window,'weather':weather,'assessment':assessment(kind,target,geometry,weather)})
     return result
+
+
+def instant_geometry(kind,target,record,location,now):
+    """Fresh topocentric recheck; local pinned DE421 only, no providers/cache."""
+    eph=ephemeris()
+    if eph is None: return None
+    observer=wgs84.latlon(float(location['latitude']),float(location['longitude']))
+    t=TS.from_datetime(now);earth=eph['earth']+observer
+    sun=float(earth.at(t).observe(eph['sun']).apparent().altaz()[0].degrees)
+    if kind=='satellite':
+        if record is None or not -1<=(now-utc(record.epoch)).total_seconds()/86400<=MAX_ELEMENT_AGE_DAYS: return None
+        sat=EarthSatellite(record.tle_line1,record.tle_line2,record.object_name,TS)
+        if str(sat.model.satnum)!=str(record.norad_id) or abs((sat.epoch.utc_datetime()-utc(record.epoch)).total_seconds())>120: return None
+        position=sat.at(t)
+        if position.message: return None
+        alt,az,_=(sat-observer).at(t).altaz();sunlit=bool(position.is_sunlit(eph))
+    else:
+        alt,az,_=earth.at(t).observe(eph['moon' if target=='moon' else target+' barycenter']).apparent().altaz();sunlit=None
+    values={'altitude_degrees':float(alt.degrees),'azimuth_degrees':float(az.degrees),'sun_altitude_degrees':sun,'sunlit':sunlit}
+    return values if all(np.isfinite(values[key]) for key in ('altitude_degrees','azimuth_degrees','sun_altitude_degrees')) else None

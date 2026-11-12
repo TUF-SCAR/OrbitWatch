@@ -23,10 +23,11 @@ export default function AuthRoot() {
   const [cycle, setCycle] = useState(0);
   const [country, setCountry] = useState(getCachedStartupCountry);
   const countryLocked = useRef(false);
-  const pendingNotification=useRef(new URLSearchParams(window.location.search).get('notifications')==='1');
+  const notificationParams=new URLSearchParams(window.location.search);
+  const pendingNotification=useRef(notificationParams.get('notifications')==='1'?'/?'+new URLSearchParams({notifications:'1',...(/^[a-f0-9-]{36}$/.test(notificationParams.get('notice')||'')?{notice:notificationParams.get('notice')}:{})}):null);
   const authenticated = phase === "ready";
   const liveVisible = (phase === "handoff" || authenticated);
-  const startTravel = useCallback(() => { setTravelDone(false); setCycle((value) => value + 1); setPhase("travel"); window.history.replaceState({}, "", pendingNotification.current?"/?notifications=1":"/");if(pendingNotification.current)window.dispatchEvent(new Event('orbitwatch:notification-open'));pendingNotification.current=false; }, []);
+  const startTravel = useCallback(() => { setTravelDone(false); setCycle((value) => value + 1); setPhase("travel"); window.history.replaceState({}, "", pendingNotification.current||"/");if(pendingNotification.current)window.dispatchEvent(new Event('orbitwatch:notification-open'));pendingNotification.current=null; }, []);
   const logoutBusy=useRef(false);
   const logout = useCallback(async () => { if(logoutBusy.current)return;logoutBusy.current=true;await revokePushOnLogout();clearAccessToken(); setPendingToken(null); setVerificationBusy(false); setSessionError(""); setUser(null); setSceneReady(false); setTravelDone(false); setPhase("guest"); setAuthPage("login"); window.history.replaceState({}, "", "/login");logoutBusy.current=false; }, []);
   const onSceneReady = useCallback(() => setSceneReady(true), []);

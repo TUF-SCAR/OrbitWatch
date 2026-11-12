@@ -1,0 +1,5 @@
+/orbitwatch-push-sw.js
+  Cache-Control: no-cache, no-store, must-revalidate
+  Service-Worker-Allowed: /
+/manifest.webmanifest
+  Cache-Control: no-cache

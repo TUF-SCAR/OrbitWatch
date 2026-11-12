@@ -223,3 +223,5 @@ export function savePushSubscription(body,signal) {return accountWrite('/api/acc
 export function revokePushSubscription(id,signal) {return requestJson(`/api/account/push-subscriptions/${encodeURIComponent(id)}`,{method:'DELETE',signal,timeoutMs:4000,keepalive:true});}
 
 export function fetchSmallBodyElements(signal){return requestJson("/api/solar-system/small-bodies",{signal});}
+export function fetchViewingTargets(kind,offset,signal){return requestJson(`/api/account/visibility/targets/${kind==='satellite'?'satellites':'celestial'}?offset=${offset}`,{signal,timeoutMs:30000});}
+export function fetchInboxDetail(id,signal){return requestJson(`/api/account/notifications/${encodeURIComponent(id)}`,{signal});}

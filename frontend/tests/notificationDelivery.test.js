@@ -42,10 +42,11 @@ test('service worker checks device consent/expiry and constrains click URLs with
   assert.equal(listeners.fetch,undefined);
   async function dispatch(type,data){let pending;listeners[type]({...data,waitUntil:promise=>{pending=promise;}});await pending;}
   const id='11111111-1111-4111-8111-111111111111';
-  const payload={id:'notification-id',device_id:id,title:'Real source update',body:'Open your inbox',kind:'event',target_id:'usgs:fixture',expires_at:new Date(Date.now()+60000).toISOString()};
+  const payload={id:'notification-id',notification_id:id,device_id:id,title:'Real source update',body:'Open your inbox',kind:'event',target_id:'usgs:fixture',expires_at:new Date(Date.now()+60000).toISOString()};
   await dispatch('push',{data:{json:()=>payload}});assert.equal(shown.length,0);
   await dispatch('message',{data:{type:'ORBITWATCH_PUSH_DEVICE',id},ports:[{postMessage(){}}]});
   await dispatch('push',{data:{json:()=>payload}});assert.equal(shown.length,1);assert.match(shown[0].data.url,/notifications=1/);
+  assert.match(shown[0].data.url,new RegExp('notice='+id));
   await dispatch('push',{data:{json:()=>({...payload,expires_at:'2000-01-01T00:00:00Z'})}});assert.equal(shown.length,1);
   await dispatch('notificationclick',{notification:{close(){},data:{url:'https://evil.invalid',expires_at:payload.expires_at}}});assert.equal(navigated[0],'https://orbitwatch.test/?notifications=1');
   await dispatch('message',{data:{type:'ORBITWATCH_PUSH_DEVICE',id:null},ports:[{postMessage(){}}]});

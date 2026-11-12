@@ -1,4 +1,4 @@
-import {useState} from 'react';
+import {useState,useCallback} from 'react';
 import {Activity,Check,CloudFog,Flame,Globe2,MapPin,Moon,Mountain,Orbit,Satellite,Search,Snowflake,Sun,Thermometer,Wind,Waves} from 'lucide-react';
 import {CELESTIAL_BODIES} from '../data/celestialBodies.js';
 import {SPACE_OBJECTS} from '../data/spaceObjects.js';
@@ -6,19 +6,24 @@ import {EVENT_CATEGORIES} from '../data/eventCategories.js';
 import AccountTabs from './AccountTabs.jsx';
 import AccountNotificationSettings from './AccountNotificationSettings.jsx';
 import VisibilityPreview from './VisibilityPreview.jsx';
+import ViewingTargetPicker from './ViewingTargetPicker.jsx';
 import {satelliteMatches} from '../services/accountSettings.js';
 
 const PLANETS=['mercury','venus','mars','jupiter','saturn','uranus','neptune','moon'];
 const ICONS={cyclone:Wind,earthquake:Activity,flood:Waves,wildfire:Flame,volcano:Mountain,drought:Sun,landslide:Mountain,storm:Wind,snow_ice:Snowflake,dust:CloudFog,temperature_extreme:Thermometer,water_color:Waves,other:Globe2};
 export default function MySkywatch({account,catalog=SPACE_OBJECTS,tab='satellite',onTab}) {
   const [query,setQuery]=useState('');
+  const [planning,setPlanning]=useState({key:'',items:[]});
   const {state,owner}=account,followed=state.subscriptions||[],satellites=followed.filter(row=>row.kind==='satellite');
   const disabled=state.subscriptionPhase!=='ready'||Boolean(state.alertBusy);
+  const planningKey=tab+':'+(state.locations||[]).map(row=>`${row.id}:${row.version}`).sort().join(',');
+  const planned=useCallback(items=>setPlanning({key:planningKey,items}),[planningKey]);
+  const potential=target=>planning.key===planningKey&&planning.items.some(item=>item.target_id===target&&item.state==='potential');
   const chosen=(kind,target)=>followed.some(row=>row.kind===kind&&row.target_id===target);
   const tabs=[{id:'satellite',label:'Satellites',icon:Satellite},{id:'celestial',label:'Planets / Moon',icon:Moon},{id:'event',label:'Events',icon:Activity},{id:'locations',label:'Locations',icon:MapPin}];
   function followButton(kind,target,label) {
     const active=chosen(kind,target),pending=state.alertBusy===`${kind}:${target}`;
-    return <button type="button" className={`sky-follow ${active?'is-following':''}`} aria-label={`${active?'Unfollow':'Follow'} ${label}`} aria-pressed={active} disabled={disabled||kind==='satellite'&&!active&&satellites.length>=20} onClick={()=>owner.toggleTarget(kind,target)}>{active?<Check size={13}/>:<Orbit size={13}/>}<span>{pending?'Saving…':active?'Following':'Follow'}</span></button>;
+    return <button type="button" className={`sky-follow ${active?'is-following':''}`} aria-label={`${active?'Unfollow':'Follow'} ${label}`} aria-pressed={active} disabled={disabled||!active&&!potential(target)||kind==='satellite'&&!active&&satellites.length>=20} onClick={()=>owner.toggleTarget(kind,target)}>{active?<Check size={13}/>:<Orbit size={13}/>}<span>{pending?'Saving…':active?'Following':'Follow'}</span></button>;
   }
   const matches=satelliteMatches(catalog,query);
   return <div className="skywatch">
@@ -27,6 +32,7 @@ export default function MySkywatch({account,catalog=SPACE_OBJECTS,tab='satellite
     {state.subscriptionError&&<p className="account-inline-error" role="alert">{state.subscriptionError}<button type="button" onClick={()=>owner.loadSubscriptions(true)}>Retry</button></p>}
     {state.subscriptionPhase==='loading'&&<p role="status" className="account-muted">Loading your skywatch…</p>}
     {(tab==='satellite'||tab==='celestial')&&<VisibilityPreview key={tab} account={account} kind={tab}/>}
+    {(tab==='satellite'||tab==='celestial')&&<ViewingTargetPicker key={`targets-${tab}`} account={account} kind={tab} onResults={planned}/>}
     <div role="tabpanel" id={`skywatch-${tab}-panel`} aria-labelledby={`skywatch-${tab}-tab`}>
       {tab==='satellite'&&<>
         <div className="account-section-title"><h3>Satellite watchlist</h3><span>{satellites.length}/20</span></div>
@@ -39,8 +45,8 @@ export default function MySkywatch({account,catalog=SPACE_OBJECTS,tab='satellite
         {query&&!matches.length&&<p className="sky-empty">No matching Live catalog object. Try a name or a NORAD ID.</p>}
       </>}
       {tab==='celestial'&&<><div className="account-section-title"><h3>Planets & Moon</h3><span>{followed.filter(row=>row.kind==='celestial').length}/8</span></div>
-        <div className="sky-object-grid">{PLANETS.map(id=>{const body=CELESTIAL_BODIES[id],active=chosen('celestial',id);return <button type="button" key={id} className={`sky-object-tile ${active?'is-following':''}`} aria-label={`${active?'Unfollow':'Follow'} ${body.name}`} aria-pressed={active} disabled={disabled} onClick={()=>owner.toggleTarget('celestial',id)}>
-          <span className={`sky-object-orb is-${id}`} style={{'--body-color':body.color}}><img src={body.texture} alt="" loading="lazy"/></span><strong>{body.name}</strong><small>{state.alertBusy===`celestial:${id}`?'Saving…':active?'Following':'Follow'}</small>{active&&<Check className="sky-tile-check" size={14}/>}</button>;})}</div><p className="account-muted">Earth-based observation interests. Real observation previews use your saved Earth location.</p></>}
+        <div className="sky-object-grid">{PLANETS.map(id=>{const body=CELESTIAL_BODIES[id],active=chosen('celestial',id);return <button type="button" key={id} className={`sky-object-tile ${active?'is-following':''}`} aria-label={`${active?'Unfollow':'Follow'} ${body.name}`} aria-pressed={active} disabled={disabled||!active&&!potential(id)} onClick={()=>owner.toggleTarget('celestial',id)}>
+          <span className={`sky-object-orb is-${id}`} style={{'--body-color':body.color}}><img src={body.texture} alt="" loading="lazy"/></span><strong>{body.name}</strong><small>{state.alertBusy===`celestial:${id}`?'Saving…':active?'Following':potential(id)?'Potential viewing':'Not currently recommended'}</small>{active&&<Check className="sky-tile-check" size={14}/>}</button>;})}</div><p className="account-muted">Earth-based observation interests. Follow a recommended target above; existing subscriptions remain manageable here.</p></>}
       {tab==='event'&&<><div className="account-section-title"><h3>Natural-event interests</h3><span>{followed.filter(row=>row.kind==='event').length} selected</span></div><div className="sky-event-grid">{Object.entries(EVENT_CATEGORIES).map(([id,spec])=>{const Icon=ICONS[id],active=chosen('event',id);return <button type="button" key={id} className={`sky-event-tile ${active?'is-following':''}`} style={{'--event-color':spec.color}} aria-label={`${active?'Unfollow':'Follow'} ${spec.label}`} aria-pressed={active} disabled={disabled} onClick={()=>owner.toggleTarget('event',id)}><Icon size={20}/><span>{spec.label}</span>{active&&<Check size={13}/>}</button>;})}</div><p className="account-muted">Future alerts depend on saved locations, your radius, genuine source reports, event severity, confidence, freshness and alert eligibility. A reported event does not automatically mean current danger.</p></>}
       {tab==='locations'&&<AccountNotificationSettings account={account} section="locations"/>}
     </div>

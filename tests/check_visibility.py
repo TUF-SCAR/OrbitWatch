@@ -16,7 +16,7 @@ def run(serve=False):
     with tempfile.TemporaryDirectory(prefix='orbitwatch-visibility-') as directory, patch('dotenv.load_dotenv',return_value=False), patch.dict(os.environ,{
         'DATABASE_URL':f'sqlite:///{Path(directory).as_posix()}/test.db','JWT_SECRET_KEY':'isolated-visibility-fixture-key-do-not-use-outside-tests',
         'ORBITWATCH_INGESTION_ENABLED':'false','ORBITWATCH_WEATHER_PROVIDER_REQUESTS':'false','CORS_ALLOWED_ORIGINS':'http://127.0.0.1:5174'}):
-        from services.visibility import TS,ephemeris,satellite_windows,celestial_windows,prediction,local,CACHE
+        from services.visibility import TS,ephemeris,satellite_windows,celestial_windows,prediction,local,CACHE,instant_geometry
         from services.visibility_forecast import match_forecast,forecast
         from services.account_targets import CELESTIAL
         from skyfield.api import wgs84
@@ -67,6 +67,13 @@ def run(serve=False):
             for w in r['windows']:
                 assert w['max_elevation_degrees']>=10 and w['start_utc']<w['end_utc']
             if target=='moon': assert 0<=r['moon_illumination_percent']<=100
+            if target=='moon':
+                window=next(w for w in r['windows'] if datetime.fromisoformat(w['start_utc'])>start)
+                beginning=datetime.fromisoformat(window['start_utc'])
+                inside=instant_geometry('celestial','moon',None,loc,beginning)
+                before=instant_geometry('celestial','moon',None,loc,beginning-timedelta(seconds=2))
+                assert inside['altitude_degrees']>=10 and inside['sun_altitude_degrees']<=0
+                assert before['altitude_degrees']<10 or before['sun_altitude_degrees']>0
             if target=='neptune': assert 'Telescope' in r['equipment']
         polar=celestial_windows('jupiter',{**loc,'latitude':89},start,24,eph)
         assert polar['state']=='available' and len(polar['rise_set'])<=2

@@ -9,12 +9,12 @@ from services.weather import cache, coordinates
 from services.weather_cache import WeatherDeferred
 
 
-def forecast(latitude, longitude):
+def forecast(latitude, longitude, max_age_seconds=3600):
     lat, lon = coordinates(latitude, longitude)
     key = f'visibility:{lat}:{lon}'
     now = datetime.now(timezone.utc)
     def recent(value):
-        return value and 0 <= now.timestamp()-value['retrieved_epoch'] < 3600
+        return value and 0 <= now.timestamp()-value['retrieved_epoch'] < max(900,min(3600,max_age_seconds))
     value = cache.get(key)
     if recent(value):
         return value

@@ -29,7 +29,7 @@ def main():
             print(json.dumps({'state':'failed','reason':'Source/database unavailable; next scheduled run may retry'}),flush=True)
             if args.once:sys.exit(1)
         if not args.loop:break
-        stop.wait(300)
+        stop.wait(10) # Due dispatch every10s; expensive planning remains five-minute.
 
 
 if __name__=='__main__':main()

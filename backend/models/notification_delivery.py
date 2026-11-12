@@ -31,6 +31,7 @@ class NotificationRun(DatabaseBase):
     cursor_owner:Mapped[int]=mapped_column(Integer,nullable=False,default=0,server_default='0')
     evaluated:Mapped[int]=mapped_column(Integer,nullable=False,default=0,server_default='0')
     generated:Mapped[int]=mapped_column(Integer,nullable=False,default=0,server_default='0')
+    last_planned_at:Mapped[datetime|None]=mapped_column(DateTime(timezone=True))
 
 
 class NotificationDelivery(DatabaseBase):
@@ -58,3 +59,6 @@ class NotificationDelivery(DatabaseBase):
     state:Mapped[str]=mapped_column(String(24),nullable=False,default='inbox_persisted')
     devices:Mapped[list]=mapped_column(JSON,nullable=False,default=list)
     next_attempt_at:Mapped[datetime|None]=mapped_column(DateTime(timezone=True))
+    alert_stage:Mapped[str]=mapped_column(String(16),nullable=False,default='advance',server_default='advance')
+    opportunity_id:Mapped[str|None]=mapped_column(Uuid(as_uuid=False))
+    details:Mapped[dict]=mapped_column(JSON,nullable=False,default=dict)

@@ -96,8 +96,10 @@ def inbox(response: Response, limit: int = Query(20, ge=1, le=50), cursor: str |
                 metadata={item.inbox_id:item for item in database.scalars(select(NotificationDelivery).where(NotificationDelivery.owner_id==user.id,NotificationDelivery.inbox_id.in_([row.id for row in rows])))}
         except SQLAlchemyError:
             pass  # A missing additive delivery migration does not break the old inbox.
-        items = [InboxItem(**{key: utc(getattr(row,key)) if key.endswith('_at') else getattr(row,key) for key in InboxItem.model_fields if key not in {"is_expired","destination","source_url","delivery_state"}},
+        items = [InboxItem(**{key: utc(getattr(row,key)) if key.endswith('_at') else getattr(row,key) for key in InboxItem.model_fields if key not in {"is_expired","destination","source_url","delivery_state","alert_stage","opportunity_id","viewing_details"}},
             source_url=metadata[row.id].source_url if row.id in metadata else None,delivery_state=metadata[row.id].state if row.id in metadata else None,
+            alert_stage=metadata[row.id].alert_stage if row.id in metadata else None,opportunity_id=metadata[row.id].opportunity_id if row.id in metadata else None,
+            viewing_details=metadata[row.id].details if row.id in metadata and row.kind!='event' and metadata[row.id].details else None,
             is_expired=bool(row.expires_at and utc(row.expires_at) <= now), destination={"kind": row.kind, "target_id": row.target_id}).model_dump() for row in rows]
         next_cursor = base64.urlsafe_b64encode(json.dumps([utc(rows[-1].created_at).isoformat(), rows[-1].id]).encode()).decode().rstrip("=") if more else None
         return {"items": items, "next_cursor": next_cursor, "unread_count": unread(database,user.id,now), "retention_days": RETENTION_DAYS}
@@ -109,6 +111,19 @@ def read_all(response: Response, user: User = Depends(get_current_user), databas
         now=datetime.now(timezone.utc)
         database.execute(update(InboxNotification).where(*visible(user.id,now), InboxNotification.read_at.is_(None)).values(read_at=now)); database.commit()
         return {"read_at": now, "unread_count": unread(database,user.id,now)}
+
+
+@router.get('/notifications/{identity}')
+def notification_detail(identity:UUID,response:Response,user:User=Depends(get_current_user),database:Session=Depends(get_database_session)):
+    """A push deep link must never rely on the first inbox page or another owner."""
+    with storage(database,response,InboxNotification):
+        now=datetime.now(timezone.utc)
+        row=database.scalar(select(InboxNotification).where(*visible(user.id,now),InboxNotification.id==str(identity)))
+        if not row:raise HTTPException(404,'Notification no longer available')
+        metadata=database.scalar(select(NotificationDelivery).where(NotificationDelivery.owner_id==user.id,NotificationDelivery.inbox_id==row.id))
+        return {'id':row.id,'title':row.title,'message':row.message,'kind':row.kind,'target_id':row.target_id,'read_at':utc(row.read_at),
+                'is_expired':bool(row.expires_at and utc(row.expires_at)<=now),'destination':{'kind':row.kind,'target_id':row.target_id},
+                'viewing_details':metadata.details if metadata and row.kind!='event' else None,'alert_stage':metadata.alert_stage if metadata else None}
 
 
 @router.put("/notifications/{identity}/read")

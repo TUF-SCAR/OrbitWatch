@@ -15,7 +15,7 @@ from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.engine import make_url
 from core.config import required
 
-TABLES=("account_observation_locations","account_notification_preferences","account_alert_subscriptions","account_notification_inbox","account_push_devices","notification_runner_state","account_notification_delivery")
+TABLES=("account_observation_locations","account_notification_preferences","account_alert_subscriptions","account_notification_inbox","account_push_devices","notification_runner_state","account_notification_delivery","account_viewing_opportunities","visibility_plan_cache")
 LEGACY=("users","satellite_orbit_data","satellite_orbit_history","satellite_historical_elements")
 NORMAL_CEILING=300_000_000
 ABSOLUTE_CEILING=400_000_000
@@ -50,18 +50,22 @@ def run(apply=False, expected=None):
         from models.account import ObservationLocation, NotificationPreferences
         from models.alerts import AlertSubscription, InboxNotification
         from models.notification_delivery import PushDevice,NotificationRun,NotificationDelivery
-        models=(ObservationLocation,NotificationPreferences,AlertSubscription,InboxNotification,PushDevice,NotificationRun,NotificationDelivery)
-        def compatible():
+        from models.viewing_opportunity import ViewingOpportunity,VisibilityPlan
+        models=(ObservationLocation,NotificationPreferences,AlertSubscription,InboxNotification,PushDevice,NotificationRun,NotificationDelivery,ViewingOpportunity,VisibilityPlan)
+        additive={'account_notification_delivery':{'alert_stage','opportunity_id','details'},'notification_runner_state':{'last_planned_at'}}
+        def compatible(before_apply=False):
             for model in models:
                 name=model.__tablename__
                 if inspector.has_table(name,schema="public"):
                     actual={column["name"]:column for column in inspector.get_columns(name,schema="public")}
-                    if not set(model.__table__.columns.keys()).issubset(actual):
+                    missing=set(model.__table__.columns.keys())-set(actual)
+                    if missing and not (before_apply and apply and missing.issubset(additive.get(name,set()))):
                         raise RuntimeError("Existing account schema requires reviewed additive repair")
                     for column in model.__table__.columns:
+                        if column.name not in actual:continue
                         if actual[column.name]["type"]._type_affinity is not column.type._type_affinity:
                             raise RuntimeError("Existing account column type is incompatible")
-        compatible()
+        compatible(before_apply=True)
         def delivery_constraints():
             for model in (PushDevice,NotificationRun,NotificationDelivery):
                 name=model.__tablename__
@@ -73,7 +77,7 @@ def run(apply=False, expected=None):
                 if not {index.name for index in model.__table__.indexes}.issubset(indexes):raise RuntimeError('Delivery indexes are incomplete')
         delivery_constraints()
         if apply:
-            for filename in ("002_account_notification_foundation.sql","003_account_alert_subscriptions.sql","004_account_notification_inbox.sql","005_notification_delivery.sql"):
+            for filename in ("002_account_notification_foundation.sql","003_account_alert_subscriptions.sql","004_account_notification_inbox.sql","005_notification_delivery.sql","008_viewing_opportunities.sql"):
                 sql=(Path(__file__).parent/"migrations"/filename).read_text(encoding="utf-8")
                 if re.search(r"(?im)^\s*(DROP|TRUNCATE|DELETE|INSERT|UPDATE)\b",sql):
                     raise RuntimeError("Only reviewed additive schema statements are allowed")

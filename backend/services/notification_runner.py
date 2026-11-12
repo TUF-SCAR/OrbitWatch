@@ -11,13 +11,14 @@ import time
 from types import SimpleNamespace
 from uuid import uuid4
 import socket
-from sqlalchemy import delete,func,or_,select,text,update
+from sqlalchemy import case,delete,func,or_,select,text,update
 from sqlalchemy.orm import Session
 from core.database import database_engine
 from models.user import User
 from models.account import ObservationLocation,NotificationPreferences
 from models.alerts import AlertSubscription,InboxNotification
 from models.notification_delivery import PushDevice,NotificationDelivery,NotificationRun
+from models.viewing_opportunity import ViewingOpportunity,VisibilityPlan
 from models.satellite_orbital_data import SatelliteOrbitalData
 from schemas.alerts import TrustedNotificationInput
 from services.account_inbox import store_notification,utc
@@ -27,6 +28,9 @@ from services.visibility import prediction
 from services.visibility_forecast import forecast
 from services.natural_events import current_events
 from services.browser_push import configuration,send_push
+from services.viewing_plans import shared_prediction,schedule_result,source_key
+from services.visibility import instant_geometry
+from services.notification_policy import opportunity_candidate
 
 LEASE_SECONDS=90
 MAX_USERS=25
@@ -98,7 +102,7 @@ def persist(engine,token,owner,subscription_id,location_id,candidate,now):
         now=now_utc()
         fence(db,token)
         db.scalar(select(User).where(User.id==owner).with_for_update())
-        if candidate['expires_at']<=now or not preferences_allow(db,owner,candidate['kind'],subscription_id,location_id,now,candidate['target_id'],candidate['category']):return False
+        if candidate['expires_at']<=now or candidate.get('push_expires_at',candidate['expires_at'])<=now or not preferences_allow(db,owner,candidate['kind'],subscription_id,location_id,now,candidate['target_id'],candidate['category']):return False
         location=db.get(ObservationLocation,location_id)
         observer=candidate.get('observer')
         if observer and (abs(observer[0]-float(location.latitude))>1e-6 or abs(observer[1]-float(location.longitude))>1e-6 or observer[2]!=location.timezone or observer[3] is not None and observer[3]!=location.version):return False
@@ -111,7 +115,7 @@ def persist(engine,token,owner,subscription_id,location_id,candidate,now):
         db.execute(delete(NotificationDelivery).where(NotificationDelivery.owner_id==owner,NotificationDelivery.kind!='event',NotificationDelivery.expires_at<now-timedelta(days=35)))
         if db.scalar(select(func.count()).select_from(NotificationDelivery).where(NotificationDelivery.owner_id==owner))>=MAX_LEDGER:return False
         if db.scalar(select(NotificationDelivery.id).where(NotificationDelivery.owner_id==owner,NotificationDelivery.dedup_key==digest(candidate))):return False
-        if candidate['kind']!='event':
+        if candidate['kind']!='event' and not candidate.get('opportunity_id'):
             previous=list(db.scalars(select(NotificationDelivery).where(NotificationDelivery.owner_id==owner,NotificationDelivery.kind==candidate['kind'],NotificationDelivery.target_id==candidate['target_id'],
                 NotificationDelivery.opportunity_at.between(candidate['opportunity_at']-timedelta(minutes=20),candidate['opportunity_at']+timedelta(minutes=20))).limit(30)))
             if any(distance(row.latitude,row.longitude,float(location.latitude),float(location.longitude))<=10 for row in previous):return False
@@ -120,10 +124,18 @@ def persist(engine,token,owner,subscription_id,location_id,candidate,now):
         inbox=store_notification(db,owner,payload)
         devices=list(db.scalars(select(PushDevice).where(PushDevice.owner_id==owner).order_by(PushDevice.slot)))
         ledger=NotificationDelivery(owner_id=owner,dedup_key=digest(candidate),kind=candidate['kind'],target_id=candidate['target_id'],category=candidate['category'],
+            alert_stage=candidate.get('alert_stage','event' if candidate['kind']=='event' else 'advance'),opportunity_id=candidate.get('opportunity_id'),details=candidate.get('details',{}),
             subscription_id=subscription_id,location_id=location_id,inbox_id=inbox.id,latitude=float(location.latitude),longitude=float(location.longitude),opportunity_at=candidate['opportunity_at'],
-            source_at=candidate['source_at'],source_url=candidate.get('source_url'),severity=candidate.get('severity'),expires_at=candidate['expires_at'],
+            source_at=candidate['source_at'],source_url=candidate.get('source_url'),severity=candidate.get('severity'),expires_at=candidate.get('push_expires_at',candidate['expires_at']),
             state='push_queued' if devices and configuration() else 'inbox_persisted',devices=[{'id':device.id,'state':'queued','attempts':0} for device in devices] if configuration() else [],next_attempt_at=now)
-        db.add(ledger);db.commit()
+        db.add(ledger)
+        if candidate.get('opportunity_id'):
+            opportunity=db.get(ViewingOpportunity,candidate['opportunity_id'])
+            if not opportunity or opportunity.owner_id!=owner or opportunity.location_id!=location_id or opportunity.status!='scheduled' or opportunity.location_version!=location.version or opportunity.preference_version!=preferences.version:return False
+            stage='advance_state' if candidate['alert_stage']=='advance' else 'visible_state'
+            if getattr(opportunity,stage)!='pending':return False
+            setattr(opportunity,stage,'sent')
+        db.commit()
         return True
 
 
@@ -155,6 +167,11 @@ def process_outbox(engine,token,deadline,send=send_push):
                 inbox=db.get(InboxNotification,row.inbox_id) if row.inbox_id else None
                 if not inbox or inbox.dismissed_at or not preferences_allow(db,row.owner_id,row.kind,row.subscription_id,row.location_id,now,row.target_id,row.category):
                     row.state='suppressed';row.devices=entries;db.commit();break
+                if row.opportunity_id:
+                    loc=db.get(ObservationLocation,row.location_id);pref=db.get(NotificationPreferences,row.owner_id)
+                    point=row.details.get('observer',{})
+                    if not loc or row.details.get('location_version')!=loc.version or any(float(point.get(key,999))!=float(getattr(loc,key)) for key in ('latitude','longitude')) or row.alert_stage=='advance' and row.details.get('warning_minutes')!=pref.advance_warning_minutes:
+                        row.state='suppressed';row.devices=entries;db.commit();break
                 item=next((item for item in entries if item['state'] in ('queued','retry') and item.get('next_at',0)<=now.timestamp()),None)
                 if item is None:
                     states={entry['state'] for entry in entries}
@@ -165,8 +182,8 @@ def process_outbox(engine,token,deadline,send=send_push):
                 if not device or device.owner_id!=row.owner_id:
                     item['state']='revoked';row.devices=entries;db.commit();continue
                 item['state']='sending';item['attempts']+=1;row.devices=entries;row.state='sending'
-                payload={'id':row.id,'title':inbox.title,'body': 'A genuine viewing or source update is available in your private OrbitWatch inbox.',
-                    'device_id':device.id,'kind':row.kind,'target_id':row.target_id,'expires_at':utc(row.expires_at).isoformat()}
+                payload={'id':row.id,'title':'OrbitWatch viewing update' if row.kind!='event' else 'OrbitWatch source update','body': 'A genuine viewing or source update is available in your private OrbitWatch inbox.',
+                    'device_id':device.id,'kind':row.kind,'target_id':row.target_id,'notification_id':inbox.id,'expires_at':utc(row.expires_at).isoformat()}
                 ttl=int((utc(row.expires_at)-now).total_seconds());device=SimpleNamespace(id=device.id,encrypted_subscription=device.encrypted_subscription)
                 db.commit()  # Never send from an uncommitted notification or intent.
             outcome='unknown';retry=0;invalid=False
@@ -210,14 +227,14 @@ def evaluate_owner(engine,token,owner,now,deadline,events):
     for sub,location in pairs:
         if time.monotonic()>=owner_deadline or generated>=5:break
         loc={'latitude':float(location.latitude),'longitude':float(location.longitude),'timezone':location.timezone}
-        # Only two hours are needed for 10/30/60-minute advance notifications.
-        # This reuses the preview engine while avoiding 24-hour work per run.
-        result=prediction(sub.kind,sub.target_id,records.get(sub.target_id),loc,now,2,None)
-        if astronomy_candidate(sub.kind,sub.target_id,sub.target_name,result,location,pref,now) is None:continue
-        if location.id not in weather:
-            weather[location.id]=forecast(loc['latitude'],loc['longitude'])
-        candidate=astronomy_candidate(sub.kind,sub.target_id,sub.target_name,result,location,pref,now,weather.get(location.id))
-        if candidate:generated+=persist(engine,token,owner,sub.id,location.id,candidate,now)
+        record=records.get(sub.target_id)
+        with Session(engine) as db:
+            ready=db.scalar(select(ViewingOpportunity.id).where(ViewingOpportunity.owner_id==owner,ViewingOpportunity.subscription_id==sub.id,ViewingOpportunity.location_id==location.id,ViewingOpportunity.location_version==location.version,ViewingOpportunity.preference_version==pref.version,ViewingOpportunity.source_key==source_key(sub.kind,sub.target_id,record),ViewingOpportunity.status=='scheduled',ViewingOpportunity.refresh_at>now,ViewingOpportunity.end_at>now))
+        if ready: continue
+        result=shared_prediction(engine,sub.kind,sub.target_id,record,loc,now,6)
+        with Session(engine) as db:
+            fence(db,token)
+            schedule_result(db,owner,sub,location,pref,record,result,now);db.commit()
     if pref.natural_event_alerts:
         by_category={sub.target_id:sub for sub in subscriptions if sub.kind=='event'}
         with Session(engine) as db:
@@ -235,6 +252,49 @@ def evaluate_owner(engine,token,owner,now,deadline,events):
                 candidate=event_candidate(event,location,pref.event_radius_km,now,previous)
                 if candidate:
                     generated+=persist(engine,token,owner,sub.id,location.id,candidate,now);break
+    return generated
+
+
+def dispatch_opportunities(engine,token,deadline):
+    """Indexed lightweight due dispatch on every tick, independent of planning."""
+    now=now_utc();generated=0;weather={}
+    with Session(engine) as db:
+        rows=list(db.scalars(select(ViewingOpportunity.id).where(ViewingOpportunity.status=='scheduled',ViewingOpportunity.end_at>now,
+            or_((ViewingOpportunity.advance_state=='pending')&(ViewingOpportunity.advance_due_at<=now),(ViewingOpportunity.visible_state=='pending')&(ViewingOpportunity.visible_due_at<=now))).order_by(ViewingOpportunity.visible_due_at).limit(100)))
+    for identity in rows:
+        if time.monotonic()>=deadline: break
+        with Session(engine) as db:
+            row=db.get(ViewingOpportunity,identity);pref=db.get(NotificationPreferences,row.owner_id);loc=db.get(ObservationLocation,row.location_id)
+            if not loc or not pref:continue
+            record=db.scalar(select(SatelliteOrbitalData).where(SatelliteOrbitalData.norad_id==int(row.target_id))) if row.kind=='satellite' else None
+            if row.location_version!=loc.version or row.preference_version!=pref.version or row.source_key!=source_key(row.kind,row.target_id,record):
+                row.status='invalidated';db.commit();continue
+            if not preferences_allow(db,row.owner_id,row.kind,row.subscription_id,row.location_id,now,row.target_id,row.kind):
+                continue # Quiet hours may end before a future stage; never send late.
+            row=SimpleNamespace(**{column.name:getattr(row,column.name) for column in row.__table__.columns})
+            loc=SimpleNamespace(**{column.name:getattr(loc,column.name) for column in loc.__table__.columns})
+            pref=SimpleNamespace(**{column.name:getattr(pref,column.name) for column in pref.__table__.columns})
+            record=SimpleNamespace(**{key:getattr(record,key) for key in ('norad_id','object_name','epoch','source','tle_line1','tle_line2')}) if record else None
+        for stage in ('advance','visible_now'):
+            state='advance_state' if stage=='advance' else 'visible_state'
+            if getattr(row,state)!='pending':continue
+            start,end=utc(row.start_at),utc(row.end_at);due=start-timedelta(minutes=pref.advance_warning_minutes) if stage=='advance' else start
+            if now<due:continue
+            expiry=min(start,due+timedelta(minutes=10)) if stage=='advance' else min(end,start+timedelta(seconds=90))
+            if now>=expiry:
+                with Session(engine) as db:
+                    fence(db,token);current=db.get(ViewingOpportunity,identity);setattr(current,state,'missed');db.commit()
+                continue
+            geometry=instant_geometry(row.kind,row.target_id,record,vars(loc),now) if stage=='visible_now' else None
+            if stage=='visible_now' and geometry is None: candidate=None
+            else:
+                key=(loc.id,stage=='visible_now')
+                if key not in weather:weather[key]=forecast(float(loc.latitude),float(loc.longitude),max_age_seconds=900 if stage=='visible_now' else 3600)
+                candidate=opportunity_candidate(row,loc,pref,now,stage,weather[key],geometry)
+            if candidate:generated+=persist(engine,token,row.owner_id,row.subscription_id,loc.id,candidate,now)
+            elif stage=='visible_now':
+                with Session(engine) as db:
+                    fence(db,token);current=db.get(ViewingOpportunity,identity);setattr(current,state,'suppressed');db.commit()
     return generated
 
 
@@ -256,16 +316,28 @@ def run_once(engine=None,mode='once'):
                 if engine.dialect.name=='postgresql' and db.scalar(text('SELECT pg_database_size(current_database())'))>=299_000_000:
                     raise RuntimeError('Notification storage reserve reached')
                 state=db.get(NotificationRun,1);cursor=state.cursor_owner
+                plan_due=not state.last_planned_at or now-utc(state.last_planned_at)>=timedelta(minutes=5)
                 def batch(after):return list(db.scalars(select(NotificationPreferences.owner_id).where(NotificationPreferences.notifications_enabled.is_(True),NotificationPreferences.owner_id>after).order_by(NotificationPreferences.owner_id).limit(MAX_USERS)))
-                owners=batch(cursor) or batch(0)
-            events=current_events(schedule=False)['events'] if owners else []
+                owners=(batch(cursor) or batch(0)) if plan_due else []
+                db.execute(delete(ViewingOpportunity).where(ViewingOpportunity.end_at<now-timedelta(days=2)))
+                db.execute(update(ViewingOpportunity).where(ViewingOpportunity.status=='scheduled',ViewingOpportunity.end_at<=now).values(status='ended',
+                    advance_state=case((ViewingOpportunity.advance_state=='pending','missed'),else_=ViewingOpportunity.advance_state),visible_state=case((ViewingOpportunity.visible_state=='pending','missed'),else_=ViewingOpportunity.visible_state)))
+                db.execute(delete(VisibilityPlan).where(VisibilityPlan.expires_at<now));db.commit()
+            generated+=dispatch_opportunities(engine,token,min(deadline-8,time.monotonic()+15))
+            provider_requests=os.getenv('ORBITWATCH_NOTIFICATION_PROVIDER_REQUESTS','false').lower()=='true'
+            with Session(engine) as db:
+                event_needed=bool(owners and db.scalar(select(AlertSubscription.id).join(NotificationPreferences,NotificationPreferences.owner_id==AlertSubscription.owner_id).where(AlertSubscription.owner_id.in_(owners),AlertSubscription.kind=='event',NotificationPreferences.natural_event_alerts.is_(True)).limit(1)))
+            events=current_events(schedule=provider_requests,refresh_providers=('eonet','gdacs','usgs'))['events'] if event_needed else []
             for owner in owners:
                 if time.monotonic()>=deadline-8:break
                 generated+=evaluate_owner(engine,token,owner,now,deadline-8,events);evaluated+=1;cursor=owner
+            generated+=dispatch_opportunities(engine,token,deadline-5)
             process_outbox(engine,token,deadline)
             with Session(engine) as db:
                 state=fence(db,token);state.cursor_owner=cursor;state.last_success_at=now_utc();state.lease_until=None;state.token=None
-                state.evaluated=evaluated;state.generated=generated;state.last_error=None;db.commit()
+                state.evaluated=evaluated;state.generated=generated;state.last_error=None
+                if plan_due:state.last_planned_at=now
+                db.commit()
             return {'state':'completed','evaluated':evaluated,'generated':generated}
         except BaseException as error:
             try:

@@ -30,7 +30,7 @@ def status(response:Response,user:User=Depends(get_current_user),database:Sessio
     with account_storage(database):
         row=database.get(NotificationRun,1);now=datetime.now(timezone.utc)
         config=configuration();last=utc(row.last_success_at) if row else None
-        recent=bool(last and now-timedelta(minutes=12)<=last<=now+timedelta(minutes=1))
+        recent=bool(last and now-timedelta(seconds=120 if row.mode=='loop' else 720)<=last<=now+timedelta(minutes=1))
         devices=list(database.scalars(select(PushDevice).where(PushDevice.owner_id==user.id).order_by(PushDevice.created_at)))
         counts=dict(database.execute(select(NotificationDelivery.state,func.count()).where(NotificationDelivery.owner_id==user.id).group_by(NotificationDelivery.state)).all())
         return {'scheduler_state':'recent_success' if recent else 'stale' if last else 'not_operational',
@@ -44,6 +44,7 @@ def status(response:Response,user:User=Depends(get_current_user),database:Sessio
 def subscribe(body:PushInput,response:Response,user:User=Depends(get_current_user),database:Session=Depends(get_database_session)):
     response.headers['Cache-Control']='no-store'
     if not body.consent:raise HTTPException(422,'Explicit browser notification consent is required')
+    if body.expirationTime is not None and body.expirationTime<=datetime.now(timezone.utc).timestamp()*1000:raise HTTPException(422,'Push subscription has expired')
     if not configuration():raise HTTPException(503,'Browser push not configured')
     try:value=validate_subscription(body.model_dump(exclude={'consent','expirationTime'}))
     except (ValueError,TypeError):raise HTTPException(422,'Invalid or unsupported push subscription') from None

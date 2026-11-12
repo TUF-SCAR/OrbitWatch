@@ -301,12 +301,13 @@ export default function App({ currentUser, onLogout, hudActive = true, onSceneRe
   useEffect(()=>{
     function openFromPush(){
       setProfileTab('notifications');setLayers(current=>current.includes('profile')?current:[...current,'profile']);
+      const notice=new URLSearchParams(window.location.search).get('notice');if(notice)account.owner.openNotice(notice);
       window.history.replaceState({},'',window.location.pathname);
     }
     window.addEventListener('orbitwatch:notification-open',openFromPush);
-    if(new URLSearchParams(window.location.search).get('notifications')==='1')window.history.replaceState({},'',window.location.pathname);
+    if(new URLSearchParams(window.location.search).get('notifications')==='1')openFromPush();
     return()=>window.removeEventListener('orbitwatch:notification-open',openFromPush);
-  },[]);
+  },[account.owner]);
   function focusSelected() { if (globeRef.current?.focusSelected()) setCameraFollowing(false); }
   function followSelected() { setCameraFollowing(Boolean(globeRef.current?.followSelected())); }
   function toggleSelectedOrbit() {

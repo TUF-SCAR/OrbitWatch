@@ -125,12 +125,12 @@ def revalidate(provider):
         future.add_done_callback(lambda job:job.exception())
 
 
-def current_events(schedule=True):
+def current_events(schedule=True,refresh_providers=None):
     events=[];forecasts=[];providers={};usable=0;now=time.time()
     for provider,store in stores.items():
         cached=store.get('feed');age=max(0,now-cached['validated_at']) if cached else None
         ttl=freshness_seconds(provider,cached) if cached else 0
-        if schedule and (age is None or age>=ttl):revalidate(provider)
+        if schedule and (refresh_providers is None or provider in refresh_providers) and (age is None or age>=ttl):revalidate(provider)
         gate=store.gate(provider);future=pending.get(provider)
         with store.lease() as free:busy=not free
         active=(future is not None and not future.done()) or busy

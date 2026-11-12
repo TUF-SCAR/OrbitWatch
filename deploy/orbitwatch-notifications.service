@@ -5,22 +5,28 @@ After=network-online.target
 
 [Service]
 Type=simple
-User=orbitwatch
-Group=orbitwatch
-WorkingDirectory=/opt/orbitwatch
-EnvironmentFile=/etc/orbitwatch/notifications.env
+User=ubuntu
+Group=ubuntu
+WorkingDirectory=/home/ubuntu/OrbitWatch
+EnvironmentFile=/home/ubuntu/OrbitWatch/backend/.env
 # Same persistent ingestion host, application checkout and cache volume as API.
 # Environment file supplies DATABASE_URL, JWT_SECRET_KEY, VAPID keys, Fernet key.
 # Keep ORBITWATCH_NOTIFICATION_PROVIDER_REQUESTS=false unless explicitly running
 # on that host with ORBITWATCH_NOTIFICATION_HOST_ID and shared weather cache.
-ExecStart=/opt/orbitwatch/.venv/bin/python backend/run_notifications.py --loop
+ExecStart=/home/ubuntu/OrbitWatch/.venv/bin/python backend/run_notifications.py --loop
+Environment=OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 PYTHONUNBUFFERED=1
 Restart=on-failure
 RestartSec=30
-TimeoutStopSec=15
+TimeoutStopSec=70
 KillSignal=SIGTERM
 NoNewPrivileges=true
 PrivateTmp=true
 UMask=0077
+MemoryHigh=256M
+MemoryMax=384M
+CPUQuota=35%
+Nice=10
+TasksMax=24
 
 [Install]
 WantedBy=multi-user.target

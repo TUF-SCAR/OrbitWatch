@@ -9,6 +9,7 @@ from services.natural_event_data import date
 from services.visibility_forecast import match_forecast
 from services.event_geometry import proximity
 from services.event_policy import severity as event_severity
+from services.viewing_score import assessment,compass,equipment
 
 
 def quiet(preferences,locations,now):
@@ -60,6 +61,41 @@ def astronomy_candidate(kind,identity,name,result,location,preferences,now,datas
                 'warning_minutes':preferences.advance_warning_minutes,
                 'observer':(float(location.latitude),float(location.longitude),location.timezone,getattr(location,'version',None))}
     return None
+
+
+def opportunity_candidate(opportunity,location,preferences,now,stage,dataset,geometry=None):
+    """Two independent stages. Missing forecast permits qualified advance only.
+
+    Visible Now requires a <=15-minute retrieved forecast, a matching hourly
+    slot, fresh instantaneous geometry and dispatch within90s of useful start.
+    """
+    start,end=utc(opportunity.start_at),utc(opportunity.end_at)
+    due=start-timedelta(minutes=preferences.advance_warning_minutes)
+    if stage=='advance' and not due<=now<min(start,due+timedelta(minutes=10)): return None
+    if stage=='visible_now' and not start<=now<min(end,start+timedelta(seconds=90)): return None
+    details=opportunity.details;window=details['window']
+    if geometry is None:
+        geometry={'altitude_degrees':window.get('max_elevation_degrees'),'azimuth_degrees':window.get('start_azimuth_degrees',window.get('azimuth_degrees')),
+                  'sun_altitude_degrees':window.get('sun_altitude_degrees'),'sunlit':window.get('sunlit',window.get('sunlit_at_maximum'))}
+    allowed,weather=weather_allowed(dataset,now if stage=='visible_now' else start,now)
+    if stage=='visible_now' and (not dataset or now.timestamp()-dataset.get('retrieved_epoch',0)>900 or weather['state']!='available'): return None
+    score=assessment(opportunity.kind,opportunity.target_id,geometry,weather)
+    if not allowed or not score['eligible_geometry']: return None
+    name=details['target_name'];direction=score['direction']
+    title=f'{name} may be visible now' if stage=='visible_now' else f'{name} may be visible in {max(1,math.ceil((start-now).total_seconds()/60))} minutes'
+    local=start.astimezone(ZoneInfo(location.timezone)).strftime('%d %b %H:%M %Z')
+    weather_text=f"Forecast cloud {weather['cloud_cover_percent']}%." if weather['state']=='available' else 'Forecast unavailable; conditions uncertain.'
+    message=f"{location.name} · {local}. {'Look '+direction+'. ' if direction else ''}Maximum {window['max_elevation_degrees']:.0f}°. {weather_text} {equipment(opportunity.kind,opportunity.target_id)}"
+    snapshot={**details,'stage':stage,'assessment':score,'weather':weather,'geometry':geometry,'calculated_at':now.isoformat(),
+              'start_utc':start.isoformat(),'peak_utc':utc(opportunity.peak_at).isoformat(),'end_utc':end.isoformat(),'warning_minutes':preferences.advance_warning_minutes,
+              'location_version':location.version,'source_key':opportunity.source_key,'sampling_precision_seconds':window.get('segment_precision_seconds',120),
+              'uncertainty':'Weather is a model forecast. Brightness, terrain, refraction and local light pollution can prevent observation.'}
+    return {'kind':opportunity.kind,'target_id':opportunity.target_id,'category':opportunity.kind,'title':title[:120],'message':message[:400],
+            'opportunity_at':start,'expires_at':end,'push_expires_at':min(start,due+timedelta(minutes=10)) if stage=='advance' else min(end,start+timedelta(seconds=90)),
+            'source_at':date(details.get('element_epoch')) or date(details.get('computed_at')) or now,
+            'key':f'opportunity:{opportunity.id}:{stage}','severity':None,'source_url':None,'opportunity_id':opportunity.id,'alert_stage':stage,'details':snapshot,
+            'warning_minutes':preferences.advance_warning_minutes if stage=='advance' else None,
+            'observer':(float(location.latitude),float(location.longitude),location.timezone,location.version)}
 
 
 def event_candidate(event,location,radius,now,previous_severity=None):

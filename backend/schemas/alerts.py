@@ -64,3 +64,6 @@ class InboxItem(BaseModel):
     destination: dict
     source_url: str | None = None
     delivery_state: str | None = None
+    alert_stage: str | None = None
+    opportunity_id: str | None = None
+    viewing_details: dict | None = None

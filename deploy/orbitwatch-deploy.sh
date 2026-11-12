@@ -23,6 +23,9 @@ APP=/home/ubuntu/OrbitWatch
 PY="$APP/.venv/bin/python"
 ENV="$APP/backend/.env"
 SERVICE=orbitwatch
+WORKER=orbitwatch-notifications
+# Verified existing Supabase target; changing projects requires a reviewed release.
+EXPECTED_DATABASE_FINGERPRINT=91629c91746ef7a1
 
 # Git operations run without root and never touch .env or .runtime.
 git_as_ubuntu() { runuser -u ubuntu -- git -C "$APP" "$@"; }
@@ -43,16 +46,14 @@ fi
 
 git_as_ubuntu cat-file -e "${TARGET}^{commit}"
 PREVIOUS="$(git_as_ubuntu rev-parse HEAD)"
-if [[ "$PREVIOUS" == "$TARGET" ]]; then
-  echo "Already on commit $TARGET; nothing to deploy"
-  exit 0
-fi
 
 # Compare the server's deployed revision, not only HEAD^ on GitHub:
 # this catches dependency changes even when earlier deployments were missed.
-if git_as_ubuntu diff --quiet "$PREVIOUS" "$TARGET" -- backend/; then
+if [[ "$PREVIOUS" != "$TARGET" ]] && git_as_ubuntu diff --quiet "$PREVIOUS" "$TARGET" -- backend/ deploy/ .github/workflows/deploy-backend.yml; then
   echo 'No backend changes; synchronizing Git checkout without restarting FastAPI.'
   git_as_ubuntu reset --hard "$TARGET"
+  systemctl is-active --quiet "$WORKER"
+  runuser -u ubuntu -- bash -c "cd '$APP/backend' && '$PY' notification_health.py --require-worker --require-push"
   exit 0
 fi
 
@@ -66,10 +67,19 @@ fi
 echo "Requirements changed since server revision: $REQUIREMENTS_CHANGED"
 
 SWITCHED=0
+WORKER_WAS_ACTIVE=0
+WORKER_WAS_ENABLED=0
+systemctl is-active --quiet "$WORKER" && WORKER_WAS_ACTIVE=1
+systemctl is-enabled --quiet "$WORKER" && WORKER_WAS_ENABLED=1
+WORKER_BACKUP="$(mktemp)"
+if [[ -f "/etc/systemd/system/$WORKER.service" ]]; then
+  cp "/etc/systemd/system/$WORKER.service" "$WORKER_BACKUP"
+fi
 on_failure() {
   local result=$?
   trap - ERR
   if [[ "$SWITCHED" == 1 ]]; then
+    systemctl stop "$WORKER" || true
     echo "Deployment failed (status $result), restoring code at $PREVIOUS" >&2
     git_as_ubuntu reset --hard "$PREVIOUS" || true
     if [[ "$REQUIREMENTS_CHANGED" == 1 ]]; then
@@ -79,15 +89,23 @@ on_failure() {
         -r "$APP/backend/requirements.txt" || true
     fi
     systemctl restart "$SERVICE" || true
+    if [[ -s "$WORKER_BACKUP" ]]; then
+      install -o root -g root -m 644 "$WORKER_BACKUP" "/etc/systemd/system/$WORKER.service"
+      systemctl daemon-reload
+    fi
+    if [[ "$WORKER_WAS_ENABLED" == 0 ]]; then systemctl disable "$WORKER" || true; fi
+    if [[ "$WORKER_WAS_ACTIVE" == 1 ]]; then systemctl restart "$WORKER" || true; fi
     if curl -fsS --max-time 7 http://127.0.0.1:8000/health/ready >/dev/null; then
       echo 'Previous backend restored and ready.' >&2
     else
       echo 'Warning: rollback health check unsuccessful; inspect service manually.' >&2
     fi
   fi
+  rm -f "$WORKER_BACKUP"
   exit "$result"
 }
 trap on_failure ERR
+if [[ "$WORKER_WAS_ACTIVE" == 1 ]]; then systemctl stop "$WORKER"; fi
 
 # The .env, persistent .runtime caches, .venv and user-created untracked files
 # remain untouched. Changes to tracked code are controlled by GitHub main.
@@ -110,6 +128,16 @@ runuser -u ubuntu -- "$PY" -m compileall -q "$APP/backend"
 runuser -u ubuntu -- bash -c \
   "cd '$APP/backend' && '$PY' -c 'import main'"
 
+# Explicit additive schema admission/target checks. No create_all or user seeding.
+# New empty tables/columns safely remain if application code needs rollback.
+runuser -u ubuntu -- bash -c \
+  "cd '$APP/backend' && '$PY' apply_account_migrations.py --apply --expected-target '$EXPECTED_DATABASE_FINGERPRINT'"
+runuser -u ubuntu -- bash -c \
+  "cd '$APP/backend' && '$PY' configure_notifications.py --configure --expected-target '$EXPECTED_DATABASE_FINGERPRINT'"
+install -o root -g root -m 644 "$APP/deploy/orbitwatch-notifications.service" "/etc/systemd/system/$WORKER.service"
+systemctl daemon-reload
+systemctl enable "$WORKER"
+
 systemctl restart "$SERVICE"
 
 healthy=0
@@ -127,6 +155,22 @@ if [[ "$healthy" == 0 ]]; then
   false
 fi
 
+systemctl restart "$WORKER"
+worker_healthy=0
+for attempt in $(seq 1 40); do
+  if systemctl is-active --quiet "$WORKER" && runuser -u ubuntu -- bash -c \
+    "cd '$APP/backend' && '$PY' notification_health.py --require-worker --require-push"; then
+    worker_healthy=1
+    break
+  fi
+  sleep 3
+done
+if [[ "$worker_healthy" == 0 ]]; then
+  echo 'Notification worker/schema/push readiness check failed' >&2
+  false
+fi
+
 SWITCHED=0
 trap - ERR
-echo "Successfully deployed $TARGET, health/live and health/ready OK"
+rm -f "$WORKER_BACKUP"
+echo "Successfully deployed $TARGET, API ready and notification worker heartbeat/push configuration verified"

@@ -13,16 +13,19 @@ function start(executable,args,cwd,env,name){
  child.stdout.pipe(fs.createWriteStream(path.join(out,name+'.log')));child.stderr.pipe(fs.createWriteStream(path.join(out,name+'-errors.log')));return child;
 }
 function cleanup(){for(const child of servers){if(child.pid){if(process.platform==='win32')spawnSync('taskkill',['/pid',String(child.pid),'/t','/f'],{windowsHide:true,stdio:'ignore'});else child.kill('SIGTERM');}}}
-async function ready(url){for(let i=0;i<60;i++){try{const r=await fetch(url,{signal:AbortSignal.timeout(1500)});if(r.ok)return;}catch{}await new Promise(r=>setTimeout(r,500));}throw Error('Isolated QA service did not become ready: '+url);}
+async function ready(url){for(let i=0;i<240;i++){try{const r=await fetch(url,{signal:AbortSignal.timeout(1500)});if(r.ok)return;}catch{}await new Promise(r=>setTimeout(r,500));}throw Error('Isolated QA service did not become ready: '+url);}
 async function test(file){return new Promise((resolve,reject)=>{const child=spawn(process.execPath,[file],{cwd:root,env:process.env,windowsHide:true,stdio:'inherit'});child.on('error',reject);child.on('exit',code=>code===0?resolve():reject(Error(file+' exited '+code)));});}
 process.on('SIGINT',()=>{cleanup();process.exit(130);});process.on('SIGTERM',()=>{cleanup();process.exit(143);});
 (async()=>{
- const selection=process.argv[2]||'all';if(!['all','grid','journeys'].includes(selection))throw Error('Choose all, grid or journeys');
+ const selection=process.argv[2]||'all';if(!['all','grid','journeys','mobile'].includes(selection))throw Error('Choose all, grid, journeys or mobile');
  start(path.join(root,'backend/.venv/Scripts/python.exe'),['tests/check_notification_delivery.py','--serve'],root,{...process.env,ORBITWATCH_QA_INFRARED_CACHE:path.join(root,'.setup-cache/infrared-provider-qa')},'owned-backend');
- start(process.execPath,['node_modules/vite/bin/vite.js','--config',path.join(root,'.setup-cache/responsive-vite.config.mjs')],path.join(root,'frontend'),{...process.env,VITE_API_BASE_URL:'http://127.0.0.1:8001'},'owned-vite');
+ start(process.execPath,['node_modules/vite/bin/vite.js','--config',path.join(root,'.setup-cache/responsive-vite.config.mjs')],path.join(root,'frontend'),{...process.env,VITE_API_BASE_URL:'http://127.0.0.1:8001',VITE_CESIUM_ION_TOKEN:''},'owned-vite');
  await Promise.all([ready('http://127.0.0.1:8001/health/live'),ready('http://127.0.0.1:5174')]);
  if(servers.some(child=>child.exitCode!==null))throw Error('A QA server exited; inspect the owned server logs instead of reusing another process');
  console.log('Isolated backend and actual Vite application are ready');
+ if(selection==='mobile')await test('tests/check_mobile_ui.cjs');
+ else {
  if(selection!=='journeys')await test('tests/check_responsive.cjs');
  if(selection!=='grid')await test('tests/check_responsive_journeys.cjs');
+ }
 })().catch(error=>{console.error(error);process.exitCode=1;}).finally(cleanup);

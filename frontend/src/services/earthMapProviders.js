@@ -1,5 +1,6 @@
 import { createWorldImageryAsync, IonWorldImageryStyle, UrlTemplateImageryProvider } from "cesium";
 import { localEarthReferenceProvider, nasaReferenceProvider } from "./nasaImagery.js";
+import {STREET_MAP} from './streetMapConfig.js';
 
 export function earthMapForMode(mode,map) {
   // Google photorealistic loading currently owns a Live-only lifecycle. Time
@@ -18,7 +19,7 @@ export function createEarthMapFactories({ionToken,cartoKey}={}) {
     'bing-labels':labels=>ion(labels ? IonWorldImageryStyle.AERIAL_WITH_LABELS : IonWorldImageryStyle.AERIAL),
     'bing-road':()=>ion(IonWorldImageryStyle.ROAD),
     esri:()=>new UrlTemplateImageryProvider({url:'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',credit:'Esri World Imagery · Esri / Maxar / Earthstar Geographics / GIS community',maximumLevel:19}),
-    osm:()=>new UrlTemplateImageryProvider({url:'https://tile.openstreetmap.org/{z}/{x}/{y}.png',credit:'© OpenStreetMap contributors',maximumLevel:19}),
+    osm:()=>new UrlTemplateImageryProvider({url:STREET_MAP.url,credit:STREET_MAP.credit,maximumLevel:STREET_MAP.maximumLevel}),
     'carto-dark':labels=>carto(labels ? 'dark_all' : 'dark_nolabels'),
     'carto-voyager':labels=>carto(`rastertiles/${labels ? 'voyager' : 'voyager_nolabels'}`),
     'nasa-reference':()=>({provider:nasaReferenceProvider(),details:{kind:'reference',observationDate:null,message:'NASA Blue Marble · fixed nonhistorical reference composite; not selected-date observations, live weather or current photography.'}}),

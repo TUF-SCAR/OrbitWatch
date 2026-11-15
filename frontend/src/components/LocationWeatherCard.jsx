@@ -2,6 +2,8 @@ import {MapPin,X} from 'lucide-react';
 import ResponsivePanel from './ResponsivePanel.jsx';
 import {weatherCondition,weatherMeasurement,weatherTime} from '../utils/weatherFormatters.js';
 import {solarLight} from '../services/solarLight.js';
+import PhoneInspector from './PhoneInspector.jsx';
+import {usePhoneUI} from '../utils/usePhoneUI.js';
 
 export function LocationWeatherDetails({weather}) {
   const {data,selection,state,freshness,error,retry,retryAt,clock,waitingUntil}=weather;
@@ -21,10 +23,15 @@ export function LocationWeatherDetails({weather}) {
   </div>;
 }
 
-export default function LocationWeatherCard({weather,onSaveLocation}) {
+export default function LocationWeatherCard({weather,onSaveLocation,inactive,onActivate}) {
+  const phone=usePhoneUI();
   const selection=weather.selection;
   if(!selection)return null;
   const coordinates=`${selection.latitude.toFixed(2)}°, ${selection.longitude.toFixed(2)}°`;
+  if(phone)return <PhoneInspector key={`${selection.latitude}:${selection.longitude}`} side="left" title={selection.name||'Selected location'} label="location weather" onClose={weather.clear} inactive={inactive} onActivate={onActivate}
+   summary={weather.data?<><strong>{weatherMeasurement(weather.data,'temperature_2m')}</strong> · {weatherCondition(weather.data.values.weather_code)}<small>{weather.freshness==='stale'?'Cached · stale':'Current model'} · {weatherTime(weather.data.valid_at)}</small></>:<span>{weather.state==='loading'?'Loading weather…':weather.error||'Weather unavailable.'}{weather.state!=='loading'&&<button onClick={weather.retry} disabled={weather.retryAt>weather.clock}>Retry</button>}</span>}>
+   <LocationWeatherDetails weather={weather}/><p>{coordinates}{selection.country?` · ${selection.country}`:''}</p>{onSaveLocation&&<button onClick={()=>onSaveLocation({...selection,name:selection.name||'Observation location'})}>Save this location</button>}
+  </PhoneInspector>;
   return <ResponsivePanel onDismiss={weather.clear} as="aside" side="left" strength={1} className="location-weather-card hud-panel" aria-label="Location weather inspector" onKeyDown={event=>{if(event.key==='Escape'){event.preventDefault();event.stopPropagation();weather.clear();}}}>
     <header><div><span className="eyebrow"><MapPin size={14}/> EARTH WEATHER</span><h2>{selection.name||coordinates}</h2>{selection.name&&<small>{coordinates}{selection.country?` · ${selection.country}`:''}</small>}</div><button className="icon-button" aria-label="Close location weather" onClick={weather.clear}><X size={18}/></button></header>
     <div className="hud-panel__body"><LocationWeatherDetails weather={weather}/>

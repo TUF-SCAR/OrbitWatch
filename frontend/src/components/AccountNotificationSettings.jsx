@@ -1,5 +1,7 @@
 import NotificationDelivery from './NotificationDelivery.jsx';
-import {useState} from 'react';
+import {lazy,Suspense,useState} from 'react';
+import {usePhoneUI} from '../utils/usePhoneUI.js';
+const MobileLocationPicker=lazy(()=>import('./MobileLocationPicker.jsx'));
 import './AccountNotificationSettings.css';
 
 function ZoneInput({id,value,onChange,required=false}) {
@@ -9,6 +11,7 @@ const zones=typeof Intl.supportedValuesOf==='function'?Intl.supportedValuesOf('t
 
 export default function AccountNotificationSettings({account,section='all'}) {
   const {state,owner}=account,[removing,setRemoving]=useState(null);
+  const phone=usePhoneUI();
   const {locations,preferences,preferenceDraft:form,locationDraft:draft,busy,phase}=state;
   const ready=phase==='ready',disabled=busy||!ready;
   return <div className="account-foundation" aria-busy={busy||phase==='loading'}>
@@ -31,7 +34,8 @@ export default function AccountNotificationSettings({account,section='all'}) {
         {removing===row.id&&<div className="account-remove"><p>Remove {row.name}? If it is the default, the oldest remaining saved location becomes the default. Removing the last location disables quiet hours that use its timezone.</p><button type="button" disabled={disabled} onClick={async()=>{await owner.removeLocation(row);setRemoving(null);}}>Confirm remove</button><button type="button" disabled={busy} onClick={()=>setRemoving(null)}>Keep location</button></div>}
       </li>)}</ul>
       {!draft&&<button type="button" disabled={disabled||locations.length>=5} onClick={()=>owner.startNew()}>Add location</button>}
-      {draft&&<form className="account-form" aria-label={draft.id?'Edit observation location':'Add observation location'} onSubmit={event=>{event.preventDefault();owner.saveLocation();}}>
+      {draft&&phone&&<Suspense fallback={<p role="status">Opening street map…</p>}><MobileLocationPicker account={account}/></Suspense>}
+      {draft&&!phone&&<form className="account-form" aria-label={draft.id?'Edit observation location':'Add observation location'} onSubmit={event=>{event.preventDefault();owner.saveLocation();}}>
         <fieldset disabled={disabled}><legend>{draft.id?'Edit location':'Add location'}</legend>
           <label htmlFor="account-location-name">Location name</label><input id="account-location-name" maxLength={80} required value={draft.name} onChange={event=>owner.changeLocation({name:event.target.value})}/>
           <div className="account-coordinate-row"><div><label htmlFor="account-latitude">Latitude</label><input id="account-latitude" type="number" step="0.000001" min="-90" max="90" required value={draft.latitude} onChange={event=>owner.changeLocation({latitude:event.target.value})}/></div>

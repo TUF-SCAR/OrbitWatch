@@ -6,7 +6,10 @@ import { getSatelliteModelUrl } from "../data/satelliteModels.js";
 import { formatAltitude, formatCoordinate, formatUtcTime } from "../utils/spaceFormatters.js";
 import { getObjectReferenceUrl } from "../data/objectReferences.js";
 import { OBJECT_PHOTOS } from "../data/objectPhotos.js";
-export default function InspectorPanel({ object, telemetry, telemetryError, cameraFollowing, rendered, orbitVisible, onClose, onFocus, onFollow, onReleaseCamera, onToggleOrbit, preview3d, orbitDescription, orbitMetadata, coverageUnavailable = false, historical = false, historyStatus }) {
+import PhoneInspector from './PhoneInspector.jsx';
+import {usePhoneUI} from '../utils/usePhoneUI.js';
+export default function InspectorPanel({ object, telemetry, telemetryError, cameraFollowing, rendered, orbitVisible, onClose, onFocus, onFollow, onReleaseCamera, onToggleOrbit, preview3d, orbitDescription, orbitMetadata, coverageUnavailable = false, historical = false, historyStatus,onBack,inactive,onActivate }) {
+  const phone=usePhoneUI();
   const [photoFailed, setPhotoFailed] = useState(false);
   const [modelFailed, setModelFailed] = useState(false);
   const [previewTab, setPreviewTab] = useState(preview3d ? "model" : "photo");
@@ -16,6 +19,14 @@ export default function InspectorPanel({ object, telemetry, telemetryError, came
   const model = getSatelliteModelUrl(object);
   const referenceUrl = getObjectReferenceUrl(object);
   const epochOffset = orbitMetadata?.tle_age_seconds;
+  if(phone)return <PhoneInspector side="right" title={object.name} label="satellite inspector" onClose={onClose} onBack={onBack} inactive={inactive} onActivate={onActivate}
+   summary={<><span>{formatAltitude(telemetry?.altitude_km)} · {telemetry?formatUtcTime(telemetry.timestamp):coverageUnavailable?historyStatus==='loading'?'Loading archive…':'No valid archive coverage':telemetryError?'Telemetry unavailable':'Loading telemetry…'}</span></>}
+   actions={<><button onClick={onFocus} disabled={!rendered}>Focus</button><button onClick={cameraFollowing?onReleaseCamera:onFollow} disabled={!rendered}>{cameraFollowing?'Release':'Follow'}</button><button onClick={onToggleOrbit} disabled={!rendered}>{orbitVisible?'Hide orbit':'Show orbit'}</button></>}>
+   <p>{object.category} · NORAD {object.noradId}</p>
+   {photo&&!photoFailed?<figure><img src={photo.url} alt={photo.alt} onError={()=>setPhotoFailed(true)}/><figcaption><a href={photo.source} target="_blank" rel="noreferrer">{photo.credit} · Reference photograph</a></figcaption></figure>:<p className="phone-photo-unavailable">Official photograph unavailable.</p>}
+   <dl>{[['Latitude',formatCoordinate(telemetry?.latitude,'N','S')],['Longitude',formatCoordinate(telemetry?.longitude,'E','W')],['Type',object.objectType],['Operator',object.operator],['Region',object.country],['Status',object.status],['Launched',object.launchDate],['Purpose',object.purpose],['Source',telemetry?.orbital_source],['TLE epoch',telemetry?.tle_epoch],['Orbit',orbitDescription]].filter(([,v])=>v).map(([k,v])=><div key={k}><dt>{k}</dt><dd>{v}</dd></div>)}</dl>
+   <p>{coverageUnavailable?'No current satellite positions are substituted.':'Positions are propagated from orbital elements, not onboard telemetry.'}</p>{referenceUrl&&<a href={referenceUrl} target="_blank" rel="noreferrer">Mission reference ↗</a>}
+  </PhoneInspector>;
   return <ResponsivePanel onDismiss={onClose} as="aside" side="right" strength={4.5} className="inspector-panel hud-panel hud-panel--right" aria-label="Object inspector">
     <div className="inspector-panel__head hud-panel__header"><div><div className="eyebrow">OBJECT OVERVIEW</div><h1>{object.name}</h1></div><button className="icon-button" onClick={onClose} aria-label="Close inspector"><X size={20} /></button></div>
     <div className="hud-panel__body inspector-body">

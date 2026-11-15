@@ -238,9 +238,9 @@ def run(postgres=False,serve=False):
                     path=scope.get('path','')
                     cached_ir=infrared_cache and path.startswith('/api/weather/infrared/')
                     unavailable_science=(path.startswith('/api/satellites/') and path!='/api/satellites/catalog') or path.startswith('/api/historical/')
-                    if scope['type']=='http' and (unavailable_science or not cached_ir and (path.startswith('/api/weather') or path.startswith('/api/events'))):
+                    if scope['type']=='http' and scope.get('method')!='OPTIONS' and (unavailable_science or not cached_ir and (path.startswith('/api/weather') or path.startswith('/api/events'))):
                         from starlette.responses import JSONResponse
-                        return await JSONResponse({'detail':'Scientific providers/ingestion disabled in isolated browser fixture'},503)(scope,receive,send)
+                        return await JSONResponse({'detail':'Scientific providers/ingestion disabled in isolated browser fixture'},503,headers={'Access-Control-Allow-Origin':'http://127.0.0.1:5174'})(scope,receive,send)
                     return await app(scope,receive,send)
                 print('Disposable UI: delivery_fixture1 / Disposable-delivery-2026',flush=True)
                 uvicorn.run(isolated,host='127.0.0.1',port=8001,log_level='warning')

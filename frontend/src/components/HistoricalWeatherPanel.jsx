@@ -1,5 +1,7 @@
 import {Thermometer,X,MapPin} from 'lucide-react';
 import ResponsivePanel from './ResponsivePanel.jsx';
+import PhoneInspector from './PhoneInspector.jsx';
+import {usePhoneUI} from '../utils/usePhoneUI.js';
 import {HISTORICAL_FIELDS,hasHistoricalVariable} from '../services/historicalWeather.js';
 import WeatherScale from './WeatherScale.jsx';
 import './WeatherPanel.css';
@@ -47,10 +49,14 @@ export default function HistoricalWeatherPanel({open,onClose,weather,time,onNear
   </ResponsivePanel>;
 }
 
-export function HistoricalWeatherInspector({weather,time}){
+export function HistoricalWeatherInspector({weather,time,inactive,onActivate}){
+  const phone=usePhoneUI();
   if(!weather.selection)return null;
   const p=weather.selection,loc=weather.location,data=loc?.data;
   const measurement=(key,unit)=>Number.isFinite(data?.values?.[key])?`${data.values[key].toFixed(1)} ${unit}`:'Unavailable';
+  if(phone)return <PhoneInspector key={`${p.latitude}:${p.longitude}`} side="left" title={p.name||'Selected location'} label="historical weather" onClose={()=>weather.select(null)} inactive={inactive} onActivate={onActivate} summary={<>{loc?.error?'Archived values unavailable':!loc?'Loading stored weather…':`${measurement('temperature','°C')} · Reanalysis`}<small>{date(time)}</small></>}>
+   {loc?.error&&<button onClick={()=>weather.select({...p})}>Retry stored values</button>}<dl>{[['Temperature','temperature','°C'],['Cloud fraction','clouds','%'],['Humidity','humidity','%'],['Pressure','pressure','hPa'],['Wind','wind_speed','km/h'],['Preceding hour precipitation','precipitation','mm']].map(([label,key,unit])=><div key={key}><dt>{label}</dt><dd>{measurement(key,unit)}</dd></div>)}</dl><p>{p.latitude.toFixed(2)}°, {p.longitude.toFixed(2)}°</p><p>{attribution} · 1° display samples. Reconstructed atmosphere, not a station measurement.</p>
+  </PhoneInspector>;
   return <ResponsivePanel onDismiss={()=>weather.select(null)} as="aside" side="left" className="location-weather-card historical-location-card hud-panel" aria-label="Historical weather inspector">
     <header><div><span className="eyebrow"><MapPin size={14}/> HISTORICAL REANALYSIS</span><h2>{p.name||'Earth location'}</h2><small>{p.latitude.toFixed(2)}°, {p.longitude.toFixed(2)}°</small></div><button className="icon-button" aria-label="Close historical inspector" onClick={()=>weather.select(null)}><X size={18}/></button></header>
     <div className="hud-panel__body"><p className="weather-valid">{date(time)}</p>

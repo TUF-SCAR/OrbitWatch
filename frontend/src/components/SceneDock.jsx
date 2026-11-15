@@ -1,5 +1,6 @@
 import { Camera, Map, Orbit, Thermometer } from "lucide-react";
 import SpatialSurface from "./SpatialSurface.jsx";
+import {usePhoneDisclosure,usePhoneUI} from '../utils/usePhoneUI.js';
 
 export default function SceneDock({
   controls,
@@ -14,6 +15,13 @@ export default function SceneDock({
   onToggleWeather,
   historicalWeather=false,
 }) {
+  const phone=usePhoneUI(),[expanded,setExpanded]=usePhoneDisclosure('tools');
+  if(phone)return <aside className="phone-tools" aria-label="Scene controls"><button type="button" aria-expanded={expanded} onClick={()=>setExpanded(v=>!v)}>Tools</button>{expanded&&<div>
+   {!historicalWeather&&controls.map&&<button onClick={()=>{onToggleMap();setExpanded(false);}}><Map size={18}/> Map</button>}
+   {!historicalWeather&&controls.camera&&<button onClick={()=>{onToggleCamera();setExpanded(false);}}><Camera size={18}/> Camera</button>}
+   {controls.system&&<button onClick={()=>{onToggleSystem();setExpanded(false);}}><Orbit size={18}/> System</button>}
+   {weatherAvailable&&<button onClick={()=>{onToggleWeather();setExpanded(false);}}><Thermometer size={18}/> {historicalWeather?'Archive':'Weather'}</button>}
+  </div>}</aside>;
   return (
     <SpatialSurface as="aside" side="right" strength={3.1} className={`scene-dock ${weatherAvailable ? 'scene-dock--weather' : ''}`} aria-label="Scene controls">
       {controls.map ? (

@@ -1,6 +1,8 @@
 import { AnimatePresence } from "motion/react";
 import { CircleDot, Globe2, Moon, Navigation, Satellite, Sun, X } from "lucide-react";
 import ResponsivePanel from "./ResponsivePanel.jsx";
+import {useState} from 'react';
+import {usePhoneUI} from '../utils/usePhoneUI.js';
 
 const cameraPresets = [
   { id: "earth", label: "Earth", icon: Globe2 },
@@ -11,7 +13,7 @@ const cameraPresets = [
 ];
 
 export default function CameraMenu({ open, hasSelected, onPreset, onClose }) {
-
+  const phone=usePhoneUI(),[selected,setSelected]=useState(null);
   return (
     <AnimatePresence>{open && <ResponsivePanel onDismiss={onClose} as="aside" side="right" strength={2.5} className="camera-popover hud-panel hud-panel--right" aria-label="Camera angles">
       <div className="camera-popover__head hud-panel__header">
@@ -20,8 +22,8 @@ export default function CameraMenu({ open, hasSelected, onPreset, onClose }) {
       </div>
       <div className="camera-popover__grid hud-panel__body">
         {cameraPresets.map(({ id, label, icon: Icon }) => (
-          <button key={id} onClick={() => onPreset(id)} disabled={id === "selected" && !hasSelected}>
-            <Icon size={19} /><span>{label}</span>
+          <button key={id} aria-pressed={phone?selected===id:undefined} onClick={() => {setSelected(id);onPreset(id);}} disabled={id === "selected" && !hasSelected}>
+            <Icon size={19} /><span>{label}{phone&&id==='selected'&&!hasSelected&&<small>Select an object first</small>}</span>
           </button>
         ))}
       </div>

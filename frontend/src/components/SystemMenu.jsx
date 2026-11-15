@@ -4,6 +4,8 @@ import { ChevronLeft, ChevronRight, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { CELESTIAL_BODIES, CELESTIAL_GROUPS } from "../data/celestialBodies.js";
 import ResponsivePanel from "./ResponsivePanel.jsx";
+import {usePhoneUI} from '../utils/usePhoneUI.js';
+import PhoneSystemMap from './PhoneSystemMap.jsx';
 import "./SystemMenu.css";
 
 const PLANET_LAYOUT = [
@@ -39,6 +41,7 @@ function BodyRow({ body, active, onSelect }) {
 
 export default function SystemMenu({ open, activeBodyId, onSelectBody, onClose, mode = "live" }) {
   const reduced = useReducedMotionPreference();
+  const phone=usePhoneUI();
   const [storedPage, setPage] = useState("map");
   const [storedSystem, setSystemId] = useState(null);
   const page=storedPage,systemId=storedSystem;
@@ -81,7 +84,8 @@ export default function SystemMenu({ open, activeBodyId, onSelectBody, onClose, 
 
       <div className="system-menu__viewport">
         <div className="system-menu__track" data-page={page} style={reduced ? { transition: "none" } : undefined}>
-          <section className="system-slide system-slide--map" inert={page !== "map"}>
+          {(!phone||page==='map')&&<section className="system-slide system-slide--map" inert={page !== "map"}>
+            {phone?<PhoneSystemMap systemId={systemId} activeBodyId={activeBodyId} onSelect={onSelectBody} onBrowse={browseBody} onBack={()=>setSystemId(null)}/>:<>
             {systemId ? <>
               <button className="system-slide-back" onClick={() => setSystemId(null)}><ChevronLeft size={15} /> SOLAR SYSTEM</button>
               <div ref={mapRef} className="system-map subsystem-map">
@@ -137,10 +141,10 @@ export default function SystemMenu({ open, activeBodyId, onSelectBody, onClose, 
             {<button type="button" className="system-slide-next" onClick={() => setPage("catalog")}>
               ALL OBJECTS <ChevronRight size={14} />
             </button>}
-            <div className="system-map__note">SCHEMATIC UI MAP // REAL DISTANCES ARE USED IN THE 3D SCENE</div>
-          </section>
+            <div className="system-map__note">SCHEMATIC UI MAP // REAL DISTANCES ARE USED IN THE 3D SCENE</div></>}
+          </section>}
 
-          {<section className="system-slide system-slide--catalog" inert={page !== "catalog"}>
+          {(!phone||page==='catalog')&&<section className="system-slide system-slide--catalog" inert={page !== "catalog"}>
             <div className="system-catalog">
               {[
                 ["Star","STAR"],
@@ -160,7 +164,7 @@ export default function SystemMenu({ open, activeBodyId, onSelectBody, onClose, 
                         key={id}
                         body={CELESTIAL_BODIES[id]}
                         active={activeBodyId === id}
-                        onSelect={browseBody}
+                        onSelect={phone?onSelectBody:browseBody}
                       />
                     ))}
                   </div>

@@ -44,6 +44,7 @@ import { SPACE_OBJECTS } from "./data/spaceObjects.js";
 import { TIME_OBJECTS, timeSatelliteAllowed } from './data/timeExplorerCatalog.js';
 import { useHistoricalSatellites } from './services/useHistoricalSatellites.js';
 import { navigationVisibility, PRODUCT_MODES, celestialDestinationAllowed } from "./utils/navigationVisibility.js";
+import {usePhoneViewport} from './utils/usePhoneUI.js';
 
 const DEFAULT_MAJOR_OBJECTS = [25544, 20580, 48274, 39084, 58990, 26407];
 const TIME_OBJECT_LIMIT = 15;
@@ -60,6 +61,9 @@ function readSettings() {
 }
 
 export default function App({ currentUser, onLogout, hudActive = true, onSceneReady, hudCycle = 0, startupCountry = null }) {
+  const phone=usePhoneViewport();
+  const [activeInspector,setActiveInspector]=useState('weather');
+  const [sceneUnavailable,setSceneUnavailable]=useState(false);
   const [mode, setMode] = useState("live");
   const [liveTrackedIds, setLiveTrackedIds] = useState(DEFAULT_MAJOR_OBJECTS);
   const [timeTrackedIds, setTimeTrackedIds] = useState([]);
@@ -126,7 +130,7 @@ export default function App({ currentUser, onLogout, hudActive = true, onSceneRe
   const setActiveTrackedIds = mode === "time" ? setTimeTrackedIds : setLiveTrackedIds;
   const shownOrbitIds = mode === "time" ? timeShownOrbitIds : liveShownOrbitIds;
   const setShownOrbitIds = mode === "time" ? setTimeShownOrbitIds : setLiveShownOrbitIds;
-  const activeMapStyle=mode==='time'?timeMapStyle:mapStyle;
+  const activeMapStyle=mode==='time'?(phone?'esri':timeMapStyle):mapStyle;
   const activeLabelsEnabled=mode==='time'?timeLabelsEnabled:labelsEnabled;
   function chooseMap(id){if(mode==='time'){setTimeMapStyle(id);try{localStorage.setItem('orbitwatch_time_map',id);}catch{ /* Session preference still works. */ }}else setMapStyle(id);setMapRetryNonce(value=>value+1);}
   useEffect(()=>{
@@ -146,10 +150,11 @@ export default function App({ currentUser, onLogout, hudActive = true, onSceneRe
   const historicalWeather=useHistoricalWeather(historicalWeatherActive,selectedTime);
   const locationWeather=useLocationWeather(weatherActive&&!presentation);
   function selectWeatherLocation(point) {
+    if(point)setActiveInspector('weather');
     locationWeather.select(point);
     if(point)setLayers(current=>current.filter(layer=>!['explorer','place'].includes(layer)));
   }
-  function selectHistoricalLocation(point){historicalWeather.select(point);if(point)setLayers(current=>current.filter(layer=>!['explorer','place','weather'].includes(layer)));}
+  function selectHistoricalLocation(point){historicalWeather.select(point);if(point){setActiveInspector('weather');setLayers(current=>current.filter(layer=>!['explorer','place','weather'].includes(layer)));}}
   const weatherCompatible=mapStyle!=='google'&&mapStatus?.activeMap!=='google'&&Boolean(mapStatus?.activeMap);
   const weatherLabels=weatherActive&&weatherEnabled&&labelsEnabled&&weatherCompatible&&customPlaceLabelsForMap(mapStatus?.activeMap);
   const observedClouds=useObservedClouds(weatherActive&&weatherEnabled&&weatherCompatible&&weatherVariable==='observedClouds',settings.quality);
@@ -165,7 +170,7 @@ export default function App({ currentUser, onLogout, hudActive = true, onSceneRe
     weatherDeadline.current=Date.now()+30000;setWeatherCooling(true);setWeatherRefresh(value=>value+1);
     window.clearTimeout(weatherCooldown.current);weatherCooldown.current=window.setTimeout(()=>setWeatherCooling(false),30000);
   }
-  const navigation = navigationVisibility(mode, atEarth);
+  const navigation = {...navigationVisibility(mode, atEarth),...(phone&&mode==='time'?{map:false,camera:false}:{})};
   const menu = layers.find((item) => ["map", "camera", "system"].includes(item) && navigation[item]);
   const allOrbitsVisible = activeTrackedIds.length > 0 && activeTrackedIds.every((id) => shownOrbitIds.has(id));
 
@@ -181,6 +186,7 @@ export default function App({ currentUser, onLogout, hudActive = true, onSceneRe
     });
   }, []);
   const openLayer = useCallback((name) => {
+    if(phone&&mode==='time'&&['map','camera'].includes(name))return;
     if(name==='weather'&&!atEarth)return;
     const available = navigationVisibility(mode, atEarth);
     if (Object.hasOwn(available, name) && !available[name]) return;
@@ -200,7 +206,7 @@ export default function App({ currentUser, onLogout, hudActive = true, onSceneRe
         !(narrow && name === "explorer" && rightPanel.includes(item)) &&
         !(narrow && name !== "explorer" && item === "explorer")), name];
     });
-  }, [mode, atEarth]);
+  }, [mode, atEarth,phone]);
   useEffect(() => {
     globeRef.current?.selectCelestialMarker(layers.includes("celestial") ? celestialMarker : null);
   }, [layers, celestialMarker]);
@@ -283,6 +289,7 @@ export default function App({ currentUser, onLogout, hudActive = true, onSceneRe
     if (travelLockRef.current || mode==='time' && id && !timeSatelliteAllowed(id)) return;
     releaseCamera();
     setSelectedId(id);
+    if(id)setActiveInspector('satellite');
     if (id !== selectedId) {
       setTelemetry(null);
       setTelemetryError(false);
@@ -338,7 +345,7 @@ export default function App({ currentUser, onLogout, hudActive = true, onSceneRe
     setLayers([]);setSelectedId(null);setTelemetry(null);setTelemetryError(false);setOrbitInfo({});
     setTimeTrackedIds([]);setTimeShownOrbitIds(new Set());setSelectedEventId(null);locationWeather.clear();
     setCelestialMarker(null);setLimitMessage('');setDateNotice(prelaunchNotice(TIME_OBJECTS,next));
-    setSelectedTime(next);setRequestedTime(next);setTimeIssue('');setTimeBusy(true);
+    setSelectedTime(next);setRequestedTime(next);setTimeIssue(phone&&sceneUnavailable?'The 3D scene is unavailable. Retry the scene to display this date.':'');setTimeBusy(!(phone&&sceneUnavailable));
   }
   function timePrepared(result) {
     if(mode==='time'&&result.sequence===timeRequestRef.current.id&&result.timestamp===timeRequestRef.current.timestamp) {
@@ -357,7 +364,7 @@ export default function App({ currentUser, onLogout, hudActive = true, onSceneRe
     if(next === "time") {
       const instant=validSceneTime(requestedTime)?requestedTime:new Date();
       const id=timeRequestRef.current.id+1;timeRequestRef.current={id,timestamp:instant.getTime()};setTimeLoadId(id);
-      setTimeTrackedIds([]);setTimeShownOrbitIds(new Set());setTimeBusy(true);setTimeIssue('');setSelectedTime(instant);setRequestedTime(instant);setDateNotice(prelaunchNotice(TIME_OBJECTS,instant));
+      setTimeTrackedIds([]);setTimeShownOrbitIds(new Set());setTimeBusy(!(phone&&sceneUnavailable));setTimeIssue(phone&&sceneUnavailable?'The 3D scene is unavailable. Retry the scene to display this date.':'');setSelectedTime(instant);setRequestedTime(instant);setDateNotice(prelaunchNotice(TIME_OBJECTS,instant));
       setSelectedEventId(null);locationWeather.clear();
     }
     else {setTimeBusy(false);timeRequestRef.current={id:timeRequestRef.current.id+1,timestamp:null};}
@@ -444,7 +451,7 @@ export default function App({ currentUser, onLogout, hudActive = true, onSceneRe
   const hidden = presentation || Boolean(travel) || !hudActive || timeBusy;
   return (
     <HudAssembly active={hudActive} cycle={hudCycle}><main ref={shellRef} className={`orbitwatch-shell mode-${mode} ${atEarth ? "at-earth" : "off-earth"} ${layers.includes("place") ? "has-place-search" : ""} ${layers.includes("weather") ? "has-weather-panel" : ""} ${travel ? "is-travelling" : ""}`}>
-      <SceneBoundary onReady={onSceneReady} onReset={() => { setSelectedCelestialBody("earth"); setDetailState("ready"); setCameraFollowing(false); setTravel(null); travelLockRef.current = false; setLayers([]); }}><OrbitGlobe timeLoadId={timeLoadId} placeWeather={placeWeather} locationPickingEnabled={!presentation&&(weatherActive||Boolean(historicalWeatherActive&&historicalWeather.snapshot))} onLocationSelect={mode==='time'?selectHistoricalLocation:selectWeatherLocation} locationSelection={mode==='time'?historicalWeather.selection:locationWeather.selection} historicalData={historicalData} trackedIds={activeTrackedIds} selectedId={selectedId} selectedTime={selectedTime} mode={mode} startupCountry={startupCountry} selectedCelestialBody={selectedCelestialBody} onCelestialSelect={(id, wide) => { if (travelLockRef.current || !celestialDestinationAllowed(mode,id)) return; if (!wide && id === selectedCelestialBody && id !== "earth") openLayer("body"); else { setCelestialMarker(id); openLayer("celestial"); } }} refreshNonce={refreshNonce} mapStyle={activeMapStyle} mapRetryNonce={mapRetryNonce} labelsEnabled={activeLabelsEnabled} shownOrbitIds={shownOrbitIds} onObjectSelect={selectObject} onScaleChange={setSceneScale} onViewTelemetry={setViewTelemetry} globeRef={globeRef} onSceneReady={onSceneReady} onRefreshComplete={() => setRefreshBusy(false)} onSatelliteStatus={setSatelliteStatus} onMapStatus={setMapStatus} onTimeReady={timePrepared} onDetailReady={(id) => { if (id === selectedCelestialBody) setDetailState("ready"); }} naturalEvents={naturalEvents.events} eventsVisible={eventsEnabled&&weatherActive} eventCategory={eventCategory} selectedEventId={selectedEventId} onEventSelect={id=>{setSelectedEventId(id);setWeatherTab('events');openLayer('weather');}} cloudService={observedClouds.service} cloudReady={Boolean(observedClouds.frame)} onCloudError={observedClouds.reportError} cloudFrame={weatherVariable==='observedClouds'?observedClouds.frame:null} weatherField={mode==='time'?historicalWeather.field:selectedWeatherField} windField={mode==='time'?historicalWeather.wind:selectedWindField} windVisible={mode==='time'?historicalWeatherActive&&historicalWeather.enabled&&historicalWeather.windEnabled:windEnabled&&weatherEnabled&&weatherActive} weatherVisible={mode==='time'?historicalWeatherActive&&historicalWeather.enabled:weatherEnabled&&weatherActive} weatherOpacity={mode==='time'?historicalWeather.opacity:weatherOpacity} weatherCompatible={mode==='time'?Boolean(mapStatus?.activeMap&&mapStatus.activeMap!=='google'):weatherCompatible} quality={settings.quality} onOrbitInfo={setOrbitInfo} /></SceneBoundary>
+      <SceneBoundary onUnavailable={phone?()=>{setSceneUnavailable(true);setTimeBusy(false);setTimeIssue('The 3D scene is unavailable. Retry the scene to display this date.');}:undefined} onReady={onSceneReady} onReset={() => { setSceneUnavailable(false); setSelectedCelestialBody("earth"); setDetailState("ready"); setCameraFollowing(false); setTravel(null); travelLockRef.current = false; setLayers([]); }}><OrbitGlobe timeLoadId={timeLoadId} placeWeather={placeWeather} locationPickingEnabled={!presentation&&(weatherActive||Boolean(historicalWeatherActive&&historicalWeather.snapshot))} onLocationSelect={mode==='time'?selectHistoricalLocation:selectWeatherLocation} locationSelection={mode==='time'?historicalWeather.selection:locationWeather.selection} historicalData={historicalData} trackedIds={activeTrackedIds} selectedId={selectedId} selectedTime={selectedTime} mode={mode} startupCountry={startupCountry} selectedCelestialBody={selectedCelestialBody} onCelestialSelect={(id, wide) => { if (travelLockRef.current || !celestialDestinationAllowed(mode,id)) return; if (!wide && id === selectedCelestialBody && id !== "earth") openLayer("body"); else { setCelestialMarker(id); openLayer("celestial"); } }} refreshNonce={refreshNonce} mapStyle={activeMapStyle} mapRetryNonce={mapRetryNonce} labelsEnabled={activeLabelsEnabled} shownOrbitIds={shownOrbitIds} onObjectSelect={selectObject} onScaleChange={setSceneScale} onViewTelemetry={setViewTelemetry} globeRef={globeRef} onSceneReady={onSceneReady} onRefreshComplete={() => setRefreshBusy(false)} onSatelliteStatus={setSatelliteStatus} onMapStatus={setMapStatus} onTimeReady={timePrepared} onDetailReady={(id) => { if (id === selectedCelestialBody) setDetailState("ready"); }} naturalEvents={naturalEvents.events} eventsVisible={eventsEnabled&&weatherActive} eventCategory={eventCategory} selectedEventId={selectedEventId} onEventSelect={id=>{setSelectedEventId(id);setWeatherTab('events');openLayer('weather');}} cloudService={observedClouds.service} cloudReady={Boolean(observedClouds.frame)} onCloudError={observedClouds.reportError} cloudFrame={weatherVariable==='observedClouds'?observedClouds.frame:null} weatherField={mode==='time'?historicalWeather.field:selectedWeatherField} windField={mode==='time'?historicalWeather.wind:selectedWindField} windVisible={mode==='time'?historicalWeatherActive&&historicalWeather.enabled&&historicalWeather.windEnabled:windEnabled&&weatherEnabled&&weatherActive} weatherVisible={mode==='time'?historicalWeatherActive&&historicalWeather.enabled:weatherEnabled&&weatherActive} weatherOpacity={mode==='time'?historicalWeather.opacity:weatherOpacity} weatherCompatible={mode==='time'?Boolean(mapStatus?.activeMap&&mapStatus.activeMap!=='google'):weatherCompatible} quality={settings.quality} onOrbitInfo={setOrbitInfo} /></SceneBoundary>
       <div className="space-vignette" aria-hidden="true" />
       <div className={`live-interface ${hidden ? "is-hidden" : ""}`} inert={hidden || timeBusy}>
         <CinematicStage active={hudActive} side="top" loaderAnchor="top" zIndex={30}><TopHud unreadCount={account.state.unreadCount} onNotifications={()=>{setProfileTab('notifications');openLayer('profile');}} historicalState={historicalData} sceneTime={selectedTime} mode={mode} bodyId={selectedCelestialBody} apiState={apiState} currentUser={currentUser} onProfileToggle={() => toggleLayer("profile")} /></CinematicStage>
@@ -457,19 +464,19 @@ export default function App({ currentUser, onLogout, hudActive = true, onSceneRe
         <AnimatePresence>{layers.includes("celestial") && <CelestialTravelCard key="CelestialTravelCard" bodyId={celestialMarker} destinationId={selectedCelestialBody} onClose={() => closeLayer("celestial")} onTravel={(id) => selectCelestialBody(id, true)} onInspect={() => { closeLayer("celestial"); if (!atEarth) openLayer("body"); }} />}</AnimatePresence>
         <SystemMenu mode={mode} open={menu === "system"} activeBodyId={selectedCelestialBody} onSelectBody={(id)=>selectCelestialBody(id)} onClose={() => closeLayer("system")} />
         <MapSettings mode={mode} open={menu === "map"} mapStyle={activeMapStyle} onMapStyleChange={chooseMap} labelsEnabled={activeLabelsEnabled} onLabelsChange={mode==='time'?setTimeLabelsEnabled:setLabelsEnabled} onClose={() => closeLayer("map")} mapStatus={mapStatus} />
-        {locationWeather.selection&&<LocationWeatherCard weather={locationWeather} onSaveLocation={currentUser?point=>{account.owner.startNew(point);locationWeather.clear();setProfileTab('skywatch');setSkywatchTab('locations');openLayer('profile');}:undefined}/>}
+        {locationWeather.selection&&<LocationWeatherCard inactive={activeInspector!=='weather'} onActivate={()=>setActiveInspector('weather')} weather={locationWeather} onSaveLocation={currentUser?point=>{account.owner.startNew(point);locationWeather.clear();setProfileTab('skywatch');setSkywatchTab('locations');openLayer('profile');}:undefined}/>}
         <HistoricalWeatherPanel open={historicalWeatherActive&&layers.includes('weather')} onClose={()=>closeLayer('weather')} weather={historicalWeather} time={selectedTime} onNearest={loadSceneTime} onViewCenter={()=>{const point=globeRef.current?.weatherViewCenter();if(point)selectHistoricalLocation(point);}}/>
-        <HistoricalWeatherInspector weather={historicalWeather} time={selectedTime}/>
+        <HistoricalWeatherInspector inactive={activeInspector!=='weather'} onActivate={()=>setActiveInspector('weather')} weather={historicalWeather} time={selectedTime}/>
         {historicalWeatherActive&&historicalWeather.field&&!hidden&&!layers.includes('weather')&&<aside className="weather-legend" aria-label="Historical weather legend"><HistoricalWeatherLegend weather={historicalWeather} time={selectedTime}/><small>ERA5 reanalysis · {historicalWeather.windEnabled?'Wind Flow ON · ':''}Modern reference basemap.</small></aside>}
         {weatherActive&&eventFocus&&!layers.includes('weather')&&<aside className="event-focus-toolbar" aria-label="Focused event controls"><strong>{naturalEvents.events.find(event=>event.id===eventFocus)?.title||'SOURCE REPORTED EVENT'}</strong><small>Source-dated track / geometry · not real-time</small><button className="secondary-action" onClick={()=>{setWeatherTab('events');openLayer('weather');}}>BACK TO REPORT</button><button className="secondary-action" onClick={()=>{globeRef.current?.returnFromNaturalEvent();setEventFocus(null);}}>RETURN TO PREVIOUS VIEW</button></aside>}
         <WeatherPanel onFocusEvent={id=>{releaseCamera();locationWeather.clear();setCameraFollowing(false);const focused=globeRef.current?.focusNaturalEvent(id);if(focused){setEventFocus(id);if(window.innerWidth<1100)setLayers(current=>current.filter(layer=>layer!=='weather'));}return focused;}} onReturnEvent={()=>{globeRef.current?.returnFromNaturalEvent();setEventFocus(null);}} labelWeatherNote={labelWeatherNote} locationWeather={locationWeather} windEnabled={windEnabled} onWindEnabled={setWindEnabled} windField={selectedWindField} cameraAltitudeKm={viewTelemetry.cameraAltitudeKm} observedClouds={observedClouds} tab={weatherTab} onTab={setWeatherTab} events={naturalEvents} eventsEnabled={eventsEnabled} onEventsEnabled={setEventsEnabled} eventCategory={eventCategory} onEventCategory={value=>{setEventCategory(value);setSelectedEventId(null);}} selectedEventId={selectedEventId} onEventSelect={setSelectedEventId} open={weatherActive&&layers.includes('weather')} onClose={()=>closeLayer('weather')} weather={{...weather,field:selectedWeatherField,bundle:weather.field}} variable={weatherVariable} onVariable={setWeatherVariable} enabled={weatherEnabled} onEnabled={setWeatherEnabled} opacity={weatherOpacity} onOpacity={setWeatherOpacity} compatible={weatherCompatible} onCompatibleMap={()=>{setMapStyle('esri');setMapRetryNonce(v=>v+1);}} onRefresh={refreshWeather} refreshCooling={weatherCooling} onViewCenter={()=>{const point=globeRef.current?.weatherViewCenter();if(point)selectWeatherLocation(point);else locationWeather.clear();}}/>
-        {weatherActive&&!eventFocus&&weatherEnabled&&weatherCompatible&&weatherVariable==='observedClouds'&&!hidden&&!locationWeather.selection&&!layers.includes('weather')&&!layers.includes('explorer')&&<ObservedCloudLegend clouds={observedClouds} labelWeatherNote={labelWeatherNote}/>}
+        {weatherActive&&!eventFocus&&weatherEnabled&&weatherCompatible&&weatherVariable==='observedClouds'&&!hidden&&(!locationWeather.selection||phone)&&!layers.includes('weather')&&!layers.includes('explorer')&&<ObservedCloudLegend clouds={observedClouds} labelWeatherNote={labelWeatherNote}/>}
         {weatherActive&&!eventFocus&&weatherEnabled&&weatherCompatible&&selectedWeatherField&&!hidden&&!layers.includes('weather')&&<TemperatureLegend field={selectedWeatherField} state={weather.state} labelWeatherNote={labelWeatherNote}/>}
         {<SystemScaleSlider scale={sceneScale} onChange={(value) => globeRef.current?.setCelestialScale(value)} />}
         {travelError && <div className="scene-notice" role="alert"><span>{travelError}</span><button type="button" onClick={() => setTravelError("")}>Dismiss</button></div>}
         {atEarth && mode === "live" && !travel && satelliteStatus && <div className="scene-notice" role="status">{satelliteStatus}</div>}
         {mode==='live'?<ObjectExplorer open={layers.includes('explorer')&&atEarth} onClose={()=>closeLayer('explorer')} objects={catalogObjects} trackedIds={liveTrackedIds} selectedId={selectedId} onSelect={selectObject} onLoad={loadObjects} onUnload={unloadObjects} limitMessage={limitMessage} userId={currentUser?.id} searchCycle={searchCycle}/>:<HistoricalSatelliteList open={layers.includes('explorer')&&atEarth} onClose={()=>closeLayer('explorer')} time={selectedTime} coverage={historyCoverage} historicalData={historicalData} trackedIds={timeTrackedIds} selectedId={selectedId} onSelect={selectObject} onToggle={(id,checked)=>{if(checked){loadObjects([id]);setTimeShownOrbitIds(current=>new Set([...current,id]));}else unloadObjects([id]);}}/>}
-        <AnimatePresence>{layers.includes("inspector") && atEarth && <InspectorPanel key={`${selectedId}:${settings.preview3d}`} object={selectedObject} historical={mode === "time"} historyStatus={historicalData.state} telemetry={mode === "time" ? historicalObject?.position : telemetry?.norad_id === selectedId ? telemetry : null} telemetryError={mode === "live" && telemetryError} cameraFollowing={cameraFollowing} rendered={selectedRendered} orbitVisible={shownOrbitIds.has(selectedId)} onClose={() => closeLayer("inspector")} onFocus={focusSelected} onFollow={followSelected} onReleaseCamera={releaseCamera} onToggleOrbit={toggleSelectedOrbit} preview3d={settings.preview3d} orbitDescription={mode === "time" ? historicalObject?.orbit?.path_kind === "arc" ? "Historical Orbit Trace · valid SGP4 arc" : "Historical Orbit Trace · SGP4 reconstruction" : orbitInfo.selectedDescription} orbitMetadata={mode === "time" ? historicalObject?.orbit : orbitInfo.selectedMetadata} coverageUnavailable={mode === "time" && !historicalObject} />}</AnimatePresence>
+        <AnimatePresence>{layers.includes("inspector") && atEarth && <InspectorPanel inactive={activeInspector!=='satellite'} onActivate={()=>setActiveInspector('satellite')} onBack={()=>openLayer('explorer')} key={`${selectedId}:${settings.preview3d}`} object={selectedObject} historical={mode === "time"} historyStatus={historicalData.state} telemetry={mode === "time" ? historicalObject?.position : telemetry?.norad_id === selectedId ? telemetry : null} telemetryError={mode === "live" && telemetryError} cameraFollowing={cameraFollowing} rendered={selectedRendered} orbitVisible={shownOrbitIds.has(selectedId)} onClose={() => closeLayer("inspector")} onFocus={focusSelected} onFollow={followSelected} onReleaseCamera={releaseCamera} onToggleOrbit={toggleSelectedOrbit} preview3d={settings.preview3d} orbitDescription={mode === "time" ? historicalObject?.orbit?.path_kind === "arc" ? "Historical Orbit Trace · valid SGP4 arc" : "Historical Orbit Trace · SGP4 reconstruction" : orbitInfo.selectedDescription} orbitMetadata={mode === "time" ? historicalObject?.orbit : orbitInfo.selectedMetadata} coverageUnavailable={mode === "time" && !historicalObject} />}</AnimatePresence>
         <AnimatePresence>{layers.includes("body") && !atEarth && <CelestialInspector key="CelestialInspector" bodyId={selectedCelestialBody} sceneTime={mode === "time" ? selectedTime : null} onClose={() => closeLayer("body")} detailState={detailState} />}</AnimatePresence>
 
         <CinematicStage active={hudActive} loaderAnchor="clean" zIndex={42}><button type="button" className="presentation-toggle" title="Presentation mode (P)" onClick={() => setPresentation(true)}><Maximize2 size={15} /> CLEAN VIEW</button></CinematicStage>

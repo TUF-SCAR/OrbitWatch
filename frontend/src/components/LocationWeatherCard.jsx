@@ -1,5 +1,5 @@
 import {MapPin,X} from 'lucide-react';
-import SpatialSurface from './SpatialSurface.jsx';
+import ResponsivePanel from './ResponsivePanel.jsx';
 import {weatherCondition,weatherMeasurement,weatherTime} from '../utils/weatherFormatters.js';
 import {solarLight} from '../services/solarLight.js';
 
@@ -25,9 +25,9 @@ export default function LocationWeatherCard({weather,onSaveLocation}) {
   const selection=weather.selection;
   if(!selection)return null;
   const coordinates=`${selection.latitude.toFixed(2)}°, ${selection.longitude.toFixed(2)}°`;
-  return <SpatialSurface as="aside" side="left" strength={1} className="location-weather-card" aria-label="Location weather inspector" onKeyDown={event=>{if(event.key==='Escape'){event.preventDefault();event.stopPropagation();weather.clear();}}}>
+  return <ResponsivePanel onDismiss={weather.clear} as="aside" side="left" strength={1} className="location-weather-card hud-panel" aria-label="Location weather inspector" onKeyDown={event=>{if(event.key==='Escape'){event.preventDefault();event.stopPropagation();weather.clear();}}}>
     <header><div><span className="eyebrow"><MapPin size={14}/> EARTH WEATHER</span><h2>{selection.name||coordinates}</h2>{selection.name&&<small>{coordinates}{selection.country?` · ${selection.country}`:''}</small>}</div><button className="icon-button" aria-label="Close location weather" onClick={weather.clear}><X size={18}/></button></header>
-    <LocationWeatherDetails weather={weather}/>
+    <div className="hud-panel__body"><LocationWeatherDetails weather={weather}/>
     {onSaveLocation&&<button type="button" className="secondary-action" onClick={()=>onSaveLocation({...selection,name:selection.name||'Observation location'})}>Save this location</button>}
-  </SpatialSurface>;
+  </div></ResponsivePanel>;
 }

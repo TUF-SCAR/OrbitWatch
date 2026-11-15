@@ -30,13 +30,15 @@ function SearchForm({ query, setQuery, onClose, onVisit, globeRef }) {
     setState("idle");
     setError("");
   }
-  return <><form onSubmit={search}><label><span className="sr-only">Place or address</span><input autoFocus value={query} onChange={changeQuery} placeholder="Place or address" /></label><button type="submit" aria-label="Search places" disabled={state === "loading" || !query.trim()}><Search size={17} /></button><button type="button" onClick={onClose} aria-label="Close place search"><X size={17} /></button></form><div className="place-results" role="status">{state === "loading" && "Searching…"}{state === "empty" && "No places found."}{state === "error" && error}{results.map((item, index) => <button type="button" key={`${item.displayName}:${index}`} onClick={() => { onVisit(item.destination); onClose(); }}>{item.displayName}</button>)}</div></>;
+  return <><form onSubmit={search} onKeyDown={event=>{if(event.key==='Escape'){event.preventDefault();event.stopPropagation();onClose();}}}><label><span className="sr-only">Place or address</span><input autoFocus value={query} onChange={changeQuery} placeholder="Place or address" /></label><button type="submit" aria-label="Search places" disabled={state === "loading" || !query.trim()}><Search size={17} /></button><button type="button" onClick={onClose} aria-label="Close place search"><X size={17} /></button></form><div className="place-results" role="status">{state === "loading" && "Searching…"}{state === "empty" && "No places found."}{state === "error" && error}{results.map((item, index) => <button type="button" key={`${item.displayName}:${index}`} onClick={() => { onVisit(item.destination); onClose(); }}>{item.displayName}</button>)}</div></>;
 }
 
 export default function PlaceSearch({ open, onOpen, onClose, onVisit, globeRef }) {
   const [query, setQuery] = useState("");
+  const trigger=useRef(null);
+  function close(){onClose();requestAnimationFrame(()=>trigger.current?.focus({preventScroll:true}));}
   return <div className="place-search">{open
-    ? <SearchForm query={query} setQuery={setQuery} onClose={onClose} onVisit={onVisit} globeRef={globeRef} />
-    : <button type="button" onClick={onOpen} title="Search a place or address" aria-label="Search a place or address"><Search size={17} /></button>}
+    ? <SearchForm query={query} setQuery={setQuery} onClose={close} onVisit={onVisit} globeRef={globeRef} />
+    : <button ref={trigger} type="button" onClick={onOpen} title="Search a place or address" aria-label="Search a place or address"><Search size={17} /></button>}
   </div>;
 }

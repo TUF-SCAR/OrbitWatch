@@ -3,7 +3,7 @@ import { AnimatePresence } from "motion/react";
 import { ChevronLeft, ChevronRight, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { CELESTIAL_BODIES, CELESTIAL_GROUPS } from "../data/celestialBodies.js";
-import SpatialSurface from "./SpatialSurface.jsx";
+import ResponsivePanel from "./ResponsivePanel.jsx";
 import "./SystemMenu.css";
 
 const PLANET_LAYOUT = [
@@ -63,7 +63,7 @@ export default function SystemMenu({ open, activeBodyId, onSelectBody, onClose, 
 
 
   return (
-    <AnimatePresence>{open && <SpatialSurface as="aside" side="right" strength={3.8} className="system-menu hud-panel hud-panel--right" aria-label="Solar system navigation">
+    <AnimatePresence>{open && <ResponsivePanel onDismiss={onClose} as="aside" side="right" strength={3.8} className="system-menu hud-panel hud-panel--right" aria-label="Solar system navigation">
       <div className="system-menu__head hud-panel__header">
         <div>
           <span className="eyebrow">SYSTEM NAVIGATION</span>
@@ -179,6 +179,6 @@ export default function SystemMenu({ open, activeBodyId, onSelectBody, onClose, 
         <span>{mode==='time'?'APPROXIMATE HISTORICAL SCENE':'APPROXIMATE EPHEMERIS'}</span>
         <strong>{Object.keys(CELESTIAL_BODIES).length} OBJECTS</strong>
       </div>
-    </SpatialSurface>}</AnimatePresence>
+    </ResponsivePanel>}</AnimatePresence>
   );
 }

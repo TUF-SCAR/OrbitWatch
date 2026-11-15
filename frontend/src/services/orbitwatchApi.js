@@ -225,3 +225,26 @@ export function revokePushSubscription(id,signal) {return requestJson(`/api/acco
 export function fetchSmallBodyElements(signal){return requestJson("/api/solar-system/small-bodies",{signal});}
 export function fetchViewingTargets(kind,offset,signal){return requestJson(`/api/account/visibility/targets/${kind==='satellite'?'satellites':'celestial'}?offset=${offset}`,{signal,timeoutMs:30000});}
 export function fetchInboxDetail(id,signal){return requestJson(`/api/account/notifications/${encodeURIComponent(id)}`,{signal});}
+export function fetchInfraredMetadata(width,signal) {
+  return requestJson(`/api/weather/infrared/current?width=${width}`,{signal,timeoutMs:35000});
+}
+
+export async function fetchInfraredImage(path,signal) {
+  if(!/^\/api\/weather\/infrared\/frame\?/.test(path))throw Error('Invalid imagery path');
+  const headers=new Headers(),token=getStoredAccessToken();
+  if(token)headers.set('Authorization',`Bearer ${token}`);
+  const response=await fetch(`${API_BASE}${path}`,{headers,signal:AbortSignal.any([signal,AbortSignal.timeout(35000)])});
+  if(response.status===401&&token===getStoredAccessToken()) {
+    clearAccessToken();window.dispatchEvent(new CustomEvent('orbitwatch:unauthorized'));
+  }
+  if(!response.ok) {
+    const error=new Error('Observed infrared imagery is unavailable or cooling down.');
+    error.retryAfterSeconds=Math.max(30,Math.min(21600,Number(response.headers.get('Retry-After'))||60));
+    throw error;
+  }
+  if(!response.headers.get('Content-Type')?.startsWith('image/jpeg')||Number(response.headers.get('Content-Length'))>8000000)throw Error('Invalid infrared response');
+  const reader=response.body.getReader(),parts=[];let size=0;
+  try {while(true){const {done,value}=await reader.read();if(done)break;size+=value.byteLength;if(size>8000000)throw Error('Infrared response exceeds limit');parts.push(value);}}
+  finally {await reader.cancel().catch(()=>{});reader.releaseLock();}
+  return {blob:new Blob(parts,{type:'image/jpeg'}),retrievedAt:response.headers.get('X-Retrieved-At')};
+}

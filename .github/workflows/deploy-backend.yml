@@ -43,6 +43,14 @@ jobs:
           echo "changed=$changed" >> "$GITHUB_OUTPUT"
           echo "Requirements changed in GitHub push: $changed"
 
+      - name: Validate deployment helper without production access
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash -n deploy/orbitwatch-deploy.sh
+          python3 tests/check_infrared_release.py
+          python3 tests/check_notification_deploy.py
+
       - name: Authenticate with restricted AWS IAM access key
         uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -57,19 +65,7 @@ jobs:
           REQUIREMENTS_CHANGED_IN_PUSH: ${{ steps.reqs.outputs.changed }}
         run: |
           set -euo pipefail
-          python3 - <<'PY'
-          import json, os
-          sha = os.environ['DEPLOY_SHA']
-          reqs = os.environ['REQUIREMENTS_CHANGED_IN_PUSH']
-          assert reqs in ('true', 'false')
-          if len(sha) != 40 or any(c not in '0123456789abcdef' for c in sha):
-              raise SystemExit('Invalid commit SHA')
-          with open('ssm-parameters.json', 'w') as f:
-              json.dump({
-                  'commands': [f'/usr/local/sbin/orbitwatch-deploy {sha} {reqs}'],
-                  'executionTimeout': ['1200'],
-              }, f)
-          PY
+          python3 deploy/ssm_parameters.py "$DEPLOY_SHA" "$REQUIREMENTS_CHANGED_IN_PUSH" > ssm-parameters.json
           command_id="$(aws ssm send-command \
             --instance-ids "$INSTANCE_ID" \
             --document-name AWS-RunShellScript \

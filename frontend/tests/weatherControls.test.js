@@ -42,8 +42,8 @@ test('wind overlays observed clouds and every primary field; toggling wind relea
   const wind=createWindLayer(viewer,{doc:{...target,hidden:false},media:{...target,matches:false},schedule:fn=>{timers.add(fn);return fn;},cancel:fn=>timers.delete(fn),makePrimitive:n=>({data:new Float32Array(n*8)})});
   await cloud.update({frame:{id:'observed-test'},visible:true,alpha:.55});preRender.raiseEvent();
   const observed=imagery[0],windField=selectWeatherField(source,'wind');
-  assert.equal(needsModelWeather('observedClouds',false,false),false);
-  assert.equal(needsModelWeather('observedClouds',false,true),true);
+  assert.equal(needsModelWeather('observedClouds',false),false);
+  assert.equal(needsModelWeather('observedClouds',true),true);
   const options={field:windField,visible:true,compatible:true,quality:'balanced',opacity:.55};
   wind.update(options);const particle=primitives[0];assert.equal(timers.size,1);assert.equal(imagery[0],observed);
   wind.update({...options,visible:false});assert.equal(primitives.length,0);assert.equal(timers.size,0);assert.equal(imagery[0],observed);

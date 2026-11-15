@@ -1,6 +1,6 @@
 import { BookOpen, Crosshair, Eye, EyeOff, Radio, RotateCcw, X } from "lucide-react";
 import { useCallback, useState } from "react";
-import SpatialSurface from "./SpatialSurface.jsx";
+import ResponsivePanel from "./ResponsivePanel.jsx";
 import SatelliteModelViewer from "./SatelliteModelViewer.jsx";
 import { getSatelliteModelUrl } from "../data/satelliteModels.js";
 import { formatAltitude, formatCoordinate, formatUtcTime } from "../utils/spaceFormatters.js";
@@ -16,7 +16,7 @@ export default function InspectorPanel({ object, telemetry, telemetryError, came
   const model = getSatelliteModelUrl(object);
   const referenceUrl = getObjectReferenceUrl(object);
   const epochOffset = orbitMetadata?.tle_age_seconds;
-  return <SpatialSurface as="aside" side="right" strength={4.5} className="inspector-panel hud-panel hud-panel--right" aria-label="Object inspector">
+  return <ResponsivePanel onDismiss={onClose} as="aside" side="right" strength={4.5} className="inspector-panel hud-panel hud-panel--right" aria-label="Object inspector">
     <div className="inspector-panel__head hud-panel__header"><div><div className="eyebrow">OBJECT OVERVIEW</div><h1>{object.name}</h1></div><button className="icon-button" onClick={onClose} aria-label="Close inspector"><X size={20} /></button></div>
     <div className="hud-panel__body inspector-body">
     <div className="object-ident"><span>{object.category}</span><span>NORAD {object.noradId}</span></div>
@@ -36,5 +36,5 @@ export default function InspectorPanel({ object, telemetry, telemetryError, came
     <div className="inspector-meta">{[["TYPE", object.objectType], ["OPERATOR", object.operator], ["REGION", object.country], ["STATUS", object.status], ["LAUNCHED", object.launchDate], ["PURPOSE", object.purpose], ["SOURCE", telemetry?.orbital_source], ["TLE EPOCH", telemetry?.tle_epoch]].filter(([, value]) => value).map(([label, value]) => <div key={label}><span>{label}</span><b>{value}</b></div>)}</div>
     <p>Positions are propagated from orbital elements, not onboard telemetry. Photographs show the documented mission configuration.</p></div>
     </div>
-  </SpatialSurface>;
+  </ResponsivePanel>;
 }

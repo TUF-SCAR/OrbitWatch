@@ -34,7 +34,7 @@ def run(postgres=False,serve=False):
             url='postgresql+psycopg://orbitwatch_test@127.0.0.1:55444/orbitwatch_delivery_test'
         with patch.dict(os.environ,{**config,'DATABASE_URL':url,'JWT_SECRET_KEY':'isolated-notification-test-key-no-production-use',
                 'ORBITWATCH_INGESTION_ENABLED':'false','ORBITWATCH_NOTIFICATION_PROVIDER_REQUESTS':'false','ORBITWATCH_WEATHER_PROVIDER_REQUESTS':'false',
-                'ORBITWATCH_EVENT_PROVIDER_REQUESTS':'false','CORS_ALLOWED_ORIGINS':'http://127.0.0.1:5174'}):
+                'ORBITWATCH_EVENT_PROVIDER_REQUESTS':'false','ORBITWATCH_SMALL_BODY_PROVIDER_REQUESTS':'false','CORS_ALLOWED_ORIGINS':'http://127.0.0.1:5174'}):
             from sqlalchemy import select,delete,func,text,update,event as sql_event
             from sqlalchemy.orm import Session
             from core.database import DatabaseBase,database_engine as engine
@@ -45,6 +45,7 @@ def run(postgres=False,serve=False):
             from models.satellite_orbital_data import SatelliteOrbitalData,SatelliteOrbitalDataHistory
             from models.notification_delivery import PushDevice,NotificationRun,NotificationDelivery
             from models.viewing_opportunity import ViewingOpportunity,VisibilityPlan
+            from models.small_bodies import SmallBodyOrbit,SmallBodyRefresh
             from services.notification_policy import quiet,distance,event_candidate,astronomy_candidate
             from services.notification_runner import lease,persist,process_outbox,run_once
             from services.browser_push import validate_subscription,configuration,encrypt_subscription
@@ -59,7 +60,7 @@ def run(postgres=False,serve=False):
                 with psycopg.connect(host='127.0.0.1',port=55444,user='orbitwatch_test',dbname='orbitwatch_delivery_test',autocommit=True) as db:
                     for file in migrations:db.execute(file.read_text(),prepare=False);db.execute(file.read_text(),prepare=False)
             else:
-                for model in (ObservationLocation,NotificationPreferences,AlertSubscription,InboxNotification,PushDevice,NotificationRun,NotificationDelivery,ViewingOpportunity,VisibilityPlan):model.__table__.create(engine)
+                for model in (ObservationLocation,NotificationPreferences,AlertSubscription,InboxNotification,PushDevice,NotificationRun,NotificationDelivery,ViewingOpportunity,VisibilityPlan,SmallBodyOrbit,SmallBodyRefresh):model.__table__.create(engine)
             client=TestClient(app,raise_server_exceptions=False);cleanup.callback(client.close);auth={};users={};locations={};subscriptions={};checks=0
             def request(method,path,expected=200,who=1,**kwargs):
                 nonlocal checks
@@ -222,10 +223,24 @@ def run(postgres=False,serve=False):
                 # Browser smoke intentionally shows real unconfigured push status.
                 for key in config:os.environ.pop(key,None)
                 import uvicorn
+                # Optional genuine recorded IR cache for actual-app visual QA.
+                # All upstream acquisition remains disabled in this process.
+                infrared_cache=os.getenv('ORBITWATCH_QA_INFRARED_CACHE')
+                if infrared_cache:
+                    cache_path=Path(infrared_cache).resolve()
+                    assert cache_path.is_relative_to((ROOT/'.setup-cache').resolve())
+                    from services.infrared import InfraredService
+                    from routes import weather as weather_routes
+                    cleanup.enter_context(patch.object(weather_routes,'infrared',InfraredService(cache_path)))
+                    os.environ['ORBITWATCH_INFRARED_ENABLED']='true'
+                    os.environ['ORBITWATCH_INFRARED_LICENSE_CONFIRMED']='true'
                 async def isolated(scope,receive,send):
-                    if scope['type']=='http' and (scope['path'].startswith('/api/weather') or scope['path'].startswith('/api/events')):
+                    path=scope.get('path','')
+                    cached_ir=infrared_cache and path.startswith('/api/weather/infrared/')
+                    unavailable_science=(path.startswith('/api/satellites/') and path!='/api/satellites/catalog') or path.startswith('/api/historical/')
+                    if scope['type']=='http' and (unavailable_science or not cached_ir and (path.startswith('/api/weather') or path.startswith('/api/events'))):
                         from starlette.responses import JSONResponse
-                        return await JSONResponse({'detail':'Providers disabled in isolated browser fixture'},503)(scope,receive,send)
+                        return await JSONResponse({'detail':'Scientific providers/ingestion disabled in isolated browser fixture'},503)(scope,receive,send)
                     return await app(scope,receive,send)
                 print('Disposable UI: delivery_fixture1 / Disposable-delivery-2026',flush=True)
                 uvicorn.run(isolated,host='127.0.0.1',port=8001,log_level='warning')

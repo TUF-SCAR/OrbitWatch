@@ -9,3 +9,4 @@ import "./live.css";
 createRoot(document.getElementById("root")).render(
   <MotionConfig reducedMotion="user" transition={{ duration: MOTION.panel, ease: HUD_EASE }}><AuthRoot /></MotionConfig>,
 );
+import "./styles/responsive.css";

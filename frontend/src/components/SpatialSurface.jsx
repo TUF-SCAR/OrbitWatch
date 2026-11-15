@@ -30,7 +30,7 @@ export default function SpatialSurface({
 
   function handlePointerMove(event) {
     const node = ref.current;
-    if (!node || reduced) return;
+    if (!node || reduced || matchMedia('(pointer: coarse), (max-width: 820px), (max-height: 600px)').matches) return;
     const rect = node.getBoundingClientRect();
     const nx = ((event.clientX - rect.left) / Math.max(rect.width, 1)) * 2 - 1;
     const ny = ((event.clientY - rect.top) / Math.max(rect.height, 1)) * 2 - 1;

@@ -8,7 +8,7 @@ export async function cloudProvider(frame) {
 }
 export function createCloudLayer(viewer,{makeProvider=cloudProvider,now=()=>performance.now(),reduced=prefersReducedMotion,onError=()=>{}}={}) {
   let current=null,previous=null,displayed=null,key=null,pendingKey=null,generation=0,removeFrame=null,destroyed=false,opacity=.55,error=null,altitudeAlpha=1,blend=1;
-  const remove=layer=>{if(layer&&viewer.imageryLayers.contains(layer))viewer.imageryLayers.remove(layer,true);};
+  const remove=layer=>{if(layer){if(viewer.imageryLayers.contains(layer))viewer.imageryLayers.remove(layer,true);layer.orbitwatchFrame?.release?.();layer.orbitwatchFrame=null;}};
   function applyAlpha(){if(current)current.alpha=opacity*altitudeAlpha*blend;if(previous)previous.alpha=opacity*altitudeAlpha*(1-blend);}
   function settle(){removeFrame?.();removeFrame=null;remove(previous);previous=null;blend=1;applyAlpha();}
   function clear(){generation++;pendingKey=null;settle();remove(current);current=null;displayed=null;key=null;viewer.scene.requestRender();}
@@ -22,10 +22,12 @@ export function createCloudLayer(viewer,{makeProvider=cloudProvider,now=()=>perf
       const version=++generation;pendingKey=frame.id;
       // Decode before replacing the current layer; network gaps never blank it.
       let provider;
-      try{provider=await makeProvider(frame);}catch(e){if(version===generation){pendingKey=null;settle();error=e.message;onError(error,displayed);viewer.scene.requestRender();}return;}
-      if(destroyed||viewer.isDestroyed()||version!==generation)return;
+      frame.retain?.();
+      try{provider=await makeProvider(frame);}catch(e){frame.release?.();if(version===generation){pendingKey=null;settle();error=e.message;onError(error,displayed);viewer.scene.requestRender();}return;}
+      if(destroyed||viewer.isDestroyed()||version!==generation){frame.release?.();return;}
       pendingKey=null;error=null;settle();previous=current;
       current=viewer.imageryLayers.addImageryProvider(provider);current.orbitwatchWeather=true;
+      current.orbitwatchFrame=frame;
       current.alpha=0;blend=0;key=frame.id;displayed=frame;
       const start=now();
       const tick=()=>{

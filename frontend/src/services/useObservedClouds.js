@@ -1,66 +1,42 @@
 import { useEffect, useRef, useState } from 'react';
-import { cloudBudget, CLOUD_STYLE } from './cloudConfig.js';
+import { cloudBudget } from './cloudConfig.js';
 import { createCloudImageryService } from './cloudImagery.js';
 
 export function useObservedClouds(active,quality) {
-  const service=useRef(null);
-  const usable=useRef(false);
-  const [frames,setFrames]=useState([]),[index,setIndex]=useState(0),[playing,setPlaying]=useState(false);
-  const [status,setStatus]=useState('idle'),[error,setError]=useState(''),[revision,setRevision]=useState(0);
-  const [hidden,setHidden]=useState(document.hidden),[reduced,setReduced]=useState(()=>matchMedia('(prefers-reduced-motion: reduce)').matches);
-  const [diagnostics,setDiagnostics]=useState({});
-  const [clock,setClock]=useState(Date.now);
-  useEffect(()=>{
-    service.current=createCloudImageryService();
-    const visibility=()=>{setHidden(document.hidden);if(document.hidden)setPlaying(false);};
-    const media=matchMedia('(prefers-reduced-motion: reduce)'),motion=()=>{setReduced(media.matches);if(media.matches)setPlaying(false);};
-    document.addEventListener('visibilitychange',visibility);media.addEventListener('change',motion);
-    return()=>{document.removeEventListener('visibilitychange',visibility);media.removeEventListener('change',motion);service.current.destroy();};
-  },[]);
-  useEffect(()=>{
-    const controller=new AbortController(),signal=controller.signal,budget=cloudBudget(quality),owner=service.current;
-    (async()=>{
-      await Promise.resolve();
-      if(signal.aborted)return;
-      setPlaying(false);
-      if(!active||hidden)return;
-      setStatus('loading');setError('');setClock(Date.now());
-      try {
-        const times=await owner.slots(budget.frames,signal);
-        if(!times.length)throw Error('No observed frames advertised');
-        const loaded=[];
-        // Show the newest verified slot first; older frames prepare serially.
-        for(const time of [...times].reverse()){
-          const frame=await owner.frame(time,budget,signal);if(signal.aborted)return;
-          usable.current=true;loaded.unshift(frame);setFrames([...loaded]);setIndex(loaded.length-1);setDiagnostics(owner.diagnostics());
-        }
-        setStatus('ready');
-      } catch(e){if(!signal.aborted){setError(e.message||'Observed imagery unavailable');setStatus(usable.current?'stale':'unavailable');setDiagnostics(owner.diagnostics());}}
-    })();
-    return()=>controller.abort();
-  },[active,quality,hidden,revision]);
-  useEffect(()=>{
-    if(!active||hidden)return;
-    const timer=setInterval(()=>setClock(Date.now()),30000);
-    return()=>clearInterval(timer);
-  },[active,hidden]);
-  useEffect(()=>{
-    if(!active||hidden||reduced||!playing||frames.length<2)return;
-    const timer=setInterval(()=>setIndex(value=>{
-      if(value>=frames.length-1){setPlaying(false);return value;}
-      return value+1;
-    }),CLOUD_STYLE.frameDurationMs);
-    return()=>clearInterval(timer);
-  },[active,hidden,reduced,playing,frames.length]);
-  return {service,frame:frames[index]||null,frames,index,status,error,playing,reduced,diagnostics,clock,
-    select(value){setPlaying(false);setIndex(Number(value));},
-    toggle(){if(playing){setPlaying(false);return;}if(reduced||frames.length<2)return;setIndex(0);setPlaying(true);},
-    refresh(){setRevision(value=>value+1);},
-    reportError(message,retained){
-      // The label/time must describe the image Cesium actually retained, not the
-      // replacement that failed to display. No first-frame success is invented.
-      usable.current=Boolean(retained);setPlaying(false);setFrames(retained?[retained]:[]);setIndex(0);
-      setStatus(retained?'stale':'unavailable');setError(`Cloud display unavailable: ${message}`);
-    },
-  };
+ const service=useRef(null),retained=useRef(null);
+ const [frame,setFrame]=useState(null),[status,setStatus]=useState('idle'),[error,setError]=useState('');
+ const [revision,setRevision]=useState(0),[hidden,setHidden]=useState(document.hidden);
+ const [diagnostics,setDiagnostics]=useState({}),[clock,setClock]=useState(Date.now);
+ useEffect(()=>{
+  service.current=createCloudImageryService();
+  const visibility=()=>setHidden(document.hidden);document.addEventListener('visibilitychange',visibility);
+  return()=>{document.removeEventListener('visibilitychange',visibility);service.current.destroy();};
+ },[]);
+ useEffect(()=>{
+  if(!active||hidden)return;
+  const controller=new AbortController();let timer;
+  async function check(){
+   let delay=600000;const now=Date.now();setClock(now);
+   if(retained.current&&now-Date.parse(retained.current.time)>43200000){retained.current=null;setFrame(null);}
+   setStatus(retained.current?'updating':'loading');setError('');
+   try {
+    const owner=service.current,budget=cloudBudget(quality),metadata=await owner.current(budget,controller.signal);
+    const stamp=Date.parse(metadata.observation_time),expires=Date.parse(metadata.expires_at),current=Date.now();
+    if(!/^[a-f0-9]{64}$/.test(metadata.version)||!Number.isFinite(stamp)||!Number.isFinite(expires)||stamp>current||expires!==stamp+43200000||expires<=current||metadata.width!==budget.width||metadata.height!==budget.width/2)throw Error('No acceptable recent observation is available.');
+    const next=await owner.frame(metadata.observation_time,budget,controller.signal,metadata);
+    if(controller.signal.aborted)return;
+    retained.current=next;setFrame(next);setStatus(metadata.stale?'stale':'ready');
+   }catch(e){if(controller.signal.aborted)return;setError(e.message||'Observed imagery unavailable');setStatus(retained.current?'stale':'unavailable');delay=Math.max(30000,(service.current.diagnostics().retryAt||Date.now()+60000)-Date.now());}
+   setDiagnostics(service.current.diagnostics());
+   timer=setTimeout(check,Math.min(600000,delay));
+  }
+  // Effects never replace a verified image until the new JPEG decodes.
+  void check();
+  const expiry=setInterval(()=>{setClock(Date.now());if(retained.current&&Date.now()-Date.parse(retained.current.time)>43200000){retained.current=null;setFrame(null);setStatus('unavailable');}},30000);
+  return()=>{controller.abort();clearTimeout(timer);clearInterval(expiry);};
+ },[active,quality,hidden,revision]);
+ return {service,frame,status,error,diagnostics,clock,
+  refresh(){setRevision(value=>value+1);},
+  reportError(message,previous){const usable=previous&&Date.now()-Date.parse(previous.time)<=43200000?previous:null;retained.current=usable;setFrame(usable);setStatus(usable?'stale':'unavailable');setError(`Cloud display unavailable: ${message}`);},
+ };
 }

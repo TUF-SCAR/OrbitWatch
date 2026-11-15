@@ -62,8 +62,8 @@ test('all primary variables sample the validated shared grid with correct units 
   weather.configure({...context(data),variable:'humidity'});assert.deepEqual(weather.get(place),['Humidity 64%']);
   const cloudOnly={...data,fields:{}};weather.configure({...context(cloudOnly),variable:'observedClouds'});
   assert.deepEqual(weather.get(place),[],'IR imagery never manufactures a fraction when GFS clouds are absent');
-  assert.equal(needsModelWeather('observedClouds',false,false,true),true,'one existing bundle owner also supplies label clouds');
-  assert.equal(needsModelWeather('observedClouds',false,false,false),false);
+  assert.equal(needsModelWeather('observedClouds',false,true),true,'one existing bundle owner also supplies label clouds');
+  assert.equal(needsModelWeather('observedClouds',false,false),false);
 });
 
 test('missing samples/optional fields, stale/expired bundles, mode, master and compatibility have honest fallbacks',()=>{

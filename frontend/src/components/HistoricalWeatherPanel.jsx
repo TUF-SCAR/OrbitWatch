@@ -1,5 +1,5 @@
 import {Thermometer,X,MapPin} from 'lucide-react';
-import SpatialSurface from './SpatialSurface.jsx';
+import ResponsivePanel from './ResponsivePanel.jsx';
 import {HISTORICAL_FIELDS,hasHistoricalVariable} from '../services/historicalWeather.js';
 import WeatherScale from './WeatherScale.jsx';
 import './WeatherPanel.css';
@@ -19,7 +19,7 @@ export default function HistoricalWeatherPanel({open,onClose,weather,time,onNear
   if(!open)return null;
   const w=weather;
   const isolated=w.coverage?.snapshots?.some(item=>item.provenance?.isolated_fixture);
-  return <SpatialSurface as="aside" side="right" className="weather-panel historical-weather-panel hud-panel hud-panel--right" aria-label="Historical weather">
+  return <ResponsivePanel onDismiss={onClose} as="aside" side="right" className="weather-panel historical-weather-panel hud-panel hud-panel--right" aria-label="Historical weather">
     <div className="hud-panel__header"><div><span className="eyebrow"><Thermometer size={15}/> TIME EXPLORER</span><h2>Historical weather</h2></div><button className="icon-button" aria-label="Close historical weather" onClick={onClose}><X size={20}/></button></div>
     <div className="hud-panel__body weather-panel__body">
       {isolated&&<p className="inline-warning" role="note">ISOLATED SCIENTIFIC TEST FIXTURES · these values were not downloaded from ERA5. Production has no fixtures.</p>}
@@ -44,18 +44,19 @@ export default function HistoricalWeatherPanel({open,onClose,weather,time,onNear
       <p className="weather-source">Click Earth to inspect stored values. 1° spatial samples add no physical resolution; spatial interpolation is for display only. Missing nodes remain unavailable. Country, state and city labels show names only.</p>
       <p className="weather-source">Basemap imagery and place names remain modern reference material. Reanalysis does not date the basemap.</p>
     </div>
-  </SpatialSurface>;
+  </ResponsivePanel>;
 }
 
 export function HistoricalWeatherInspector({weather,time}){
   if(!weather.selection)return null;
   const p=weather.selection,loc=weather.location,data=loc?.data;
   const measurement=(key,unit)=>Number.isFinite(data?.values?.[key])?`${data.values[key].toFixed(1)} ${unit}`:'Unavailable';
-  return <SpatialSurface as="aside" side="left" className="location-weather-card historical-location-card" aria-label="Historical weather inspector">
+  return <ResponsivePanel onDismiss={()=>weather.select(null)} as="aside" side="left" className="location-weather-card historical-location-card hud-panel" aria-label="Historical weather inspector">
     <header><div><span className="eyebrow"><MapPin size={14}/> HISTORICAL REANALYSIS</span><h2>{p.name||'Earth location'}</h2><small>{p.latitude.toFixed(2)}°, {p.longitude.toFixed(2)}°</small></div><button className="icon-button" aria-label="Close historical inspector" onClick={()=>weather.select(null)}><X size={18}/></button></header>
-    <p className="weather-valid">{date(time)}</p>
+    <div className="hud-panel__body"><p className="weather-valid">{date(time)}</p>
     {data?.provenance?.isolated_fixture&&<p className="inline-warning">ISOLATED SCIENTIFIC TEST FIXTURE · not downloaded ERA5.</p>}
     {!loc?<p role="status" className="weather-source">Loading stored location values…</p>:loc.error?<p role="status" className="weather-source">Archived values unavailable. Select the location again to retry.</p>:<dl className="weather-measurements">{[['Temperature','temperature','°C'],['Dewpoint','dewpoint','°C'],['Cloud fraction','clouds','%'],['Relative humidity','humidity','%'],['Mean sea-level pressure','pressure','hPa'],['10 m wind speed','wind_speed','km/h'],['10 m eastward wind','u','m/s'],['10 m northward wind','v','m/s'],['Precipitation during the preceding hour','precipitation','mm']].map(([label,key,unit])=><div key={key}><dt>{label}</dt><dd>{measurement(key,unit)}</dd></div>)}</dl>}
     <p className="weather-source">{attribution} · 1° display samples, spatially interpolated at the selected coordinate. Reconstructed atmosphere, not a station measurement. Earlier observations may be sparse.</p>
-  </SpatialSurface>;
+    </div>
+  </ResponsivePanel>;
 }

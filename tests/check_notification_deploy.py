@@ -55,6 +55,7 @@ for fail in ('','worker','api'):
             assert run.returncode==0,(run.stdout,run.stderr)
             assert (root/'head').read_text()==target
             assert 'apply_account_migrations.py --apply --expected-target' in calls
+            assert 'configure_infrared.py --activate-confirmed-layer' in calls
             assert 'notification_health.py --require-worker --require-push' in calls
             assert "systemctl ['restart', 'orbitwatch-notifications']" in calls
 print('PASS actual deploy script: API+worker install/restart/admission; failed API and failed worker restore prior code/service; all git/systemd/network/database mocked')

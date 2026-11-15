@@ -339,7 +339,6 @@ export default function OrbitGlobe({
   naturalEvents, eventsVisible=false, eventCategory='all', selectedEventId=null, onEventSelect,
   cloudFrame,
   cloudService,
-  cloudPlaying,
   cloudReady,
   onCloudError,
   weatherField,
@@ -1131,8 +1130,8 @@ export default function OrbitGlobe({
   useEffect(()=>{
     const viewer=viewerRef.current;if(!viewer||viewer.isDestroyed())return;
     cloudLayerRef.current ||= createCloudDetail(viewer,{onError:onCloudError});
-    cloudLayerRef.current.update({service:cloudService?.current,playing:cloudPlaying,ready:cloudReady,quality,frame:cloudFrame,visible:weatherVisible&&mode==='live'&&selectedCelestialBody==='earth',compatible:weatherCompatible,alpha:weatherOpacity});
-  },[cloudFrame,cloudService,cloudPlaying,cloudReady,quality,onCloudError,weatherVisible,weatherCompatible,weatherOpacity,mode,selectedCelestialBody]);
+    cloudLayerRef.current.update({service:cloudService?.current,ready:cloudReady,quality,frame:cloudFrame,visible:weatherVisible&&mode==='live'&&selectedCelestialBody==='earth',compatible:weatherCompatible,alpha:weatherOpacity});
+  },[cloudFrame,cloudService,cloudReady,quality,onCloudError,weatherVisible,weatherCompatible,weatherOpacity,mode,selectedCelestialBody]);
 
   useEffect(()=>{
     const viewer=viewerRef.current;if(!viewer||viewer.isDestroyed())return;

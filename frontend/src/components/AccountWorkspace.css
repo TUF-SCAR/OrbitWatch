@@ -1,4 +1,3 @@
-.profile-panel.account-workspace { --panel-width:580px; }
 .account-workspace > .account-tabs { margin:0 var(--panel-padding); flex:none; border-bottom:1px solid var(--line); }
 .account-tabs { display:flex; min-width:0; gap:3px; padding:4px 0 10px; }
 .account-tabs > button { flex:1; min-width:0; display:flex; align-items:center; justify-content:center; gap:6px; min-height:42px; padding:8px 6px; border:1px solid transparent; background:transparent; color:#9fb6c8; font:500 var(--ui-type-11)/1.35 var(--ui-font-primary); cursor:pointer; }
@@ -71,7 +70,7 @@
 .inbox-card small,.inbox-card time,.inbox-card summary { display:block; color:#91aebe; font-size:var(--ui-type-10); line-height:1.7; }.inbox-card time { margin-top:8px; }.inbox-card summary { cursor:pointer; display:list-item; }
 .inbox-card-actions { display:flex; flex-wrap:wrap; gap:7px; margin-top:13px; }
 .inbox-more { width:100%; margin-top:12px; }
-@media(max-width:720px) { .account-tabs > button { flex-direction:column; font-size:var(--ui-type-9); min-height:48px; padding:6px 2px; gap:4px; }.sky-object-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }.sky-event-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }.sky-satellite-list li { gap:7px; padding:10px 7px; }.sky-satellite-list li > svg,.sky-satellite-symbol { display:none; }.sky-follow { min-width:73px; padding:5px; }.inbox-card { padding:11px; }.account-feature-intro { padding:12px; }.inbox-toolbar { flex-wrap:wrap; } }
+@media(max-width:720px) { .sky-object-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }.sky-event-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }.sky-satellite-list li { gap:7px; padding:10px 7px; }.sky-satellite-list li > svg,.sky-satellite-symbol { display:none; }.sky-follow { min-width:73px; padding:5px; }.inbox-card { padding:11px; }.account-feature-intro { padding:12px; }.inbox-toolbar { flex-wrap:wrap; } }
 @media(prefers-reduced-motion:reduce) { .account-workspace * { transition:none!important; animation:none!important; } }
 .visibility-preview { margin:18px 0; padding:14px; border:1px solid #739abb44; background:linear-gradient(135deg,#16344677,#0a152388); min-width:0; }
 .visibility-preview h3 { display:flex; gap:8px; align-items:center; }
@@ -87,11 +86,7 @@
 .visibility-card :focus-visible,.visibility-preview :focus-visible { outline:2px solid #9ed9ee; outline-offset:3px; }
 @media(max-width:480px) { .visibility-preview { padding:10px; }.visibility-location select { flex-basis:100%; } }
 
-/* Keep account tab words readable at the actual narrow panel width. */
-.account-tabs > button { font-size:12px; }
-.account-tabs > button > span { overflow-wrap:normal; }
-.account-tabs > button > svg { flex:none; }
-@media(max-width:560px) { .account-tabs > button { font-size:10px; padding-left:1px; padding-right:1px; letter-spacing:0; } }
+
 .notification-delivery { margin:14px 0; border:1px solid #6593aa55; background:linear-gradient(130deg,#17313f77,#0a152199); padding:14px; min-width:0; overflow-wrap:anywhere; }
 .notification-delivery h3 { display:flex; gap:7px; align-items:center; }
 .notification-delivery small { display:block; font-size:11px; line-height:1.7; color:#a4c0cf; margin:8px 0; }
@@ -106,7 +101,50 @@
 .viewing-details summary,.viewing-target-picker summary,.viewing-score summary { cursor:pointer; color:#c4e2f0; }
 .viewing-compass { display:flex; align-items:center; gap:16px; color:#a8ddd9; }
 .viewing-compass svg { width:80px; height:80px; flex:none; }
-.viewing-science { max-height:440px; overflow:auto; padding:8px 0; }
+.viewing-science { padding:8px 0; }
 .viewing-target-picker { margin:16px 0; padding:14px; border:1px solid #5f9bae44; }
 .viewing-target-picker ul { list-style:none; padding:0; }.viewing-target-picker li { margin:12px 0; padding:8px; background:#0b243266; }
 .viewing-target-picker button { margin-top:8px; padding:7px 12px; color:#c4e9f2; background:#173748; border:1px solid #75b8c866; }
+/* Account workspace owns its viewport; scene HUD reservations do not apply. */
+.profile-panel.account-workspace.workspace-dialog {
+  position:fixed; inset:0; margin:auto; width:min(860px,calc(100vw - 40px));
+  max-width:none; height:min(800px,calc(100dvh - 40px)); max-height:none;
+  padding:24px; gap:16px; color:var(--ui-text); background:#071019;
+  transform:none; border:1px solid #63899e; border-radius:12px;
+  box-shadow:0 24px 70px #0009;
+  --control-height:44px; --panel-padding:0px;
+}
+.workspace-dialog::backdrop { background:#000a; }
+.profile-panel.account-workspace > .account-tabs { margin:0; padding:0 0 12px; gap:8px; }
+.account-workspace > .account-tabs > button { flex-direction:row; min-height:48px; font-size:14px; padding:8px; gap:8px; }
+.account-workspace .hud-panel__body { flex:1 1 0; padding-right:8px; }
+.account-workspace__content { font-size:16px; line-height:1.6; }
+.account-workspace :is(p,.account-muted,.profile-setting p,.account-feature-intro p,.sky-empty,.viewing-details,.viewing-target-picker) { font-size:16px; line-height:1.65; }
+.account-workspace :is(label,select,input,.profile-panel__details > div,.sky-satellite-list strong,.inbox-card p) { font-size:16px; }
+.account-workspace :is(small,.sky-satellite-list small,.notification-delivery small,.visibility-card p,.visibility-card small) { font-size:13px; line-height:1.6; }
+.account-workspace :is(button,select,input:not([type=checkbox])) { min-height:44px; }
+.account-workspace .viewing-science { max-height:none; overflow:visible; }
+.account-workspace .profile-panel__footer { padding-top:12px; }
+.account-workspace .account-workspace__content > section + section { margin-top:20px; }
+.account-workspace .sky-object-grid { grid-template-columns:repeat(auto-fit,minmax(115px,1fr)); }
+.account-workspace .sky-event-grid { grid-template-columns:repeat(auto-fit,minmax(145px,1fr)); }
+@media(max-width:600px) {
+  .profile-panel.account-workspace.workspace-dialog { width:100%; height:100dvh; inset:0; margin:0; border-radius:0; padding:max(12px,env(safe-area-inset-top)) 16px max(12px,env(safe-area-inset-bottom)); gap:12px; }
+  .account-workspace > .account-tabs { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:6px; padding-bottom:10px; }
+  .account-workspace > .account-tabs > button { justify-content:flex-start; font-size:14px; padding:8px; }
+  .account-workspace .profile-panel__header h2 { font-size:24px; }
+  .account-workspace .profile-panel__header .eyebrow { font-size:11px; }
+  .account-workspace .profile-panel__footer > span { font-size:12px; }
+  .account-workspace .sky-satellite-list li { flex-wrap:wrap; padding:12px; }
+  .account-workspace .sky-satellite-list li > div { flex-basis:65%; }
+  .account-workspace .sky-follow { margin-left:auto; font-size:14px; }
+  .account-workspace .inbox-toolbar > div { flex-wrap:wrap; }
+}
+@media(max-height:440px) {
+  .profile-panel.account-workspace.workspace-dialog { height:100dvh; width:100%; padding:10px 16px; border-radius:0; gap:8px; }
+  .account-workspace .profile-panel__header h2 { margin:0; font-size:22px; }
+  .account-workspace .profile-panel__header .eyebrow { display:none; }
+  .account-workspace > .account-tabs { display:flex; padding-bottom:6px; gap:4px; }
+  .account-workspace > .account-tabs > button { font-size:13px; min-height:44px; padding:6px; }
+  .account-workspace .profile-panel__footer { padding-top:6px; }
+}

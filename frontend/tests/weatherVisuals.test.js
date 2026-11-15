@@ -50,15 +50,15 @@ test('cloud regional sampling stays geographic, padded, quantized, bounded and o
   assert.deepEqual(a,b);assert.ok(a.bounds[0]<70.1&&a.bounds[2]>89.9);assert.equal(a.width,1024);assert.equal(cloudRegion([70,0,90,20],'quality').width,2048);
 });
 
-test('regional observed requests retain exact source time and independent two-frame cache under the same request gate',async()=>{
+test('regional backend requests retain exact source time and a bounded independent cache',async()=>{
   const urls=[],revoked=[];let sequence=0;
-  const service=createCloudImageryService({now:()=>Date.parse('2026-10-26T17:00Z'),parse:()=>['2026-10-26T15:00Z'],decode:async(_blob,w,_signal,h)=>{assert.ok(w<=2048&&h<=2048);return `blob:${sequence++}`;},revoke:u=>revoked.push(u),fetcher:async url=>{urls.push(new URL(url));return {ok:true,headers:new Headers({'Content-Type':'image/jpeg'}),text:async()=>'',blob:async()=>new Blob(['synthetic test'])};}});
-  const signal=new AbortController().signal,[time]=await service.slots(1,signal);
-  await service.frame(time,{width:1024,frames:2},signal);
-  for(let i=0;i<3;i++)await service.frame(time,{width:1024,height:768,frames:2,bounds:[60+i*5,0,90+i*5,20]},signal);
-  assert.equal(service.diagnostics().cachedFrames,1);assert.equal(service.diagnostics().regionalFrames,2);assert.equal(revoked.length,1);
-  const last=urls.at(-1);assert.equal(last.searchParams.get('time'),time);assert.equal(last.searchParams.get('bbox'),'70,0,100,20');assert.equal(last.searchParams.get('height'),'768');
-  await service.frame(time,{width:1024,height:768,frames:2,bounds:[70,0,100,20]},signal);assert.equal(urls.length,5);
+  const service=createCloudImageryService({now:()=>Date.parse('2026-10-26T17:00Z'),decode:async(_blob,w,_signal,h)=>{assert.ok(w<=2048&&h<=2048);return `blob:${sequence++}`;},revoke:u=>revoked.push(u),image:async url=>{urls.push(new URL(url,'http://backend.local'));return {blob:new Blob(['isolated JPEG decoder fixture']),retrievedAt:'2026-10-26T17:00Z'};}});
+  const signal=new AbortController().signal,time='2026-10-26T15:00Z';
+  await service.frame(time,{width:1024},signal);
+  for(let i=0;i<3;i++)await service.frame(time,{width:1024,height:683,bounds:[60+i*6,0,90+i*6,20]},signal);
+  assert.equal(service.diagnostics().cachedFrames,3);assert.equal(revoked.length,1);
+  const last=urls.at(-1);assert.equal(last.pathname,'/api/weather/infrared/frame');assert.equal(last.searchParams.get('time'),time);assert.equal(last.searchParams.get('bbox'),'72,0,102,20');assert.equal(last.searchParams.get('height'),'683');
+  await service.frame(time,{width:1024,height:683,bounds:[72,0,102,20]},signal);assert.equal(urls.length,4);
   service.destroy();assert.equal(revoked.length,4);
 });
 

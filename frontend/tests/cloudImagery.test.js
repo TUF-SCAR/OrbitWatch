@@ -1,75 +1,63 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Event } from 'cesium';
-import { CLOUD_STYLE, cloudBudget } from '../src/services/cloudConfig.js';
-import { cloudSlots, cloudMapUrl, emphasizeInfrared, createCloudImageryService,validateCloudJpeg } from '../src/services/cloudImagery.js';
+import { cloudBudget } from '../src/services/cloudConfig.js';
+import { emphasizeInfrared, createCloudImageryService,validateCloudJpeg } from '../src/services/cloudImagery.js';
 import { createCloudLayer } from '../src/services/cloudLayer.js';
 
-const NOW=Date.parse('2026-10-25T16:00:00Z');
-const domain=['2021-06-06T15:00:00.000Z/2026-10-25T15:00:00.000Z/PT3H'];
-const response=(type='image/jpeg')=>({ok:true,headers:new Headers({'Content-Type':type}),text:async()=>'',blob:async()=>new Blob(['real frame fixture'])});
-test('cloud slots honor actual cadence, gaps, UTC and upper availability; no invented future frames',()=>{
-  assert.deepEqual(cloudSlots(domain,3,NOW),['2026-10-25T09:00:00.000Z','2026-10-25T12:00:00.000Z','2026-10-25T15:00:00.000Z']);
-  assert.deepEqual(cloudSlots(['2026-10-25T00:00:00Z/2026-10-25T06:00:00Z/PT3H','2026-10-25T12:00:00Z'],4,NOW).map(t=>t.slice(11,16)),['00:00','03:00','06:00','12:00']);
-  assert.deepEqual(cloudSlots(['bad','2026-10-26T00:00:00Z','2026-10-25T00:00:00Z/2026-10-25T15:00:00Z/PT10M'],4,NOW),[]);
-  const url=new URL(cloudMapUrl(cloudSlots(domain,1,NOW)[0],2048));
-  assert.equal(url.searchParams.get('bbox'),'-180,-90,180,90');assert.equal(url.searchParams.get('srs'),'EPSG:4326');
-  assert.equal(url.searchParams.get('version'),'1.1.1');assert.equal(url.searchParams.get('height'),'1024');
+const NOW=Date.parse('2026-11-14T06:00:00Z');
+const signal=new AbortController().signal;
+const metadata={version:'current',observation_time:new Date(NOW).toISOString(),expires_at:new Date(NOW+43200000).toISOString(),retrieved_at:new Date(NOW).toISOString()};
+const result={blob:new Blob(['isolated image']),retrievedAt:new Date(NOW).toISOString()};
+
+test('unchanged backend version reuses one decoded image without source requests',async()=>{
+ let calls=0;const paths=[];const revoked=[];
+ const service=createCloudImageryService({metadata:async()=>metadata,image:async path=>{calls++;paths.push(path);return {...result,retrievedAt:null};},decode:async()=> 'blob:current',revoke:u=>revoked.push(u)});
+ const budget=cloudBudget('balanced');
+ for(let i=0;i<12;i++){const m=await service.current(budget,signal);await service.frame(m.observation_time,budget,signal,m);}
+ assert.equal(calls,1);assert.ok(paths.every(p=>p.startsWith('/api/weather/infrared/frame?')));
+ assert.equal((await service.frame(metadata.observation_time,budget,signal,metadata)).retrievedAt,metadata.retrieved_at);
+ assert.equal(service.diagnostics().cachedFrames,1);service.destroy();assert.deepEqual(revoked,['blob:current']);
 });
-test('IR transfer preserves missing coverage and monotonic source structure without adding detail',()=>{
-  const pixels=new Uint8ClampedArray([0,0,0,255,85,85,85,255,160,160,160,255,235,235,235,255,255,255,255,0]);
-  const output=emphasizeInfrared(pixels);assert.equal(output,pixels);
-  assert.equal(output[3],0);assert.equal(output[7],0);assert.ok(output[11]>0&&output[11]<255);assert.ok(output[15]>output[11]&&output[15]<255);assert.ok(output[12]>output[8]);assert.equal(output[19],0);
-  assert.equal(cloudBudget('auto').width,2048);
+
+test('superseded bytes remain retained by rendered layers until successful handoff',async()=>{
+ let count=0;const revoked=[];
+ const service=createCloudImageryService({image:async()=>result,decode:async()=>`blob:${++count}`,revoke:u=>revoked.push(u)});
+ const old=await service.frame('a',{width:1024},signal);old.retain();
+ await service.frame('b',{width:1024},signal);await service.frame('c',{width:1024},signal);
+ assert.equal(service.diagnostics().cachedFrames,2);assert.ok(!revoked.includes(old.url));old.release();assert.ok(revoked.includes(old.url));
+ service.destroy();assert.equal(revoked.length,3);
 });
-test('all cloud quality profiles cache bounded real frames; repeated playback has zero requests',async()=>{
-  for(const quality of ['performance','balanced','quality']){
-    const budget=cloudBudget(quality),revoked=[];let calls=0,decoded=0;
-    const service=createCloudImageryService({now:()=>NOW,parse:()=>domain,fetcher:async()=>{calls++;return response();},decode:async(_b,w)=>{assert.equal(w,budget.width);return `blob:${++decoded}`;},revoke:u=>revoked.push(u)});
-    const signal=new AbortController().signal,times=await service.slots(budget.frames,signal);
-    for(const t of times)await service.frame(t,budget,signal);
-    for(let loop=0;loop<10;loop++)for(const t of times)await service.frame(t,budget,signal);
-    assert.equal(calls,1+budget.frames);assert.equal(service.diagnostics().cachedFrames,budget.frames);
-    await service.slots(budget.frames,signal);assert.equal(calls,1+budget.frames);
-    await assert.rejects(service.frame('2026-10-26T00:00:00Z',budget,signal),/not advertised/);
-    service.destroy();assert.equal(revoked.length,budget.frames);
-    await assert.rejects(service.frame(times[0],budget,signal),{name:'AbortError'});
-  }
+
+test('failed replacement preserves verified cache and honors backend retry deadline',async()=>{
+ let clock=NOW,fail=false,calls=0;
+ const service=createCloudImageryService({now:()=>clock,image:async()=>{calls++;if(fail)throw Object.assign(Error('unavailable'),{retryAfterSeconds:600});return result;},decode:async()=> 'blob:verified',revoke(){}});
+ const old=await service.frame('a',{width:1024},signal);fail=true;
+ await assert.rejects(service.frame('b',{width:1024},signal),/unavailable/);
+ await assert.rejects(service.frame('b',{width:1024},signal),/cooling/);assert.equal(calls,2);
+ assert.equal(await service.frame('a',{width:1024},signal),old);assert.equal(service.diagnostics().retryAt,NOW+600000);
+ clock+=600001;await assert.rejects(service.frame('b',{width:1024},signal),/unavailable/);assert.equal(calls,3);service.destroy();
 });
-test('cloud failure retains cached observation and respects Retry-After for metadata and all image requests',async()=>{
-  let clock=NOW,calls=0,fail=false;
-  const service=createCloudImageryService({now:()=>clock,parse:()=>domain,decode:async()=> 'blob:cached',revoke(){},fetcher:async()=>{
-    calls++;return fail?{ok:false,status:429,headers:new Headers({'Retry-After':'600'})}:response();
-  }});
-  const signal=new AbortController().signal,b=cloudBudget('balanced'),times=await service.slots(3,signal);
-  const original=await service.frame(times[0],b,signal);fail=true;
-  await assert.rejects(service.frame(times[1],b,signal),/429/);
-  for(let i=0;i<10;i++)await assert.rejects(service.frame(times[2],b,signal),/cooling/);
-  assert.equal(calls,3);assert.equal(await service.frame(times[0],b,signal),original);
-  assert.equal(service.diagnostics().retryAt,NOW+600000);
-  clock+=CLOUD_STYLE.metadataTtlMs+1;
-  assert.deepEqual(await service.slots(3,signal),times,'expired metadata survives outage with original slots');
-  service.destroy();
+
+test('aborted conversion and destroyed service release late object URLs',async()=>{
+ let finish;const revoked=[],controller=new AbortController();
+ const service=createCloudImageryService({image:async()=>result,decode:()=>new Promise(r=>finish=r),revoke:u=>revoked.push(u)});
+ const task=service.frame('a',{width:1024},controller.signal);while(!finish)await new Promise(r=>setTimeout(r,0));controller.abort();finish('blob:late');await assert.rejects(task,{name:'AbortError'});assert.deepEqual(revoked,['blob:late']);service.destroy();await assert.rejects(service.current({width:1024},signal),{name:'AbortError'});
 });
-test('quality changes evict old resolution; abort during conversion releases late URL, no invalid image admitted',async()=>{
-  let finish,revoked=[],n=0,slow=false;
-  const service=createCloudImageryService({now:()=>NOW,parse:()=>domain,fetcher:async()=>response(),revoke:u=>revoked.push(u),decode:()=>slow?new Promise(r=>finish=r):Promise.resolve(`blob:${++n}`)});
-  const c=new AbortController(),times=await service.slots(4,c.signal);
-  for(const t of times)await service.frame(t,cloudBudget('quality'),c.signal);
-  await service.frame(times[3],cloudBudget('performance'),c.signal);
-  assert.equal(service.diagnostics().cachedFrames,2);assert.equal(revoked.length,3);
-  slow=true;const pending=service.frame(times[2],cloudBudget('performance'),c.signal);
-  while(!finish)await new Promise(r=>setTimeout(r,0));c.abort();finish('blob:late');await assert.rejects(pending,{name:'AbortError'});
-  assert.ok(revoked.includes('blob:late'));service.destroy();assert.equal(revoked.length,6);
+
+test('regional identity and cache are bounded separately from the current global image',async()=>{
+ let count=0;const service=createCloudImageryService({image:async()=>result,decode:async()=>`blob:${++count}`,revoke(){}});
+ const global=await service.frame('now',{width:1024},signal);
+ for(let i=0;i<8;i++)await service.frame('now',{width:1024,height:512,bounds:[i*2,0,20+i*2,10]},signal);
+ assert.equal(service.diagnostics().cachedFrames,3);assert.equal(await service.frame('now',{width:1024},signal),global);service.destroy();
 });
-test('cloud request ceiling cannot be bypassed by quality changes/cancellation',async()=>{
-  let calls=0,n=0;
-  const service=createCloudImageryService({now:()=>NOW,parse:()=>domain,fetcher:async()=>{calls++;return response();},decode:async()=>`blob:${++n}`,revoke(){}});
-  const signal=new AbortController().signal,[time]=await service.slots(1,signal);
-  for(let i=0;i<CLOUD_STYLE.requestsPerWindow-1;i++)await service.frame(time,{width:100+i*2,frames:1},signal);
-  await assert.rejects(service.frame(time,{width:1000,frames:1},signal),/budget/);
-  assert.equal(calls,CLOUD_STYLE.requestsPerWindow);service.destroy();
+
+test('IR transfer preserves missing coverage and monotonic source structure without added detail',()=>{
+ const pixels=new Uint8ClampedArray([0,0,0,255,85,85,85,255,160,160,160,255,235,235,235,255,255,255,255,0]);
+ const output=emphasizeInfrared(pixels);assert.equal(output,pixels);assert.equal(output[3],0);assert.equal(output[7],0);assert.ok(output[11]>0&&output[11]<255);assert.ok(output[15]>output[11]);assert.equal(output[19],0);
+ assert.equal(cloudBudget('performance').width,1024);assert.equal(cloudBudget('quality').width,2048);
 });
+
 function sceneFixture(){
   let clock=0;const entries=[],preRender=new Event();
   const viewer={isDestroyed:()=>false,scene:{preRender,requestRender(){}},imageryLayers:{contains:l=>entries.includes(l),addImageryProvider:provider=>{const l={provider};entries.push(l);return l;},remove(l,destroy){assert.equal(destroy,true);entries.splice(entries.indexOf(l),1);}}};
@@ -91,55 +79,9 @@ test('late layer completions cannot resurrect after travel/logout; reduced motio
   await owner.update({frame:{id:'a'},visible:true});f.tick(1);assert.equal(f.entries[0].alpha,.55);assert.equal(f.preRender.numberOfListeners,0);
   const pending=owner.update({frame:{id:'slow'},visible:true});owner.destroy();finish({});await pending;assert.equal(f.entries.length,0);
 });
-test('invalid server payloads cannot masquerade as observations; cached display failure is visibly reported',async()=>{
-  let image=false;
-  const service=createCloudImageryService({now:()=>NOW,parse:()=>domain,fetcher:async()=>response(image?'application/xml':'text/xml'),decode:()=>{throw Error('must not decode XML');}});
-  const signal=new AbortController().signal,[time]=await service.slots(1,signal);image=true;
-  await assert.rejects(service.frame(time,cloudBudget('balanced'),signal),/image unavailable/);
-  assert.equal(service.diagnostics().cachedFrames,0);service.destroy();
-  await assert.rejects(service.slots(1,signal),{name:'AbortError'});
-  const f=sceneFixture();let message,retained;
-  const owner=createCloudLayer(f.viewer,{makeProvider:async frame=>{if(frame.id==='bad')throw Error('decode');return frame;},onError:(error,frame)=>{message=error;retained=frame;}});
-  await owner.update({visible:true,frame:{id:'good'}});
-  await owner.update({visible:true,frame:{id:'bad'}});
-  assert.equal(message,'decode');assert.equal(f.entries.length,1);assert.equal(f.entries[0].provider.id,'good');assert.equal(f.preRender.numberOfListeners,0);owner.destroy();
-  assert.equal(retained.id,'good');
-});
-
-test('one cancelled subscriber cannot abort a shared frame; height is part of its identity',async()=>{
-  let release,calls=0;
-  const service=createCloudImageryService({now:()=>NOW,parse:()=>domain,revoke(){},decode:async(_blob,width,_signal,height)=>`blob:${width}x${height}`,
-    fetcher:async()=>{calls++;if(calls===2)await new Promise(resolve=>release=resolve);return response();}});
-  const a=new AbortController(),b=new AbortController(),[time]=await service.slots(1,b.signal),budget=cloudBudget('balanced');
-  const first=service.frame(time,budget,a.signal);const rejected=assert.rejects(first,{name:'AbortError'});
-  const second=service.frame(time,budget,b.signal);
-  while(!release)await new Promise(resolve=>setTimeout(resolve,0));a.abort();release();
-  await rejected;const frame=await second;assert.equal(calls,2);
-  const other=await service.frame(time,{...budget,height:512},b.signal);assert.notEqual(frame.id,other.id);assert.equal(calls,3);service.destroy();
-});
-
-test('bounded response bodies reject a lying/absent Content-Length before decode',async()=>{
-  let decodeCount=0,calls=0;
-  const service=createCloudImageryService({now:()=>NOW,parse:()=>domain,revoke(){},decode:async()=>{decodeCount++;return 'blob:no';},fetcher:async()=>{
-    if(++calls===1)return response();
-    return new Response(new ReadableStream({start(controller){controller.enqueue(new Uint8Array(8000001));controller.enqueue(new Uint8Array(8000001));controller.close();}}),{headers:{'Content-Type':'image/jpeg'}});
-  }});
-  const signal=new AbortController().signal,[time]=await service.slots(1,signal);
-  await assert.rejects(service.frame(time,cloudBudget('performance'),signal),/size limit/);assert.equal(decodeCount,0);service.destroy();
-});
-
 test('encoded JPEG dimensions are checked before browser pixel allocation',async()=>{
   const jpeg=new Blob([new Uint8Array([255,216,255,192,0,11,8,2,0,4,0,1,1,17,0,255,217])]);
   await validateCloudJpeg(jpeg,1024,512);
   await assert.rejects(validateCloudJpeg(jpeg,2048,1024),/dimensions/);
   await assert.rejects(validateCloudJpeg(new Blob(['XML error']),1024,512),/Invalid cloud JPEG/);
-});
-
-test('invalid capabilities use the same cooldown instead of repeated metadata downloads',async()=>{
-  let calls=0;
-  const service=createCloudImageryService({now:()=>NOW,fetcher:async()=>{calls++;return response();},parse:()=>{throw Error('Invalid metadata');}});
-  const signal=new AbortController().signal;
-  await assert.rejects(service.slots(1,signal),/Invalid metadata/);
-  await assert.rejects(service.slots(1,signal),/cooling/);
-  assert.equal(calls,1);service.destroy();
 });

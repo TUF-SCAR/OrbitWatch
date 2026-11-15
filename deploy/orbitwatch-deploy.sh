@@ -134,6 +134,8 @@ runuser -u ubuntu -- bash -c \
   "cd '$APP/backend' && '$PY' apply_account_migrations.py --apply --expected-target '$EXPECTED_DATABASE_FINGERPRINT'"
 runuser -u ubuntu -- bash -c \
   "cd '$APP/backend' && '$PY' configure_notifications.py --configure --expected-target '$EXPECTED_DATABASE_FINGERPRINT'"
+runuser -u ubuntu -- bash -c \
+  "cd '$APP/backend' && '$PY' configure_infrared.py --activate-confirmed-layer"
 install -o root -g root -m 644 "$APP/deploy/orbitwatch-notifications.service" "/etc/systemd/system/$WORKER.service"
 systemctl daemon-reload
 systemctl enable "$WORKER"

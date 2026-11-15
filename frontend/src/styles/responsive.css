@@ -1,0 +1,126 @@
+/* Compact viewports use the same top-layer sheet for every scene tool. */
+.workspace-dialog { animation:none; translate:none; scale:none; rotate:none; }
+.hud-panel.workspace-dialog:not(.account-workspace) {
+ position:fixed; inset:0; margin:auto; width:min(680px,100vw); height:100dvh;
+ max-width:none; max-height:none; min-height:0; padding:max(16px,env(safe-area-inset-top)) 16px max(16px,env(safe-area-inset-bottom));
+ gap:14px; border-radius:0; transform:none; color:var(--ui-text); background:#071019;
+ --control-height:44px; --panel-padding:16px; --section-gap:14px;
+}
+.workspace-dialog:focus { outline:none; }
+.hud-panel :focus-visible, .scene-dock :focus-visible, .mode-rail :focus-visible { outline:2px solid #a7e9ff; outline-offset:2px; }
+.workspace-dialog .hud-panel__header { flex:none; }
+.workspace-dialog .hud-panel__body { flex:1 1 0; min-height:0; }
+.workspace-dialog :is(button,select,input:not([type=checkbox]):not([type=range])) { min-height:44px; }
+.workspace-dialog :is(p,label,input,select,.object-row__name,.setting-toggle strong) { font-size:16px; line-height:1.55; }
+.workspace-dialog :is(small,.weather-source,.weather-valid,.inline-warning,.object-row__copy small) { font-size:13px; line-height:1.6; }
+.workspace-dialog .icon-button { width:44px; height:44px; }
+.workspace-dialog .eyebrow { font-size:11px; }
+.workspace-dialog .search-field { flex:none; }
+.workspace-dialog .explorer-body { display:flex; flex-direction:column; gap:14px; }
+.workspace-dialog .explorer-body > * { flex-shrink:0; }
+.workspace-dialog .object-list { overflow:visible; flex:none; }
+.workspace-dialog .system-menu__viewport { flex:1; min-height:0; overflow-y:auto; }
+.workspace-dialog .system-menu__track { height:auto; align-items:start; }
+.workspace-dialog .system-catalog { height:auto; overflow:visible; }
+.workspace-dialog .system-map { height:360px; min-height:300px; }
+.workspace-dialog .system-menu__tabs { height:auto; min-height:44px; flex:none; margin:0; }
+.workspace-dialog .system-menu__tabs button { font-size:14px; color:#c0d6e4; }
+.workspace-dialog .system-menu__foot { margin:0; padding:12px 0 0; min-height:32px; flex:none; font-size:12px; }
+.workspace-dialog .system-catalog__copy strong { font-size:16px; white-space:normal; }
+.workspace-dialog .system-catalog__copy small { font-size:12px; white-space:normal; color:#b0c8d6; }
+.workspace-dialog .system-catalog__title { font-size:13px; color:#b0c8d6; padding:10px 0; }
+.workspace-dialog .system-map__note { font-size:12px; color:#a9c3d5; }
+.workspace-dialog .weather-view-tabs { flex:none; }
+.workspace-dialog .weather-view-tabs button { font-size:13px; }
+.workspace-dialog .weather-coordinates { grid-template-columns:repeat(2,minmax(0,1fr)); }
+@media(max-width:440px) { .workspace-dialog .map-gallery { grid-template-columns:1fr; }.workspace-dialog .system-catalog__rows { grid-template-columns:1fr; } }
+@media(max-height:440px) { .hud-panel.workspace-dialog:not(.account-workspace) { width:100%; padding:10px 16px; gap:8px; }.workspace-dialog .hud-panel__header h2 { font-size:22px; margin:0; }.workspace-dialog .hud-panel__header .eyebrow { display:none; } }
+/* Scene navigation stays visible while the globe keeps a single canvas. */
+@media(max-width:820px) {
+ .orbitwatch-shell { --ui-content-left:12px; --ui-edge:12px; --ui-bottom-min:160px; }
+ .top-hud { padding:12px; height:64px; grid-template-columns:minmax(0,1fr) auto; gap:8px; }
+ .brand-lockup { padding:0; min-width:0; }
+ .brand-lockup__title { font-size:clamp(13px,3.5vw,18px); letter-spacing:.08em; }
+ .brand-lockup__sub,.hud-context { display:none; }
+ .system-readout { gap:6px; }
+ .hud-clocks { font-size:11px; }
+ .hud-clocks span { font-size:11px; }
+ .notification-bell,.session-readout--button { width:44px; height:44px; min-height:44px; }
+ .session-readout--button { padding:0; justify-content:center; }
+ .session-readout--button strong { display:none; }
+ .mode-rail { left:12px; right:auto; top:auto; bottom:max(12px,env(safe-area-inset-bottom)); width:auto; display:flex; flex-direction:row; gap:8px; transform:none; }
+ .mode-rail__mark,.mode-rail__line { display:none; }
+ .mode-button { width:100px; height:48px; min-height:48px; display:flex; flex-direction:row; gap:8px; padding:8px; }
+ .mode-button span { font-size:12px; line-height:1.25; }
+ .explorer-trigger { top:76px; left:12px; height:48px; max-width:calc(100vw - 82px); font-size:15px; }
+ .place-search { top:76px; right:12px; left:auto; transform:none; }
+ .place-search > button { width:48px; height:48px; }
+ .place-search:has(form) { left:12px; right:12px; }
+ .place-search form { min-height:48px; }
+ .place-search input { font-size:16px; }
+ .place-results:not(:empty) { margin-top:8px; max-height:calc(100dvh - 200px); }
+ .scene-dock { top:136px; left:12px; right:12px; padding:4px; gap:4px; justify-content:space-between; transform:none; }
+ .scene-dock .scene-tool { flex:1; height:54px; padding:4px; flex-direction:column; gap:3px; }
+ .scene-dock .scene-tool span { display:block; font-size:12px; }
+ .live-dock.live-telemetry-dock { left:12px; right:12px; bottom:76px; width:auto; max-width:none; translate:0 0; transform:none; display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); padding:10px; gap:8px; }
+ .live-dock .telemetry-item { min-width:0; min-height:0; padding:0; }
+ .live-dock .telemetry-item span { font-size:11px; }.live-dock .telemetry-item strong { font-size:16px; }
+ .live-dock .dock-divider { display:none; }
+ .live-dock .dock-command { grid-column:1/-1; min-height:44px; font-size:14px; justify-content:center; }
+ .live-dock .body-fact { grid-column:1/-1; width:auto; max-width:none; font-size:15px; }
+ .presentation-toggle { bottom:12px; left:228px; width:44px; height:48px; padding:8px; justify-content:center; font-size:0; }
+ .manual-refresh { bottom:12px; right:12px; left:auto; width:44px; height:48px; border-radius:6px; }
+ .manual-refresh span { font-size:9px; }
+ .time-dock-owner { bottom:76px; left:12px; right:12px; width:auto; max-width:none; translate:0 0; transform:none; }
+ .time-dock-owner > .time-dock { position:relative; inset:auto; width:100%; max-height:46dvh; overflow-y:auto; padding:12px; transform:none; translate:0 0; }
+ .time-dock__moment { min-height:48px; width:100%; }.time-dock__moment strong { font-size:15px; }.time-dock__moment small { font-size:12px; }
+ .time-dock .time-dock__scrub { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); flex-basis:100%; gap:6px; }
+ .time-dock .time-dock__scrub button,.time-dock .return-live,.time-dock .time-dock__load { min-height:44px; font-size:14px; }
+ .time-dock .time-coverage { font-size:13px; line-height:1.6; }
+ .weather-legend { left:12px; right:12px; width:auto; bottom:242px; max-height:28dvh; overflow:auto; font-size:13px; }
+ .weather-legend small { font-size:12px; }
+ .weather-legend[aria-label="Observed cloud legend"] { bottom:200px; }
+ .weather-legend summary { min-height:32px; font-size:12px; cursor:pointer; padding:8px 0; color:#bdeaff; }
+ .scene-notice { left:12px; right:12px; top:204px; width:auto; max-width:none; }
+}
+@media(max-width:360px) { .hud-clocks { display:none; }.mode-button { width:94px; }.presentation-toggle { left:216px; } }
+@media(max-height:440px) and (max-width:820px) {
+ .scene-dock { top:76px; left:260px; right:12px; }.scene-dock .scene-tool { flex-direction:row; height:44px; }
+ .explorer-trigger { max-width:180px; }.place-search { top:12px; right:122px; }
+ .live-dock.live-telemetry-dock { left:240px; bottom:12px; right:126px; display:flex; padding:6px; flex-wrap:wrap; gap:8px; }
+ .live-dock .dock-command { min-height:44px; }.live-dock .telemetry-item strong { font-size:14px; }
+ .presentation-toggle { left:auto; right:70px; }.time-dock-owner { left:240px; bottom:12px; right:126px; }.time-dock-owner>.time-dock { max-height:52dvh; }
+}
+.account-workspace .account-workspace__content .account-tabs { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:6px; margin:16px 0; }
+.account-workspace .account-workspace__content .account-tabs > button { flex-direction:row; justify-content:flex-start; min-height:48px; padding:8px; font-size:14px; }
+@media(min-width:700px) { .account-workspace .account-workspace__content .account-tabs { grid-template-columns:repeat(4,minmax(0,1fr)); } }
+@media(max-width:820px), (max-height:600px) {
+ .spatial-surface { transform:none; }
+}
+/* Auth owns one scrolling form; browser zoom and the keyboard cannot hide submit. */
+.auth-panel { scrollbar-gutter:stable; overscroll-behavior:contain; }
+@media(max-width:820px), (max-height:600px) {
+ .auth-page__content { padding:76px 12px 72px !important; align-items:flex-start; }
+ .auth-panel { width:min(480px,100%); max-height:calc(100dvh - 148px); margin:0; padding:20px; }
+ .auth-panel :is(input,button) { min-height:44px; font-size:16px; }
+ .auth-panel label { font-size:13px; }.auth-heading p { display:block; font-size:16px; line-height:1.5; }
+ .auth-preview-toggle { height:44px; bottom:12px; top:auto; right:12px; width:170px; transform:none; }
+ .auth-page__header { top:10px; left:12px; }.auth-brand strong { font-size:18px; }
+}
+.collection-chooser { position:fixed; inset:0; margin:auto; width:min(440px,calc(100vw - 24px)); max-height:calc(100dvh - 24px); padding:20px; overflow:auto; color:#eff8ff; background:#0b1924; border:1px solid #63899e; border-radius:12px; }
+.collection-chooser::backdrop { background:#000a; }
+.collection-chooser :is(input,button) { min-height:44px; font-size:16px; max-width:100%; }
+.collection-chooser input { width:100%; min-width:0; margin:10px 0; }
+.collection-chooser :focus-visible { outline:2px solid #a7e9ff; outline-offset:2px; }
+.scene-picker :is(button,input,select) { min-height:44px; }
+.scene-picker__calendar button { font-size:14px; }
+.scene-picker__equivalent,.scene-picker__history p { font-size:13px; line-height:1.6; }
+@media(max-width:820px) { .time-dock-owner { top:auto; height:auto; }.location-weather-card.workspace-dialog { display:flex; }.location-weather-card.workspace-dialog header { flex:none; }.workspace-dialog .location-weather-details small { font-size:13px; } }
+/* One scroll owner also applies to the desktop catalogue. */
+.object-explorer .explorer-body { display:flex; flex-direction:column; flex:1 1 0; min-height:0; overflow-y:auto; gap:14px; }
+.object-explorer .explorer-body > * { flex-shrink:0; }
+.object-explorer .object-list { flex:none; overflow:visible; }
+@media(max-height:440px) and (max-width:600px) {
+ .account-workspace > .account-tabs { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); }
+ .account-workspace > .account-tabs > button { font-size:14px; }
+}

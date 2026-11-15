@@ -42,6 +42,11 @@ with TemporaryDirectory(dir=ROOT/'.setup-cache') as tmp:
         assert not info['stale'] and info['time']==observation and len(calls)==2
         restarted=InfraredService(root,lambda:now[0],client=lambda **_: (_ for _ in ()).throw(AssertionError('cache must not download')))
         assert restarted.frame(observation)[0]==data
+        with patch.dict(os.environ,{'ORBITWATCH_WEATHER_PROVIDER_REQUESTS':'false'}):
+            prior=len(calls)
+            assert restarted.frame(observation)[0]==data
+            assert restarted.current()['observation_time']==observation
+            assert len(calls)==prior
         # Simulate existing full storage plus a crash-left partial write. The
         # next distinct frame must stay under the file cap and clear the orphan.
         for i in range(8):
@@ -58,7 +63,7 @@ with TemporaryDirectory(dir=ROOT/'.setup-cache') as tmp:
             try: service.frame(invalid,width)
             except ValueError: pass
             else: raise AssertionError('Unallowlisted frame accepted')
-        now[0]+=901;fail[0]=True
+        now[0]+=3601;fail[0]=True
         failed_count=len(calls)+1
         assert service.slots()['stale'] and len(calls)==failed_count
         assert service.slots()['stale'] and len(calls)==failed_count # persistent Retry-After

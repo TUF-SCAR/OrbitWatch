@@ -2,7 +2,7 @@ import WeatherGallery from './WeatherGallery.jsx';
 import { useLayoutEffect, useRef } from 'react';
 import { AnimatePresence } from 'motion/react';
 import { Crosshair, Thermometer, X } from 'lucide-react';
-import SpatialSurface from './SpatialSurface.jsx';
+import ResponsivePanel from './ResponsivePanel.jsx';
 import { LocationWeatherDetails } from './LocationWeatherCard.jsx';
 import { weatherTime } from '../utils/weatherFormatters.js';
 import { WEATHER_FIELDS } from '../services/weatherFields.js';
@@ -15,7 +15,7 @@ export function TemperatureLegend({field,state,labelWeatherNote}) {
   const style=WEATHER_FIELDS[field.display_variable||'temperature'];
   return <aside className="weather-legend" aria-label="Weather legend"><WeatherScale variable={field.display_variable||'temperature'} field={field}/><small>{state==='stale'?'CACHED · STALE · ':''}GFS · 1° · {weatherTime(field.valid_at)} · <a href="https://nomads.ncep.noaa.gov/" target="_blank" rel="noreferrer">NOAA/NCEP</a></small>{style.units==='mm/h'&&<small>Liquid equivalent · {field.fields?.clouds?'GFS model clouds · ':''}{field.precipitation_phase_status==='available'?'GFS categorical phase · nearest node':'phase unavailable'}</small>}{labelWeatherNote&&<small>{labelWeatherNote}</small>}</aside>;
 }
-export default function WeatherPanel({onFocusEvent,onReturnEvent,windEnabled=false,onWindEnabled,windField,cameraAltitudeKm,cloudFallback=false,observedClouds,tab,onTab,events,eventsEnabled,onEventsEnabled,eventCategory,onEventCategory,selectedEventId,onEventSelect,open,onClose,weather,variable='temperature',onVariable,enabled,onEnabled,opacity,onOpacity,compatible,onCompatibleMap,onRefresh,refreshCooling,onViewCenter,locationWeather,labelWeatherNote}) {
+export default function WeatherPanel({onFocusEvent,onReturnEvent,windEnabled=false,onWindEnabled,windField,cameraAltitudeKm,observedClouds,tab,onTab,events,eventsEnabled,onEventsEnabled,eventCategory,onEventCategory,selectedEventId,onEventSelect,open,onClose,weather,variable='temperature',onVariable,enabled,onEnabled,opacity,onOpacity,compatible,onCompatibleMap,onRefresh,refreshCooling,onViewCenter,locationWeather,labelWeatherNote}) {
   const bodyRef=useRef(null);
   useLayoutEffect(()=>{
     if(!open||!bodyRef.current)return;
@@ -24,8 +24,8 @@ export default function WeatherPanel({onFocusEvent,onReturnEvent,windEnabled=fal
   },[open,tab,selectedEventId,eventCategory]);
   const field=weather.field;
   const availability=weather.availability;
-  const observed=variable==='observedClouds'&&!cloudFallback;
-  const style=WEATHER_FIELDS[cloudFallback?'clouds':variable];
+  const observed=variable==='observedClouds';
+  const style=WEATHER_FIELDS[variable];
   const working=['preparing','downloading','decoding'].includes(weather.state);
   const retryAt=Date.parse(availability?.next_attempt_at);
   const waiting=weather.state!=='available'&&Number.isFinite(retryAt)&&retryAt>weather.clock;
@@ -33,7 +33,7 @@ export default function WeatherPanel({onFocusEvent,onReturnEvent,windEnabled=fal
   const failure=availability?.last_failure;
   const failureNote=({timeout:'The NOAA request timed out.',network_error:'NOAA could not be reached.',http_error:`NOAA returned HTTP ${failure?.http_status}.`,invalid_data:'The NOAA field could not be validated.',decoder_unavailable:'Temperature processing is unavailable on the backend.',unknown_prior_failure:'The previous NOAA request failed; its original cause was not recorded.',processing_error:'Temperature preparation failed.'})[failure?.category];
   const message=working?({preparing:'Preparing global model weather…',downloading:'Downloading the NOAA model fields…',decoding:'Processing and validating the NOAA field…'})[weather.state]:weather.state==='cooldown'?`NOAA retry is paused until ${weatherTime(availability.next_attempt_at)}.`:weather.state==='offline'?'Weather is offline. The next connection check is scheduled automatically.':availability?.providers_enabled===false?'Weather provider access is disabled. No usable global field is available.':availability?.data_state==='hard_expired'?'The previous field has expired. No temperature overlay is being shown.':'The selected global field is unavailable. A retry is scheduled automatically.';
-  return <AnimatePresence>{open&&<SpatialSurface as="aside" side="right" className="weather-panel hud-panel hud-panel--right" aria-label="Live Earth weather">
+  return <AnimatePresence>{open&&<ResponsivePanel onDismiss={onClose} as="aside" side="right" className="weather-panel hud-panel hud-panel--right" aria-label="Live Earth weather">
     <div className="hud-panel__header"><div><div className="eyebrow"><Thermometer size={15}/> LIVE EARTH</div><h2>Weather</h2></div><button className="icon-button" aria-label="Close weather" onClick={onClose}><X size={20}/></button></div>
     <div className="weather-view-tabs" role="group" aria-label="Weather views"><button aria-pressed={tab==='layers'} onClick={()=>onTab('layers')}>WEATHER LAYERS</button><button aria-pressed={tab==='events'} onClick={()=>onTab('events')}>NATURAL EVENTS</button></div>
     <div className="hud-panel__body weather-panel__body" ref={bodyRef}>
@@ -59,7 +59,6 @@ export default function WeatherPanel({onFocusEvent,onReturnEvent,windEnabled=fal
         {!compatible&&<div className="inline-warning" role="status">Weather imagery cannot be draped on Google 3D Tiles.<button className="secondary-action" onClick={onCompatibleMap}>USE ESRI FOR WEATHER</button></div>}
         <label className="weather-opacity">Opacity <output>{Math.round(opacity*100)}%</output><input aria-label="Weather opacity" type="range" min="0" max="80" step="5" value={Math.round(opacity*100)} onChange={e=>onOpacity(Number(e.target.value)/100)}/></label>
         {observed?<ObservedClouds clouds={observedClouds} enabled={enabled}/>:<>
-        {cloudFallback&&<p className="inline-warning" role="status">Observed imagery unavailable. Showing GFS modeled cloud fraction when available; this is not satellite imagery. <button className="secondary-action" onClick={observedClouds.refresh} disabled={observedClouds.clock<(observedClouds.diagnostics.retryAt||0)}>RETRY OBSERVATIONS</button></p>}
         {field?<><WeatherScale variable={field.display_variable||'temperature'} field={field}/><p className="weather-valid">{field.kind==='analysis'?'Analysis':'Forecast'} valid <strong>{weatherTime(field.valid_at)}</strong></p><p className="weather-source">NOAA/NCEP GFS · 1° grid · {style.units}</p>{variable==='precipitation'&&<p className="weather-source">Instantaneous liquid-equivalent rate, including frozen precipitation. Available GFS model cloud fraction is composited underneath; it is not observed satellite imagery. Streaks mark rain or unknown-phase activity; verified frozen/mixed cells have no rain streaks. Phase uses nearest model nodes; colours do not imply radar or snowfall depth. The 1° source limits local detail; not radar or accumulation.</p>}{variable==='clouds'&&<p className="weather-source">Forecast cloud fraction, not satellite-observed clouds.</p>}{variable==='humidity'&&<p className="weather-source">Modeled 2 m relative humidity (%), not ground-station observations.</p>}{variable==='pressure'&&<p className="weather-source">Modeled Mean Sea-Level Pressure (hPa), reduced to sea level; not surface pressure.</p>}{variable==='wind'&&<p className="weather-source">Animated flow follows modeled 10 m winds, with accelerated visual time. Interpolation adds no detail to the 1° source. Not tracked air parcels; motion is still when reduced motion is enabled.</p>}</>:<p role="status">{message}</p>}
         {weather.state==='stale'&&availability?.state==='cooldown'&&<p className="weather-source">Cached field retained. NOAA retry at {weatherTime(availability.next_attempt_at)}.</p>}
         {!field&&failureNote&&<p className="weather-source">{failureNote}</p>}
@@ -72,5 +71,5 @@ export default function WeatherPanel({onFocusEvent,onReturnEvent,windEnabled=fal
       <details><summary>Modeled weather accuracy</summary><p>Model estimates, not station observations. The global 2 m field has 1° grid spacing; colour interpolation adds no resolution. Local GFS data is processed by Open-Meteo, with elevation adjustment. Coordinates are rounded to 0.1° for caching.</p>{field&&(!field.display_variable||field.display_variable==='temperature')&&<p>GFS initialized {weatherTime(field.model_initialized_at)}. Retrieved {weatherTime(field.retrieved_at)}. Range {field.minimum_c} to {field.maximum_c} °C.</p>}</details>
       <footer className="weather-credits"><a href="https://nomads.ncep.noaa.gov/" target="_blank" rel="noreferrer">NOAA/NCEP GFS</a><a href="https://open-meteo.com/" target="_blank" rel="noreferrer">Weather data by Open-Meteo</a><a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noreferrer">CC BY 4.0</a></footer>
     </>} </div>
-  </SpatialSurface>}</AnimatePresence>;
+  </ResponsivePanel>}</AnimatePresence>;
 }

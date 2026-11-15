@@ -37,8 +37,8 @@ export function validatePrecipitationPhase(phase,time){
   if(phase?.units!=='category'||phase.level!=='surface'||phase.step_type!=='instant'||phase.valid_at!==time||phase.values?.length!==65160||phase.values.some(value=>!allowed.includes(value)))throw Error('Invalid categorical precipitation phase');
   return phase;
 }
-export function needsModelWeather(variable,cloudFallback,windEnabled,labelWeather=false) {
-  return variable!=='observedClouds'||cloudFallback||windEnabled||labelWeather;
+export function needsModelWeather(variable,windEnabled,labelWeather=false) {
+  return variable!=='observedClouds'||windEnabled||labelWeather;
 }
 export function sampleModel(values,longitude,latitude){return sampleTemperature({values_c:values},longitude,latitude);}
 export function modelColor(variable,value) {

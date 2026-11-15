@@ -1,7 +1,7 @@
 import { X } from "lucide-react";
 import { useEffect, useState,useSyncExternalStore } from "react";
 import { Cartesian3, JulianDate } from "cesium";
-import SpatialSurface from "./SpatialSurface.jsx";
+import ResponsivePanel from "./ResponsivePanel.jsx";
 import { CELESTIAL_BODIES } from "../data/celestialBodies.js";
 import { bodyRepresentation, bodyTextureSource, BODY_SOURCES } from "../data/celestialFacts.js";
 import { bodyScienceSource, bodyAdditionalSources, CELESTIAL_NOTES } from "../data/celestialNotes.js";
@@ -40,7 +40,7 @@ export default function CelestialInspector({ bodyId, sceneTime, onClose, detailS
     ...(body.parent ? [["Parent body", CELESTIAL_BODIES[body.parent].name]] : []),
     ...(orbit ? [["Orbital period", `${number(orbit.periodDays, 3)} Earth days`], ["Semimajor axis", axis], ["Eccentricity", number(orbit.eccentricity, 4)], ["Inclination", `${number(Math.abs(orbit.inclination))}°`]] : []),
   ];
-  return <SpatialSurface as="aside" side="right" className="inspector-panel celestial-inspector hud-panel hud-panel--right" aria-label="Celestial inspector">
+  return <ResponsivePanel onDismiss={onClose} as="aside" side="right" className="inspector-panel celestial-inspector hud-panel hud-panel--right" aria-label="Celestial inspector">
     <div className="inspector-panel__head hud-panel__header"><div><span className="eyebrow">CELESTIAL OVERVIEW</span><h1>{body.name}</h1></div><button className="icon-button" onClick={onClose} aria-label="Close celestial inspector"><X size={20} /></button></div>
     <div className="hud-panel__body inspector-body">
     <div className="object-ident"><span>{body.type}</span><span>REFERENCE DATA</span></div>
@@ -55,5 +55,5 @@ export default function CelestialInspector({ bodyId, sceneTime, onClose, detailS
     <h3>In this scene</h3><p>Positions are calculated from approximate orbital elements at the scene time. They are not a live spacecraft feed or precision navigation ephemeris.</p><p>{bodyRepresentation(bodyId)}</p>{detailState === "degraded" && <p className="inline-warning">Detailed model unavailable. A lightweight reference body remains visible while detail retries.</p>}
     <h3>Controls</h3><p>Drag to orbit. Scroll to zoom. Right-drag to pan around the body. Use System to visit another destination.</p><h3>Sources</h3>{[...bodyAdditionalSources(bodyId), ...BODY_SOURCES].map((source) => <p key={source.url}><a href={source.url} target="_blank" rel="noreferrer">{source.label} ↗</a></p>)}{bodyTextureSource(bodyId) && <a href={bodyTextureSource(bodyId)} target="_blank" rel="noreferrer">NASA texture source ↗</a>}</div>
     </div>
-  </SpatialSurface>;
+  </ResponsivePanel>;
 }

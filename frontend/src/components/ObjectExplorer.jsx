@@ -1,7 +1,7 @@
 import { AnimatePresence } from "motion/react";
 import { useEffect, useRef, useState } from "react";
 import { Search, X, Plus, Trash2, Pencil } from "lucide-react";
-import SpatialSurface from "./SpatialSurface.jsx";
+import ResponsivePanel from "./ResponsivePanel.jsx";
 
 export default function ObjectExplorer({ open, onClose, objects, trackedIds, selectedId, onSelect, onLoad, onUnload, limitMessage, userId, searchCycle = 0, coverageUnavailable = false, historical = false, historicalData }) {
   const storageKey = `orbitwatch_collections_${userId}${historical ? '_time' : ''}`;
@@ -40,8 +40,10 @@ export default function ObjectExplorer({ open, onClose, objects, trackedIds, sel
   useEffect(() => { if (allRef.current) allRef.current.indeterminate = someSelected && !allSelected; }, [someSelected, allSelected, open]);
   useEffect(() => {
     if (!chooser) return;
-    (chooserRef.current?.querySelector("input") || chooserRef.current?.querySelector("button"))?.focus();
-    return () => { if (chooserTriggerRef.current?.isConnected) chooserTriggerRef.current.focus(); };
+    const node=chooserRef.current;
+    node.showModal();
+    (node.querySelector("input") || node.querySelector("button"))?.focus();
+    return () => { node.close(); if (chooserTriggerRef.current?.isConnected) chooserTriggerRef.current.focus(); };
   }, [chooser]);
 
   function openChooser(next) { chooserTriggerRef.current = document.activeElement; setChooser(next); }
@@ -92,7 +94,7 @@ export default function ObjectExplorer({ open, onClose, objects, trackedIds, sel
 
 
   return (
-    <AnimatePresence>{open && <SpatialSurface as="aside" side="left" strength={1.2} className="object-explorer hud-panel hud-panel--left" aria-label="Object explorer" onKeyDown={(event) => {
+    <AnimatePresence>{open && <ResponsivePanel onDismiss={onClose} as="aside" side="left" strength={1.2} className="object-explorer hud-panel hud-panel--left" aria-label="Object explorer" onKeyDown={(event) => {
       if (event.key === "Escape" && chooser) { event.stopPropagation(); setChooser(null); }
     }}>
       <div className="object-explorer__head hud-panel__header">
@@ -123,7 +125,7 @@ export default function ObjectExplorer({ open, onClose, objects, trackedIds, sel
       </div>
       {selected.size >= 2 && <div className="selection-actions"><button type="button" disabled={!selectedIds.every((id) => !tracked.has(id))} onClick={() => onLoad(selectedIds)}>{coverageUnavailable ? "TRACK" : "LOAD"}</button><button type="button" disabled={!selectedIds.every((id) => tracked.has(id))} onClick={() => onUnload(selectedIds)}>{coverageUnavailable ? "UNTRACK" : "UNLOAD"}</button>{!historical && <button type="button" onClick={() => openChooser({ kind: "add", ids: selectedIds })}>ADD</button>}</div>}
       <div className="object-explorer__foot hud-panel__footer"><span>{filtered.length} results · {selectedIds.length} selected</span><span>{trackedIds.length} {historical ? `enabled · ${historicalData?.state==='ready'?historicalData.objects.length:0} available` : coverageUnavailable ? "tracked · data unavailable" : "loaded"}</span></div>
-      {chooser && <div ref={chooserRef} onKeyDown={chooserKeys} className="collection-chooser" role="dialog" aria-modal="true" aria-label="Manage custom filter"><button type="button" className="icon-button" aria-label="Close collection chooser" onClick={() => setChooser(null)}><X size={16} /></button><h3>{chooser.kind === "rename" ? "Rename collection" : "Add to your collection"}</h3>{chooser.kind === "add" && collections.map((item) => <button type="button" key={item.id} onClick={() => addToCollection(item.id)}>{item.name}</button>)}<form onSubmit={submitName}><label>{chooser.kind === "rename" ? "Collection name" : "Create new filter"}<input autoFocus required maxLength={48} value={name} onChange={(event) => setName(event.target.value)} /></label><button type="submit">{chooser.kind === "rename" ? "RENAME" : "CREATE"}</button></form></div>}
-    </SpatialSurface>}</AnimatePresence>
+      {chooser && <dialog ref={chooserRef} onCancel={event=>{event.preventDefault();event.stopPropagation();setChooser(null);}} onKeyDown={event=>{chooserKeys(event);event.stopPropagation();}} className="collection-chooser" aria-label="Manage custom filter"><button type="button" className="icon-button" aria-label="Close collection chooser" onClick={() => setChooser(null)}><X size={16} /></button><h3>{chooser.kind === "rename" ? "Rename collection" : "Add to your collection"}</h3>{chooser.kind === "add" && collections.map((item) => <button type="button" key={item.id} onClick={() => addToCollection(item.id)}>{item.name}</button>)}<form onSubmit={submitName}><label>{chooser.kind === "rename" ? "Collection name" : "Create new filter"}<input autoFocus required maxLength={48} value={name} onChange={(event) => setName(event.target.value)} /></label><button type="submit">{chooser.kind === "rename" ? "RENAME" : "CREATE"}</button></form></dialog>}
+    </ResponsivePanel>}</AnimatePresence>
   );
 }

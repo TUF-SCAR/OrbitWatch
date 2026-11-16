@@ -172,6 +172,12 @@ if [[ "$worker_healthy" == 0 ]]; then
   false
 fi
 
+# Readers are cache-only: do not call the source here or rely on a first visitor.
+# Wait for the single scheduler to publish both validated variants and report
+# independent cache/decoder timings plus unchanged orbital-data timestamps.
+runuser -u ubuntu -- bash -c \
+  "cd '$APP/backend' && '$PY' release_health.py --wait 540"
+
 SWITCHED=0
 trap - ERR
 rm -f "$WORKER_BACKUP"

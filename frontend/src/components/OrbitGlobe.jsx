@@ -431,6 +431,15 @@ export default function OrbitGlobe({
   }, [selectedTime, selectedId, labelsEnabled, onObjectSelect, onViewTelemetry, mapStyle, mode, shownOrbitIds, onCelestialSelect, onSceneReady, onRefreshComplete, onMapStatus, onDetailReady, onScaleChange, onSatelliteStatus, quality, onOrbitInfo, onTimeReady]);
 
   useImperativeHandle(globeRef, () => ({
+    zoomStep(direction){
+      const viewer=viewerRef.current;if(!viewer||viewer.isDestroyed())return;
+      lastInteractionRef.current=performance.now();
+      const height=Math.max(100,viewer.camera.positionCartographic.height);
+      const step=Math.min(height*.22,8000000);
+      if(direction>0)viewer.camera.zoomIn(Math.min(step,Math.max(0,height-100)));
+      else if(height<2000000000)viewer.camera.zoomOut(Math.min(step,2000000000-height));
+      viewer.scene.requestRender();
+    },
     focusNaturalEvent(id){lastInteractionRef.current=performance.now();return naturalEventLayerRef.current?.focusEvent(id);},
     returnFromNaturalEvent(){return naturalEventLayerRef.current?.returnFromFocus();},
     weatherViewCenter() {
@@ -1130,7 +1139,7 @@ export default function OrbitGlobe({
   useEffect(()=>{
     const viewer=viewerRef.current;if(!viewer||viewer.isDestroyed())return;
     cloudLayerRef.current ||= createCloudDetail(viewer,{onError:onCloudError});
-    cloudLayerRef.current.update({service:cloudService?.current,ready:cloudReady,quality,frame:cloudFrame,visible:weatherVisible&&mode==='live'&&selectedCelestialBody==='earth',compatible:weatherCompatible,alpha:weatherOpacity});
+    cloudLayerRef.current.update({service:cloudService?.current,ready:cloudReady,quality:"performance",frame:cloudFrame,visible:weatherVisible&&mode==='live'&&selectedCelestialBody==='earth',compatible:weatherCompatible,alpha:weatherOpacity});
   },[cloudFrame,cloudService,cloudReady,quality,onCloudError,weatherVisible,weatherCompatible,weatherOpacity,mode,selectedCelestialBody]);
 
   useEffect(()=>{

@@ -7,6 +7,7 @@ export async function cloudProvider(frame) {
     credit:new Credit(`<a href="${CLOUD_SOURCE.information}">${CLOUD_SOURCE.credit} · ${frame.time} · IR cloud emphasis</a>`)});
 }
 export function createCloudLayer(viewer,{makeProvider=cloudProvider,now=()=>performance.now(),reduced=prefersReducedMotion,onError=()=>{}}={}) {
+  let providerReadyMs=null,firstDisplayMs=null,displaySettledMs=null;
   let current=null,previous=null,displayed=null,key=null,pendingKey=null,generation=0,removeFrame=null,destroyed=false,opacity=.55,error=null,altitudeAlpha=1,blend=1;
   const remove=layer=>{if(layer){if(viewer.imageryLayers.contains(layer))viewer.imageryLayers.remove(layer,true);layer.orbitwatchFrame?.release?.();layer.orbitwatchFrame=null;}};
   function applyAlpha(){if(current)current.alpha=opacity*altitudeAlpha*blend;if(previous)previous.alpha=opacity*altitudeAlpha*(1-blend);}
@@ -21,23 +22,25 @@ export function createCloudLayer(viewer,{makeProvider=cloudProvider,now=()=>perf
       if(key===frame.id||pendingKey===frame.id){applyAlpha();viewer.scene.requestRender();return;}
       const version=++generation;pendingKey=frame.id;
       // Decode before replacing the current layer; network gaps never blank it.
-      let provider;
+      let provider;const requested=now();firstDisplayMs=null;displaySettledMs=null;
       frame.retain?.();
       try{provider=await makeProvider(frame);}catch(e){frame.release?.();if(version===generation){pendingKey=null;settle();error=e.message;onError(error,displayed);viewer.scene.requestRender();}return;}
       if(destroyed||viewer.isDestroyed()||version!==generation){frame.release?.();return;}
+      providerReadyMs=now()-requested;
       pendingKey=null;error=null;settle();previous=current;
       current=viewer.imageryLayers.addImageryProvider(provider);current.orbitwatchWeather=true;
       current.orbitwatchFrame=frame;
       current.alpha=0;blend=0;key=frame.id;displayed=frame;
       const start=now();
       const tick=()=>{
+        if(firstDisplayMs===null)firstDisplayMs=now()-requested;
         const t=reduced()?1:Math.min(1,(now()-start)/CLOUD_STYLE.fadeMs);
         blend=t*t*(3-2*t);applyAlpha();
-        if(t===1)settle();else viewer.scene.requestRender();
+        if(t===1){displaySettledMs=now()-requested;settle();}else viewer.scene.requestRender();
       };
       removeFrame=viewer.scene.preRender.addEventListener(tick);viewer.scene.requestRender();
     },
-    diagnostics:()=>({layers:Number(Boolean(current))+Number(Boolean(previous)),transitioning:Boolean(removeFrame),time:key,error}),
+    diagnostics:()=>({layers:Number(Boolean(current))+Number(Boolean(previous)),transitioning:Boolean(removeFrame),time:key,error,providerReadyMs,firstDisplayMs,displaySettledMs}),
     destroy(){if(destroyed)return;clear();destroyed=true;},
   };
 }

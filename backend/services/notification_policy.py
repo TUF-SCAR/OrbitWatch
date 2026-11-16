@@ -153,3 +153,10 @@ def event_candidate(event,location,radius,now,previous_severity=None):
 
 
 def digest(candidate):return sha256(candidate['key'].encode()).hexdigest()
+
+
+def dangerous(event):
+    """Category/curation alone never qualifies. Use quantitative source evidence."""
+    value=event_severity(event)
+    return isinstance(value,(int,float)) and not isinstance(value,bool) and math.isfinite(value) and (
+        event.get('provider')=='gdacs' and value>=2 or event.get('provider')=='usgs' and value>=6)

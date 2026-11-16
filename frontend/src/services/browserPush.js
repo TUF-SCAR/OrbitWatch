@@ -50,6 +50,15 @@ export async function disableBrowserPush() {
 }
 
 export async function revokePushOnLogout() {
+  // The privacy marker uses the same local database as the push worker and does
+  // not depend on registration lookup, network access or a live access token.
+  if(typeof indexedDB!=='undefined'){
+    try{
+      const request=indexedDB.open('orbitwatch-push-privacy',1);
+      request.onupgradeneeded=()=>request.result.createObjectStore('settings');
+      request.onsuccess=()=>{const db=request.result;const transaction=db.transaction('settings','readwrite');transaction.objectStore('settings').put(null,'device');transaction.oncomplete=()=>db.close();transaction.onerror=()=>db.close();};
+    }catch{ /* Service worker message below remains a second local path. */ }
+  }
   try {await disableBrowserPush();}catch {
     // The worker marker is cleared before unsubscribe/server attempts. Keep the
     // receipt to retry server revocation on the next authenticated session.

@@ -43,7 +43,7 @@ export function createRainLayer(viewer,{now=()=>performance.now(),doc=document,r
         viewer.scene.globe.ellipsoid.cartesianToCartographic(hit,geo);
         const longitude=CesiumMath.toDegrees(geo.longitude),latitude=CesiumMath.toDegrees(geo.latitude);
         const phase=phaseAtNodes(phaseNodes(field),longitude,latitude);
-        if(phase!=='rain'&&phase!=='unknown')continue;
+        if(phase!=='rain')continue;
         const rate=sampleModel(field.values,longitude,latitude);
         if(rate===null||rate<.15)continue;
         p.rate=rate;p.billboard.position=Cartesian3.fromRadians(geo.longitude,geo.latitude,1500);

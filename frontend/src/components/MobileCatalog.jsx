@@ -2,11 +2,14 @@ import {useEffect,useRef,useState} from 'react';
 import {Search,SlidersHorizontal,X} from 'lucide-react';
 import WorkspaceDialog from './WorkspaceDialog.jsx';
 
-export default function MobileCatalog({open,onClose,label,title,count,query,onQuery,filters,filterCount,onApply,onClear,children,footer,bulk,dialog}){
+export default function MobileCatalog({open,onClose,label,title,count,query,onQuery,filters,filterCount,onApply,onClear,children,footer,bulk,dialog,searchCycle=0}){
  const [searching,setSearching]=useState(false),[filtering,setFiltering]=useState(false);
  const search=useRef(null),list=useRef(null),scroll=useRef(0);
+ const previousSearch=useRef(searchCycle);
+ useEffect(()=>{if(searchCycle!==previousSearch.current){previousSearch.current=searchCycle;const timer=setTimeout(()=>setSearching(true),0);return()=>clearTimeout(timer);}},[searchCycle]);
  useEffect(()=>{if(open&&list.current)list.current.scrollTop=scroll.current;},[open]);
- useEffect(()=>{if(open&&searching)search.current?.focus();},[open,searching]);
+ useEffect(()=>{if(open&&searching)search.current?.focus();},[searching,open]);
+ useEffect(()=>{if(!open){const timer=setTimeout(()=>setSearching(false),0);return()=>clearTimeout(timer);}},[open]);
  if(!open)return null;
  return <WorkspaceDialog onClose={onClose} className="hud-panel mobile-catalog" aria-label={label}>
   <header><div><small>{count} OBJECTS</small><h2>{title}</h2></div><button type="button" aria-label={`Close ${label}`} onClick={onClose}><X size={20}/></button></header>

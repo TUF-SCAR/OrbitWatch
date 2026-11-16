@@ -17,6 +17,6 @@ export const CLOUD_STYLE = Object.freeze({
   blackPoint: 85, whitePoint: 255, gamma: 1.05,
 });
 export function cloudBudget(quality) {
-  if(typeof matchMedia==='function'&&matchMedia('(max-width: 820px)').matches)return CLOUD_PROFILES.performance;
+  if(typeof matchMedia==='function'&&matchMedia('(max-width: 600px), (max-width: 1000px) and (max-height: 600px) and (pointer: coarse)').matches)return CLOUD_PROFILES.performance;
   return CLOUD_PROFILES[quality] || CLOUD_PROFILES.balanced;
 }

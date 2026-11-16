@@ -41,6 +41,15 @@ def status(response: Response):
     return weather_status()
 
 
+@router.get('/timezone')
+def location_timezone(response: Response, latitude: float=Query(ge=-90,le=90), longitude: float=Query(ge=-180,le=180)):
+    response.headers['Cache-Control']='private, max-age=300'
+    from services.location_timezone import resolve
+    try: return resolve(latitude,longitude)
+    except (ImportError,OSError,ValueError):
+        return {'state':'unavailable'}
+
+
 @router.get('/infrared/slots')
 def infrared_slots(response: Response):
     response.headers['Cache-Control']='private, no-store'
@@ -60,8 +69,9 @@ def infrared_current(response: Response, width: int = Query(1024)):
     except ValueError: raise HTTPException(422,detail='Invalid display resolution')
     except WeatherDeferred:
         response.status_code=503
-        response.headers['Retry-After']='60'
-        return dict(state='unavailable',retry_after_seconds=60,detail='No acceptable recent infrared observation is available')
+        delay=max(60,infrared.cache.gate('eumetsat_layer')['retry_after_seconds'])
+        response.headers['Retry-After']=str(delay)
+        return dict(state='unavailable',retry_after_seconds=delay,detail='No acceptable recent infrared observation is available')
 
 
 @router.get('/infrared/frame')
@@ -75,7 +85,7 @@ def infrared_frame(request: Request, time: str = Query(max_length=32), width: in
             'X-Observation-Time':info['time'],'X-Retrieved-At':info['retrieved_at'],
             'X-Imagery-Stale':str(info['stale']).lower(),'X-Attribution':'EUMETSAT / NOAA / JMA; CC BY 4.0'}
         if request.headers.get('if-none-match')==etag: return Response(status_code=304,headers=headers)
-        return Response(data,media_type='image/jpeg',headers=headers)
+        return Response(data,media_type='image/png',headers=headers)
     except InfraredDisabled:
         raise HTTPException(503,detail='Infrared imagery disabled by server configuration',headers={'Cache-Control':'no-store'})
     except ValueError:

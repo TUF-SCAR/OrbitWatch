@@ -38,7 +38,7 @@ test('verified frozen and mixed cells never emit rainfall streaks; rain keeps th
   for(const phase of ['snow','mixed','ice_pellets','freezing_rain','rain','unknown']){
     owner.update({field:field(phase),visible:true,quality:'performance'});
     for(let i=0;i<5;i++){clock+=100;preRender.raiseEvent();}
-    assert.equal(owner.diagnostics().raining>0,['rain','unknown'].includes(phase));
+    assert.equal(owner.diagnostics().raining>0,phase==='rain');
   }
   owner.destroy();assert.equal(layers.length,0);
 });

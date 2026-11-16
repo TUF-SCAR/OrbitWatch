@@ -1,12 +1,8 @@
-import { AnimatePresence } from "motion/react";
 import { useEffect, useRef, useState } from "react";
-import { Search, X, Plus, Trash2, Pencil } from "lucide-react";
-import ResponsivePanel from "./ResponsivePanel.jsx";
+import { X } from "lucide-react";
 import MobileCatalog from './MobileCatalog.jsx';
-import {usePhoneUI} from '../utils/usePhoneUI.js';
 
-export default function ObjectExplorer({ open, onClose, objects, trackedIds, selectedId, onSelect, onLoad, onUnload, limitMessage, userId, searchCycle = 0, coverageUnavailable = false, historical = false, historicalData }) {
-  const phone=usePhoneUI();
+export default function ObjectExplorer({ open, onClose, objects, trackedIds, selectedId, onSelect, onLoad, onUnload, limitMessage, userId, searchCycle = 0, historical = false }) {
   const [filterDraft,setFilterDraft]=useState({category:'All',country:'All',collectionId:''});
   const storageKey = `orbitwatch_collections_${userId}${historical ? '_time' : ''}`;
   const [query, setQuery] = useState("");
@@ -23,7 +19,6 @@ export default function ObjectExplorer({ open, onClose, objects, trackedIds, sel
       return Array.isArray(saved) ? saved.filter((item) => typeof item.id === "string" && typeof item.name === "string" && Array.isArray(item.ids)) : [];
     } catch { return []; }
   });
-  const searchRef = useRef(null);
   const allRef = useRef(null);
   const chooserRef = useRef(null);
   const chooserTriggerRef = useRef(null);
@@ -40,7 +35,6 @@ export default function ObjectExplorer({ open, onClose, objects, trackedIds, sel
   const someSelected = filtered.some((item) => selected.has(item.noradId));
   const selectedIds = [...selected].filter(id=>objects.some(object=>object.noradId===id));
 
-  useEffect(() => { if (open&&!phone) searchRef.current?.focus(); }, [open, searchCycle,phone]);
   useEffect(() => { if (allRef.current) allRef.current.indeterminate = someSelected && !allSelected; }, [someSelected, allSelected, open]);
   useEffect(() => {
     if (!chooser) return;
@@ -99,7 +93,7 @@ export default function ObjectExplorer({ open, onClose, objects, trackedIds, sel
 
 
   const chooserDialog = chooser && <dialog ref={chooserRef} onCancel={event=>{event.preventDefault();event.stopPropagation();setChooser(null);}} onKeyDown={event=>{chooserKeys(event);event.stopPropagation();}} className="collection-chooser" aria-label="Manage custom filter"><button type="button" className="icon-button" aria-label="Close collection chooser" onClick={() => setChooser(null)}><X size={16} /></button><h3>{chooser.kind === "rename" ? "Rename collection" : "Add to your collection"}</h3>{chooser.kind === "add" && collections.map((item) => <button type="button" key={item.id} onClick={() => addToCollection(item.id)}>{item.name}</button>)}<form onSubmit={submitName}><label>{chooser.kind === "rename" ? "Collection name" : "Create new filter"}<input autoFocus required maxLength={48} value={name} onChange={(event) => setName(event.target.value)} /></label><button type="submit">{chooser.kind === "rename" ? "RENAME" : "CREATE"}</button></form></dialog>;
-  if(phone)return <MobileCatalog open={open} onClose={onClose} label="object explorer" title="Objects" count={objects.length} query={query} onQuery={setQuery}
+  return <MobileCatalog searchCycle={searchCycle} open={open} onClose={onClose} label="object explorer" title="Objects" count={objects.length} query={query} onQuery={setQuery}
     filterCount={Number(category!=='All')+Number(country!=='All')+Number(Boolean(collectionId))}
     onApply={()=>{setCategory(filterDraft.category);setCountry(filterDraft.country);setCollectionId(filterDraft.collectionId);}}
     onClear={()=>{setCategory('All');setCountry('All');setCollectionId('');setFilterDraft({category:'All',country:'All',collectionId:''});}}
@@ -117,39 +111,4 @@ export default function ObjectExplorer({ open, onClose, objects, trackedIds, sel
     </article>)}
   </MobileCatalog>;
 
-  return (
-    <AnimatePresence>{open && <ResponsivePanel onDismiss={onClose} as="aside" side="left" strength={1.2} className="object-explorer hud-panel hud-panel--left" aria-label="Object explorer" onKeyDown={(event) => {
-      if (event.key === "Escape" && chooser) { event.stopPropagation(); setChooser(null); }
-    }}>
-      <div className="object-explorer__head hud-panel__header">
-        <div><div className="eyebrow">{historical ? 'PERMANENT TIME CATALOG' : 'CATALOG'} / {objects.length} OBJECTS</div><h2>Object Explorer</h2></div>
-        <button type="button" className="icon-button" onClick={onClose} aria-label="Close object explorer"><X size={18} /></button>
-      </div>
-      <div className="explorer-body hud-panel__body">
-      <label className="search-field"><Search size={16} /><span className="sr-only">Search objects</span><input ref={searchRef} value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Name, NORAD, operator, country…" /></label>
-      <div className="explorer-filters">
-        <label>TYPE<select value={category} onChange={(event) => setCategory(event.target.value)}>{["All", ...new Set(objects.map((item) => item.category))].map((item) => <option key={item}>{item}</option>)}</select></label>
-        <label>REGION<select value={country} onChange={(event) => setCountry(event.target.value)}>{["All", ...new Set(objects.map((item) => item.country))].map((item) => <option key={item}>{item}</option>)}</select></label>
-      </div>
-      {!historical && <div className="collection-controls">
-        <label><span className="sr-only">Your custom collections</span><select value={collectionId} onChange={(event) => setCollectionId(event.target.value)}><option value="">ALL COLLECTIONS</option>{collections.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
-        <button type="button" aria-label="Create custom filter" title="Create custom filter" onClick={() => { setName(""); openChooser({ kind: "create", ids: [] }); }}><Plus size={16} /></button>
-        {collection && <><button type="button" aria-label="Rename collection" onClick={() => { setName(collection.name); openChooser({ kind: "rename", ids: [] }); }}><Pencil size={15} /></button><button type="button" aria-label="Delete collection" onClick={() => { saveCollections(collections.filter((item) => item.id !== collectionId)); setCollectionId(""); }}><Trash2 size={15} /></button></>}
-      </div>}
-      <div className="selection-toolbar"><label><input ref={allRef} type="checkbox" checked={allSelected} disabled={!filtered.length} onChange={selectVisible} /> SELECT ALL RESULTS</label><button type="button" onClick={() => setSelected(new Set())}>CLEAR {selected.size}</button></div>
-      {(limitMessage || message) && <div className="limit-message" role="status">{limitMessage || message}</div>}
-      <div className="object-list">
-        {!filtered.length && <p className="empty-state">No objects match these filters.</p>}
-        {filtered.map((item) => <div key={item.noradId} className={`object-row ${selectedId === item.noradId ? "is-selected" : ""}`}>
-          <input className="object-checkbox" type="checkbox" checked={selected.has(item.noradId)} onChange={() => toggleSelection(item.noradId)} aria-label={`Select ${item.name} for bulk actions`} />
-          <button type="button" className="object-row__main" onClick={() => onSelect(item.noradId)}><span className="object-row__copy"><strong>{item.name}</strong><small>{item.category} · {item.noradId}{tracked.has(item.noradId) ? coverageUnavailable ? " · TRACKED" : " · LOADED" : ""}</small>{historical && <small>{historicalData?.objects?.some(value=>value.norad_id===item.noradId) ? "HISTORICAL SGP4" : historicalData?.errors?.some(value=>value.norad_id===item.noradId) ? "NO VALID HISTORY" : tracked.has(item.noradId) ? "HISTORY PENDING / UNAVAILABLE" : "SELECT TO CHECK ARCHIVE"}</small>}</span></button>
-          <div className="object-row__actions"><button type="button" onClick={() => tracked.has(item.noradId) ? onUnload([item.noradId]) : onLoad([item.noradId])}>{tracked.has(item.noradId) ? coverageUnavailable ? "UNTRACK" : "UNLOAD" : coverageUnavailable ? "TRACK" : "LOAD"}</button>{!historical && <button type="button" aria-label={`Add ${item.name} to collection`} onClick={() => openChooser({ kind: "add", ids: [item.noradId] })}>ADD</button>}{collection && <button type="button" aria-label={`Remove ${item.name} from collection`} onClick={() => saveCollections(collections.map((group) => group.id === collectionId ? { ...group, ids: group.ids.filter((id) => id !== item.noradId) } : group))}>REMOVE</button>}</div>
-        </div>)}
-      </div>
-      </div>
-      {selected.size >= 2 && <div className="selection-actions"><button type="button" disabled={!selectedIds.every((id) => !tracked.has(id))} onClick={() => onLoad(selectedIds)}>{coverageUnavailable ? "TRACK" : "LOAD"}</button><button type="button" disabled={!selectedIds.every((id) => tracked.has(id))} onClick={() => onUnload(selectedIds)}>{coverageUnavailable ? "UNTRACK" : "UNLOAD"}</button>{!historical && <button type="button" onClick={() => openChooser({ kind: "add", ids: selectedIds })}>ADD</button>}</div>}
-      <div className="object-explorer__foot hud-panel__footer"><span>{filtered.length} results · {selectedIds.length} selected</span><span>{trackedIds.length} {historical ? `enabled · ${historicalData?.state==='ready'?historicalData.objects.length:0} available` : coverageUnavailable ? "tracked · data unavailable" : "loaded"}</span></div>
-      {chooserDialog}
-    </ResponsivePanel>}</AnimatePresence>
-  );
 }

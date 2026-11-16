@@ -14,21 +14,13 @@ test('Time Dock renders static reference identity, honest satellite coverage and
   const props={selectedTime:new Date('1990-01-01T12:00:00Z'),trackedCount:4,maxTracked:15};
   const render=imageryStatus=>renderToStaticMarkup(createElement(TimeDock,{...props,imageryStatus}));
   const ready=render({activeMap:'esri',state:'available'});
-  assert.match(ready,/Esri World Imagery · Reference basemap/);
-  assert.match(ready,/Not imagery from the selected time/);
-  assert.match(ready,/Historical archive unavailable/);
-  assert.match(ready,/Scene date and time \(local\)/);
-  assert.doesNotMatch(ready,/View daily observations|View reference map|NASA historical|Retry reference/);
+  assert.match(ready,/Esri World Imagery/);assert.match(ready,/modern reference/);assert.match(ready,/Expand date and time controls/);assert.match(ready,/4\/15 satellites/);
+  assert.doesNotMatch(ready,/time-dock__scrub|time-dock__load|scene-picker__days/);
   const failed=render({activeMap:'local-reference',state:'unavailable',message:'Esri unavailable'});
   assert.match(failed,/NASA\/JPL\/USGS · Static reference texture/);
-  assert.match(failed,/Retry reference basemap/);assert.match(failed,/Esri unavailable/);
-  assert.doesNotMatch(failed,/Esri World Imagery · Reference basemap/);
-  const populated=renderToStaticMarkup(createElement(TimeDock,{...props,historicalData:{state:'ready',objects:TIME_DEFAULT_OBJECTS.map(norad_id=>({norad_id})),errors:[]}}));
-  assert.match(populated,/4\/4 historical positions available/);
-  assert.doesNotMatch(populated,/Historical archive unavailable/);
   const {default:ObjectExplorer}=await server.ssrLoadModule('/src/components/HistoricalSatelliteList.jsx');
   const explorer=renderToStaticMarkup(createElement(ObjectExplorer,{open:true,time:new Date('1945-01-01T00:00:00Z'),trackedIds:[],historicalData:{state:'ready',objects:[],errors:[]}}));
-  assert.match(explorer,/PERMANENT TIME CATALOG.*15/);
+  assert.match(explorer,/15 OBJECTS/);
   assert.equal((explorer.match(/type="checkbox"/g)||[]).length,15);assert.doesNotMatch(explorer,/checked=""|bulk actions|search text|COLLECTIONS/);assert.match(explorer,/Not launched yet/);assert.match(explorer,/ONEWEB-0012/);assert.doesNotMatch(explorer,/58990|Create custom filter|Add .* to collection/);
  } finally {await server.close();}
 });

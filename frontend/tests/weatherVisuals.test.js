@@ -20,7 +20,7 @@ test('rain streaks use wet model anchors, bounded seeding, quality counts, reduc
     const viewer={isDestroyed:()=>false,camera:{moveEnd,positionCartographic:{height:3000000},pickEllipsoid:()=>Cartesian3.fromDegrees(78,8)},scene:{canvas:{clientWidth:1280,clientHeight:720},globe:{ellipsoid:Ellipsoid.WGS84},preRender,requestRender(){},primitives:{add(c){collections.push(c);return c;},remove(c){collections.splice(collections.indexOf(c),1);}}}};
     const makeCollection=()=>({add:opts=>({...opts})});
     const owner=createRainLayer(viewer,{doc,now:()=>clock,reduced:()=>calm,makeCollection,makeImage:()=> 'streak'});
-    const field={display_variable:'precipitation',values:Array(65160).fill(8)};
+    const field={display_variable:'precipitation',valid_at:'2026-11-01T12:00Z',values:Array(65160).fill(8),precipitation_phase:{valid_at:'2026-11-01T12:00Z',units:'category',level:'surface',step_type:'instant',values:Array(65160).fill('rain')}};
     owner.update({field,visible:true,quality});preRender.raiseEvent();
     assert.equal(owner.diagnostics().capacity,rainBudget(quality).particles);assert.ok(owner.diagnostics().raining<=40);
     for(let i=0;i<20;i++){clock+=100;preRender.raiseEvent();}

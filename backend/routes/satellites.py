@@ -58,9 +58,11 @@ def convert_satellite_error(error: Exception):
 
 
 @router.get("/data-status")
-def satellite_data_status() -> dict:
+def satellite_data_status(norad_ids: str | None = Query(None,max_length=2000)) -> dict:
     try:
-        return get_orbital_data_status()
+        ids=[int(n) for n in norad_ids.split(",")] if norad_ids else None
+        if ids and (len(ids)>150 or any(not is_supported_norad_id(n) for n in ids)):raise HTTPException(422,detail="Invalid tracked catalog")
+        return get_orbital_data_status(ids)
     except Exception as error:
         convert_satellite_error(error)
 

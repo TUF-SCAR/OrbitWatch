@@ -2,6 +2,7 @@ import {timeSatelliteAllowed} from '../data/timeExplorerCatalog.js';
 const API_BASE = (import.meta.env?.VITE_API_BASE_URL ?? "http://127.0.0.1:8000").replace(/\/$/, "");
 const AUTH_TOKEN_KEY = "orbitwatch_access_token";
 let sessionToken = null;
+let sessionRequests=new AbortController();
 
 export class OrbitWatchApiError extends Error {
   constructor(message, status, detail = null, kind = "request", code = null) {
@@ -24,8 +25,13 @@ export function storeAccessToken(token) {
 }
 
 export function clearAccessToken() {
+  sessionRequests.abort();sessionRequests=new AbortController();
   sessionToken = null;
   try { window.localStorage.removeItem(AUTH_TOKEN_KEY); } catch { /* In-memory session is already cleared. */ }
+}
+
+export function resolveLocationTimezone(point,signal){
+  return requestJson(`/api/weather/timezone?${new URLSearchParams({latitude:point.lat,longitude:point.lng})}`,{signal});
 }
 
 async function requestJson(path, options = {}) {
@@ -36,9 +42,10 @@ async function requestJson(path, options = {}) {
     headers.set("Authorization", `Bearer ${token}`);
   }
 
-  const signal = options.signal
+  const requestSignal = options.signal
     ? AbortSignal.any([options.signal, AbortSignal.timeout(options.timeoutMs??10000)])
     : AbortSignal.timeout(options.timeoutMs??10000);
+  const signal=token?AbortSignal.any([requestSignal,sessionRequests.signal]):requestSignal;
   let response;
   try {
     response = await fetch(`${API_BASE}${path}`, { ...options, headers, signal });
@@ -83,7 +90,7 @@ async function requestJson(path, options = {}) {
       response.status < 500 && typeof detail === "string" ? detail : null,
       response.status === 401 ? "unauthorized" : response.status === 503 ? "unavailable" : response.status >= 500 ? "server" : "validation", code,
     );
-    if(path.startsWith('/api/weather/location?')&&[429,503].includes(response.status)) {
+    if((path.startsWith('/api/weather/location?')||path.startsWith('/api/weather/infrared/'))&&[429,503].includes(response.status)) {
       const retry=Number(response.headers.get('Retry-After'));
       error.retryAfterSeconds=Number.isFinite(retry)&&retry>0?Math.min(86400,retry):30;
     }
@@ -112,8 +119,8 @@ export function fetchSatelliteCatalog(signal) {
   return requestJson("/api/satellites/catalog", { signal });
 }
 
-export function fetchSatelliteDataStatus(signal) {
-  return requestJson("/api/satellites/data-status", { signal });
+export function fetchSatelliteDataStatus(signal,trackedKey="") {
+  return requestJson("/api/satellites/data-status"+(trackedKey?"?norad_ids="+encodeURIComponent(trackedKey):""), { signal });
 }
 
 export function fetchSatellitePosition(noradId, signal) {
@@ -242,9 +249,9 @@ export async function fetchInfraredImage(path,signal) {
     error.retryAfterSeconds=Math.max(30,Math.min(21600,Number(response.headers.get('Retry-After'))||60));
     throw error;
   }
-  if(!response.headers.get('Content-Type')?.startsWith('image/jpeg')||Number(response.headers.get('Content-Length'))>8000000)throw Error('Invalid infrared response');
+  if(!['image/jpeg','image/png'].includes(response.headers.get('Content-Type')?.split(';')[0])||Number(response.headers.get('Content-Length'))>8000000)throw Error('Invalid infrared response');
   const reader=response.body.getReader(),parts=[];let size=0;
   try {while(true){const {done,value}=await reader.read();if(done)break;size+=value.byteLength;if(size>8000000)throw Error('Infrared response exceeds limit');parts.push(value);}}
   finally {await reader.cancel().catch(()=>{});reader.releaseLock();}
-  return {blob:new Blob(parts,{type:'image/jpeg'}),retrievedAt:response.headers.get('X-Retrieved-At')};
+  return {blob:new Blob(parts,{type:response.headers.get('Content-Type').split(';')[0]}),retrievedAt:response.headers.get('X-Retrieved-At')};
 }

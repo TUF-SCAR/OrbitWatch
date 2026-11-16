@@ -29,47 +29,47 @@ with TemporaryDirectory(dir=ROOT/'.setup-cache') as tmp:
     root=Path(tmp)/'ir'
     service=InfraredService(root,lambda:now[0],lambda **kwargs:httpx.Client(transport=httpx.MockTransport(handler),**kwargs))
     with patch.dict(os.environ,{'ORBITWATCH_INFRARED_ENABLED':'false','ORBITWATCH_INFRARED_LICENSE_CONFIRMED':'false'}):
-        for action in [service.slots,lambda:service.frame(iso(now[0]))]:
+        for action in [service.slots,lambda:service._acquire_frame(iso(now[0]))]:
             try: action()
             except InfraredDisabled: pass
             else: raise AssertionError('Unlicensed retrieval allowed')
         assert not root.exists() and not calls
     with patch.dict(os.environ,{'ORBITWATCH_INFRARED_ENABLED':'true','ORBITWATCH_INFRARED_LICENSE_CONFIRMED':'true','ORBITWATCH_WEATHER_PROVIDER_REQUESTS':'true'}):
-        slots=service.slots();assert len(slots['times'])==2 and len(calls)==1
+        slots=service._source_slots();assert len(slots['times'])==2 and len(calls)==1
         observation=slots['times'][-1]
         now[0]+=61 # shared per-layer minute gate includes capabilities and maps
-        data,info=service.frame(observation);validate_jpeg(data,1024)
+        data,info=service._acquire_frame(observation);validate_jpeg(data,1024)
         assert not info['stale'] and info['time']==observation and len(calls)==2
         restarted=InfraredService(root,lambda:now[0],client=lambda **_: (_ for _ in ()).throw(AssertionError('cache must not download')))
-        assert restarted.frame(observation)[0]==data
+        assert restarted._acquire_frame(observation)[0]==data
         with patch.dict(os.environ,{'ORBITWATCH_WEATHER_PROVIDER_REQUESTS':'false'}):
             prior=len(calls)
-            assert restarted.frame(observation)[0]==data
-            assert restarted.current()['observation_time']==observation
+            assert restarted._acquire_frame(observation)[0]==data
+            assert restarted._source_slots()['times'][-1]==observation
             assert len(calls)==prior
         # Simulate existing full storage plus a crash-left partial write. The
         # next distinct frame must stay under the file cap and clear the orphan.
         for i in range(8):
             old=root/f'{i:064x}.jpg';old.write_bytes(jpeg(1024));os.utime(old,(1,1))
         (root/('f'*64+'.part')).write_bytes(b'partial')
-        now[0]+=61;service.frame(observation,2048)
+        now[0]+=61;service._acquire_frame(observation,2048)
         assert len(list(root.glob('*.jpg')))<=MAX_FILES and not list(root.glob('*.part'))
         with WeatherCache(root).lease('infrared') as first:
             with WeatherCache(root).lease('infrared') as second: assert first and not second
             child="import sys;sys.path.insert(0,sys.argv[1]);from services.weather_cache import WeatherCache\nwith WeatherCache(sys.argv[2]).lease('infrared') as owned: assert not owned"
             subprocess.run([sys.executable,'-c',child,str(ROOT/'backend'),str(root)],check=True,timeout=30,capture_output=True)
-            assert restarted.frame(observation)[0]==data # reads do not wait for writer
+            assert restarted._acquire_frame(observation)[0]==data # reads do not wait for writer
         for invalid,width in [('https://evil.invalid',1024),(observation,4096),(iso(now[0]+10800),1024)]:
-            try: service.frame(invalid,width)
+            try: service._acquire_frame(invalid,width)
             except ValueError: pass
             else: raise AssertionError('Unallowlisted frame accepted')
         now[0]+=3601;fail[0]=True
         failed_count=len(calls)+1
-        assert service.slots()['stale'] and len(calls)==failed_count
-        assert service.slots()['stale'] and len(calls)==failed_count # persistent Retry-After
-        assert restarted.frame(observation)[0]==data
+        assert service._source_slots()['stale'] and len(calls)==failed_count
+        assert service._source_slots()['stale'] and len(calls)==failed_count # persistent Retry-After
+        assert restarted._acquire_frame(observation)[0]==data
         now[0]+=43201
-        try: service.slots()
+        try: service._source_slots()
         except WeatherDeferred: pass
         else: raise AssertionError('Hard expired slots accepted')
         assert len(list(root.glob('*.jpg')))<=MAX_FILES

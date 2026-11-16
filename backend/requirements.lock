@@ -35,3 +35,7 @@ typing_extensions==4.16.0
 tzdata==2026.5
 uvicorn==0.53.0
 eccodeslib==2.50.0.33; platform_system != "Windows"
+Pillow==13.0.0
+timezonefinder==9.2.0
+timezonefinder-data==4.2026.6
+flatbuffers==25.12.19

@@ -121,19 +121,19 @@ class InfraredService:
                     chunks.append(chunk)
         return b''.join(chunks)
 
-    def slots(self):
+    def _source_slots(self, force=False):
         require_license()
         cached=self.cache.get('capabilities'); now=self.clock()
         if os.getenv('ORBITWATCH_WEATHER_PROVIDER_REQUESTS','true').lower()!='true':
             if cached: return self.describe(cached,now-cached['checked_at']>=3600)
             raise WeatherDeferred()
-        if cached and now-cached['checked_at']<3600:
+        if cached and not force and now-cached['checked_at']<3600:
             return self.describe(cached)
         try:
             with self.cache.lease('infrared') as owned:
                 if not owned: raise WeatherDeferred()
                 latest=self.cache.get('capabilities')
-                if latest and now-latest['checked_at']<3600: return self.describe(latest)
+                if latest and not force and now-latest['checked_at']<3600: return self.describe(latest)
                 self.cache.reserve('eumetsat_layer')
                 try:
                     xml=self.retrieve(dict(service='WMS',version='1.3.0',request='GetCapabilities'),1000000,{'text/xml','application/xml'})
@@ -166,11 +166,23 @@ class InfraredService:
     def key(self, observation, width, bounds=None):
         return hashlib.sha256(f'{LAYER}:{observation}:{width}:{bounds or "global"}'.encode()).hexdigest()
 
+    def slots(self):
+        require_license()
+        pair = self.cache.get('ready_pair')
+        if not pair or not 0 <= self.clock()-timestamp(pair['time']) <= MAX_AGE:
+            raise WeatherDeferred()
+        result=self.describe(dict(times=[pair['time']], checked_at=pair['checked_at']))
+        result['stale']=self.clock()-timestamp(pair['time'])>21600
+        return result
+
     def current(self, width=1024):
+        require_license()
         self.geometry(width)
         source=self.slots();observation=source['times'][-1]
-        key=self.key(observation,width);info=self.cache.get(key)
-        cached=bool(info and (self.cache.root/f'{key}.jpg').is_file())
+        pair=self.cache.get('ready_pair')
+        key=pair['variants'][str(width)];info=self.cache.get(key)
+        cached=bool(info and (self.cache.root/f'{key}.png').is_file())
+        if not cached: raise WeatherDeferred()
         gate=self.cache.gate('eumetsat_layer')
         return dict(state='stale' if source['stale'] or self.clock()-timestamp(observation)>21600 else 'available',
             source='EUMETSAT EUMETView',layer=LAYER,source_kind='infrared_observation',
@@ -182,9 +194,102 @@ class InfraredService:
             attribution_year=datetime.fromtimestamp(timestamp(observation),timezone.utc).year,
             transformation='IR brightness-to-opacity cold-cloud emphasis; not cloud fraction or temperature',
             stale=source['stale'] or self.clock()-timestamp(observation)>21600,
-            expires_at=iso(timestamp(observation)+MAX_AGE),retry_after_seconds=max(1,gate['retry_after_seconds']))
+            expires_at=iso(timestamp(observation)+MAX_AGE),retry_after_seconds=max(300,gate['retry_after_seconds']))
 
     def frame(self, observation, width=1024, bounds=None, height=None):
+        # Public readers never reserve provider budget or initiate conversion.
+        require_license()
+        self.geometry(width,bounds,height)
+        if bounds is not None: raise WeatherDeferred()
+        stamp=timestamp(observation)
+        if not 0<=self.clock()-stamp<=MAX_AGE: raise WeatherDeferred()
+        key=hashlib.sha256(('prepared-v1:'+self.key(iso(stamp),width)).encode()).hexdigest()
+        pair=self.cache.get('ready_pair')
+        published=self.cache.get('published:'+iso(stamp))
+        if not (pair and pair['time']==iso(stamp) or published): raise WeatherDeferred()
+        info=self.cache.get(key);path=self.cache.root/f'{key}.png'
+        if not info or not path.is_file(): raise WeatherDeferred()
+        data=path.read_bytes()
+        if len(data)>MAX_IMAGE or data[:8]!=b'\x89PNG\r\n\x1a\n' or hashlib.sha256(data).hexdigest()!=info.get('content_sha256'): raise WeatherDeferred()
+        return data,{**info,'stale':self.clock()-stamp>21600}
+
+    def refresh_pair(self):
+        """Scheduler-only publication: keep the old manifest until BOTH decode."""
+        require_license()
+        if os.getenv('ORBITWATCH_WEATHER_PROVIDER_REQUESTS','true').lower()!='true': return
+        now=self.clock()
+        with self.cache.lease('download') as owned:
+            if not owned: return
+            schedule=self.cache.get('pair_schedule') or {}
+            if schedule.get('next_at',0)>now:
+                ready=self.cache.get('ready_pair')
+                if not ready or not 0<=now-timestamp(ready['time'])<=MAX_AGE:return
+                try:
+                    for width in (1024,2048):self.frame(ready['time'],width)
+                except (WeatherDeferred,OSError):pass
+                else:return
+            slot=int((now-1200)//10800)*10800
+            attempts=schedule.get('attempts',0) if schedule.get('slot')==slot else 0
+            # Late slots get twelve bounded checks, then wait for the next window.
+            next_at=slot+10800+1200 if attempts>=11 else now+300
+            self.cache.put('pair_schedule','infrared_schedule',dict(slot=slot,attempts=attempts+1,next_at=next_at))
+            previous=self.cache.get('ready_pair')
+            advertised_cache=self.cache.get('capabilities')
+            pending=advertised_cache and (not previous or advertised_cache['times'][-1]>previous['time'])
+            source=self._source_slots(force=not pending);observation=source['times'][-1]
+            if previous and previous['time']==observation:
+                try:
+                    for width in (1024,2048): self.frame(observation,width)
+                except (WeatherDeferred,OSError): pass
+                else:
+                    if timestamp(observation)>=slot:
+                        self.cache.put('pair_schedule','infrared_schedule',dict(slot=slot,attempts=0,next_at=slot+10800+1200))
+                    return
+            data,info=self._acquire_frame(observation,2048)
+            from PIL import Image
+            from io import BytesIO
+            try:
+                with Image.open(BytesIO(data)) as source:
+                    source.load()
+                    if source.size!=(2048,1024): raise ValueError('Invalid source dimensions')
+            except (OSError,ValueError):
+                (self.cache.root/f'{info["version"]}.jpg').unlink(missing_ok=True)
+                with self.cache.db() as db:db.execute('DELETE FROM data WHERE key=?',(info['version'],))
+                raise WeatherDeferred() from None
+            import numpy as np
+            variants={}
+            with Image.open(BytesIO(data)) as image:
+                image.load()
+                if image.size!=(2048,1024): raise ValueError('Invalid source dimensions')
+                for width in (1024,2048):
+                    rgb=np.asarray(image.convert('RGB').resize((width,width//2),Image.Resampling.LANCZOS),dtype=np.float64)
+                    t=np.clip((rgb.mean(axis=2)-85)/170,0,1)
+                    rgba=np.empty((width//2,width,4),dtype=np.uint8)
+                    rgba[:,:,:3]=np.floor(210+45*t[:,:,None]+.5).astype(np.uint8)
+                    rgba[:,:,3]=np.floor(255*np.power(t,1.05)+.5).astype(np.uint8)
+                    output=BytesIO();Image.fromarray(rgba).save(output,format='PNG')
+                    prepared=output.getvalue()
+                    if len(prepared)>MAX_IMAGE: raise ValueError('Prepared frame too large')
+                    with Image.open(BytesIO(prepared)) as check:
+                        check.load()
+                        if check.size!=(width,width//2) or check.mode!='RGBA': raise ValueError('Invalid prepared frame')
+                    key=hashlib.sha256(('prepared-v1:'+self.key(observation,width)).encode()).hexdigest()
+                    path=self.cache.root/f'{key}.png';temp=path.with_suffix('.part')
+                    try: temp.write_bytes(prepared);os.replace(temp,path)
+                    finally: temp.unlink(missing_ok=True)
+                    self.cache.put(key,'infrared_prepared',{**info,'width':width,'height':width//2,'version':key,'content_sha256':hashlib.sha256(prepared).hexdigest()})
+                    variants[str(width)]=key
+            # The manifest is a single SQLite transaction; file names immutable.
+            if previous:
+                self.cache.put('published:'+previous['time'],'infrared_published',previous)
+            self.cache.put('ready_pair','infrared_pair',dict(time=observation,checked_at=now,variants=variants))
+            for path in self.cache.root.glob('*.png'):
+                old=self.cache.get(path.stem)
+                if path.stem not in variants.values() and (not old or now-timestamp(old['time'])>MAX_AGE): path.unlink(missing_ok=True)
+            if timestamp(observation)>=slot:
+                self.cache.put('pair_schedule','infrared_schedule',dict(slot=slot,attempts=0,next_at=slot+10800+1200))
+
+    def _acquire_frame(self, observation, width=1024, bounds=None, height=None):
         require_license()
         bounds,height=self.geometry(width,bounds,height)
         stamp=timestamp(observation); observation=iso(stamp)
@@ -202,7 +307,7 @@ class InfraredService:
             if value: return value
         except (ValueError,OSError): pass
         if os.getenv('ORBITWATCH_WEATHER_PROVIDER_REQUESTS','true').lower()!='true': raise WeatherDeferred()
-        times=self.slots()['times']
+        times=self._source_slots()['times']
         if observation!=times[-1]: raise ValueError('Only the current IR observation may be acquired')
         with self.cache.lease('infrared') as owned:
             if not owned: raise WeatherDeferred()

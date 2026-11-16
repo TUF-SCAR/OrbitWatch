@@ -16,11 +16,12 @@ export function useObservedClouds(active,quality) {
   if(!active||hidden)return;
   const controller=new AbortController();let timer;
   async function check(){
-   let delay=600000;const now=Date.now();setClock(now);
+   let delay;const now=Date.now();setClock(now);
    if(retained.current&&now-Date.parse(retained.current.time)>43200000){retained.current=null;setFrame(null);}
    setStatus(retained.current?'updating':'loading');setError('');
    try {
     const owner=service.current,budget=cloudBudget(quality),metadata=await owner.current(budget,controller.signal);
+    delay=Math.max(300000,1000*(metadata.retry_after_seconds||0));
     const stamp=Date.parse(metadata.observation_time),expires=Date.parse(metadata.expires_at),current=Date.now();
     if(!/^[a-f0-9]{64}$/.test(metadata.version)||!Number.isFinite(stamp)||!Number.isFinite(expires)||stamp>current||expires!==stamp+43200000||expires<=current||metadata.width!==budget.width||metadata.height!==budget.width/2)throw Error('No acceptable recent observation is available.');
     const next=await owner.frame(metadata.observation_time,budget,controller.signal,metadata);
@@ -28,7 +29,7 @@ export function useObservedClouds(active,quality) {
     retained.current=next;setFrame(next);setStatus(metadata.stale?'stale':'ready');
    }catch(e){if(controller.signal.aborted)return;setError(e.message||'Observed imagery unavailable');setStatus(retained.current?'stale':'unavailable');delay=Math.max(30000,(service.current.diagnostics().retryAt||Date.now()+60000)-Date.now());}
    setDiagnostics(service.current.diagnostics());
-   timer=setTimeout(check,Math.min(600000,delay));
+   timer=setTimeout(check,Math.max(30000,delay||300000));
   }
   // Effects never replace a verified image until the new JPEG decodes.
   void check();

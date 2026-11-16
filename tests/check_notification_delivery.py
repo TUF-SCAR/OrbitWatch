@@ -196,6 +196,30 @@ def run(postgres=False,serve=False):
                 assert run_once(engine)['generated']==0
             # No configuration: queue is preserved for later, not reported rejected.
             with patch('services.notification_runner.configuration',return_value=None):process_outbox(engine,'unused',time.monotonic()+1,lambda *_:None)
+            # Dangerous nearby events bypass interests, master opt-out and Quiet
+            # Mode, but never freshness/geometry or push revalidation.
+            from services.notification_policy import dangerous
+            from services.notification_runner import evaluate_owner
+            danger={**event,'id':'usgs:danger-fixture','measurements':[{'label':'Magnitude (mw)','value':6.2}]}
+            assert dangerous(danger) and not dangerous(event)
+            assert not dangerous({**danger,'provider':'eonet'})
+            assert not dangerous({**danger,'measurements':[{'label':'Magnitude','value':float('nan')}]})
+            danger_device=request('POST','/api/account/push-subscriptions',201,json={**subscription,'consent':True}).json()['id']
+            with Session(engine) as db:
+                db.execute(delete(AlertSubscription).where(AlertSubscription.owner_id==users[1],AlertSubscription.kind=='event'))
+                pref=db.get(NotificationPreferences,users[1]);pref.notifications_enabled=False;pref.natural_event_alerts=False
+                pref.quiet_hours_enabled=True;pref.quiet_timezone_mode='explicit';pref.quiet_timezone='UTC';pref.quiet_start=daytime(0,0);pref.quiet_end=daytime(23,59)
+                db.commit()
+            with lease(engine) as token,patch('services.notification_runner.current_events',return_value={'events':[danger]}):
+                assert evaluate_owner(engine,token,users[1],now,time.monotonic()+10,[danger])==1
+                assert evaluate_owner(engine,token,users[1],now,time.monotonic()+10,[danger])==0
+                sent=[];process_outbox(engine,token,time.monotonic()+5,lambda *args:sent.append(args))
+                assert sent
+            with Session(engine) as db:
+                critical=db.scalar(select(NotificationDelivery).where(NotificationDelivery.target_id==danger['id']))
+                assert critical.inbox_id and critical.subscription_id is None and critical.details['dangerous']
+                pref=db.get(NotificationPreferences,users[1]);pref.notifications_enabled=True;pref.quiet_hours_enabled=False;db.commit()
+            request('DELETE','/api/account/push-subscriptions/'+danger_device,204)
             # Runner heartbeat; no network providers are invoked by this fixture.
             with patch('services.notification_runner.shared_prediction',return_value={'state':'unavailable','windows':[]}),patch('services.notification_runner.current_events',return_value={'events':[]}):
                 result=run_once(engine);assert result['state']=='completed'
@@ -231,12 +255,27 @@ def run(postgres=False,serve=False):
                     assert cache_path.is_relative_to((ROOT/'.setup-cache').resolve())
                     from services.infrared import InfraredService
                     from routes import weather as weather_routes
-                    cleanup.enter_context(patch.object(weather_routes,'infrared',InfraredService(cache_path)))
+                    service=InfraredService(cache_path)
+                    if os.getenv('ORBITWATCH_QA_PREPARED_CLOUDS')=='1':
+                        # Explicit synthetic visual fixture. Never a provider call
+                        # or a claimed real observation in the handoff evidence.
+                        from services.infrared import iso
+                        from PIL import Image,ImageDraw
+                        from io import BytesIO
+                        service=InfraredService(Path(directory)/'synthetic-clouds')
+                        stamp=iso(int(time.time()//10800)*10800)
+                        service.cache.put('capabilities','infrared_metadata',{'times':[stamp],'checked_at':time.time()})
+                        image=Image.new('RGB',(2048,1024),(65,65,65));draw=ImageDraw.Draw(image)
+                        for x,y,r in [(400,300,140),(1200,450,210),(1750,700,120)]:draw.ellipse((x-r,y-r,x+r,y+r),fill=(190,190,190))
+                        out=BytesIO();image.save(out,'JPEG');service.retrieve=lambda *_:out.getvalue()
+                        with patch.dict(os.environ,{'ORBITWATCH_WEATHER_PROVIDER_REQUESTS':'true','ORBITWATCH_INFRARED_ENABLED':'true','ORBITWATCH_INFRARED_LICENSE_CONFIRMED':'true'}):service.refresh_pair()
+                        print('Prepared cloud fixture: synthetic pattern, no upstream calls',flush=True)
+                    cleanup.enter_context(patch.object(weather_routes,'infrared',service))
                     os.environ['ORBITWATCH_INFRARED_ENABLED']='true'
                     os.environ['ORBITWATCH_INFRARED_LICENSE_CONFIRMED']='true'
                 async def isolated(scope,receive,send):
                     path=scope.get('path','')
-                    cached_ir=infrared_cache and path.startswith('/api/weather/infrared/')
+                    cached_ir=infrared_cache and path.startswith('/api/weather/infrared/') or path=='/api/weather/timezone'
                     unavailable_science=(path.startswith('/api/satellites/') and path!='/api/satellites/catalog') or path.startswith('/api/historical/')
                     if scope['type']=='http' and scope.get('method')!='OPTIONS' and (unavailable_science or not cached_ir and (path.startswith('/api/weather') or path.startswith('/api/events'))):
                         from starlette.responses import JSONResponse

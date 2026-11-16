@@ -51,7 +51,7 @@ export default function ProfilePanel({ open, user, onClose, onLogout, settings, 
       </section>
       </>}
       {account&&tab==='skywatch'&&<MySkywatch account={account} tab={skywatchTab} onTab={onSkywatchTab} catalog={liveCatalog}/>}
-      {account&&tab==='notifications'&&<NotificationCentre account={account} onOpen={onOpenNotification}/>}
+      {account&&tab==='notifications'&&<NotificationCentre account={account} onOpen={onOpenNotification} onSchedule={()=>onTab('preferences')}/>}
       {account&&tab==='preferences'&&<AccountNotificationSettings account={account} section="preferences"/>}
       </div>
     </div>

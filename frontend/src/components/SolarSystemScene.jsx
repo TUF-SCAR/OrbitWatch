@@ -5,14 +5,15 @@ import { CELESTIAL_BODIES, SOLAR_PLANETS } from "../data/celestialBodies.js";
 import "./SolarSystemScene.css";
 import { previewSession, previewStep } from '../utils/previewMotion.js';
 import { uiNumber } from '../utils/uiConfig.js';
-export default function SolarSystemScene({ launching, interactive, startupCountry }) {
+export default function SolarSystemScene({ launching, returning, interactive, startupCountry,onUnavailable }) {
   const mountRef = useRef(null);
-  const stateRef = useRef({ launching, interactive, startupCountry });
-  useEffect(() => { stateRef.current = { launching, interactive, startupCountry }; }, [launching, interactive, startupCountry]);
+  const stateRef = useRef({ launching, returning, interactive, startupCountry,onUnavailable });
+  useEffect(() => { stateRef.current = { launching, returning, interactive, startupCountry,onUnavailable }; }, [launching, returning, interactive, startupCountry,onUnavailable]);
   useEffect(() => {
     const mount = mountRef.current;
     let renderer;
-    try { renderer = new THREE.WebGLRenderer({ antialias: false, alpha: false, powerPreference: "low-power" }); } catch { return; }
+    try { renderer = new THREE.WebGLRenderer({ antialias: false, alpha: false, powerPreference: "low-power" }); } catch { stateRef.current.onUnavailable?.(); return; }
+    const lost=()=>stateRef.current.onUnavailable?.();renderer.domElement.addEventListener('webglcontextlost',lost);
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.25));
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     mount.appendChild(renderer.domElement);
@@ -55,6 +56,7 @@ export default function SolarSystemScene({ launching, interactive, startupCountr
     const belt = new Float32Array(450 * 3); for (let k = 0; k < 450; k++) { const a = k * 2.39996, r = 25 + Math.sin(k * 7.1) * 1.2; belt.set([Math.cos(a) * r, Math.sin(k * 5) * 0.45, Math.sin(a) * r], k * 3); }
     const beltGeometry = new THREE.BufferGeometry(); beltGeometry.setAttribute("position", new THREE.BufferAttribute(belt, 3)); geometries.push(beltGeometry); const beltMaterial = new THREE.PointsMaterial({ color: "#8a8274", size: 0.08 }); materials.push(beltMaterial); scene.add(new THREE.Points(beltGeometry, beltMaterial));
     const earth = bodies.find((body) => body.id === "earth");
+    let returnStart=null;const overview=camera.position.clone();
     let travelStart = null, startPosition, startTarget, frame = 0, lastFrame = 0, lastDiagnostic=0;
     const motionQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
     let reduced = motionQuery.matches;
@@ -69,7 +71,14 @@ export default function SolarSystemScene({ launching, interactive, startupCountr
       lastFrame = time;
       const state = stateRef.current;
       controls.enabled = Boolean(state.interactive && !state.launching);
-      if (state.launching) {
+      if(state.returning){
+        if(returnStart===null)returnStart=time;
+        const progress=reduced?1:Math.min(1,(time-returnStart)/2200),eased=progress*progress*(3-2*progress);
+        const region=state.startupCountry,longitude=((region?.west??67)+(region?.east??98))/2*Math.PI/180,latitude=((region?.south??5)+(region?.north??37))/2*Math.PI/180;
+        earth.mesh.rotation.y=-longitude;
+        const close=earth.mesh.position.clone().add(new THREE.Vector3(0,Math.sin(latitude)*4.45,Math.cos(latitude)*4.45));
+        camera.position.lerpVectors(close,overview,eased);controls.target.copy(earth.mesh.position).multiplyScalar(1-eased);camera.lookAt(controls.target);
+      } else if (state.launching) {
         if (travelStart === null) { travelStart = time; startPosition = camera.position.clone(); startTarget = controls.target.clone(); }
         const progress = reduced ? 1 : Math.min(1, (time - travelStart) / 2200); const eased = progress * progress * (3 - 2 * progress);
         const region = state.startupCountry; const longitude = ((region?.west ?? 67) + (region?.east ?? 98)) / 2 * Math.PI / 180; const latitude = ((region?.south ?? 5) + (region?.north ?? 37)) / 2 * Math.PI / 180;
@@ -88,7 +97,7 @@ export default function SolarSystemScene({ launching, interactive, startupCountr
     const visibility=()=>{cancelAnimationFrame(frame);frame=0;lastFrame=performance.now();if(!document.hidden&&!disposed){requestRender();frame=requestAnimationFrame(animate);}};
     document.addEventListener('visibilitychange',visibility);
     if(!document.hidden)frame = requestAnimationFrame(animate);
-    return () => { disposed = true; document.removeEventListener('visibilitychange',visibility); motionQuery.removeEventListener("change", updateMotion); controls.removeEventListener("change", requestRender); renderer.domElement.removeEventListener("webglcontextrestored", requestRender); cancelAnimationFrame(frame); resize.disconnect(); controls.dispose(); for (const value of [...textures, ...materials, ...geometries]) value.dispose(); renderer.dispose(); renderer.forceContextLoss(); renderer.domElement.remove(); scene.clear(); };
+    return () => { disposed = true; document.removeEventListener('visibilitychange',visibility); motionQuery.removeEventListener("change", updateMotion); controls.removeEventListener("change", requestRender); renderer.domElement.removeEventListener("webglcontextrestored", requestRender);renderer.domElement.removeEventListener('webglcontextlost',lost); cancelAnimationFrame(frame); resize.disconnect(); controls.dispose(); for (const value of [...textures, ...materials, ...geometries]) value.dispose(); renderer.dispose(); renderer.forceContextLoss(); renderer.domElement.remove(); scene.clear(); };
   }, []);
   return <div className="solar-system-webgl" ref={mountRef} aria-label="Interactive solar system preview" />;
 }

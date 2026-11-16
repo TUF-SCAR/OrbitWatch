@@ -3,27 +3,50 @@ import {createPortal} from 'react-dom';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import {X} from 'lucide-react';
+import {getCachedStartupCountry} from '../services/startupCountry.js';
 import {STREET_MAP} from '../services/streetMapConfig.js';
+import {resolveLocationTimezone} from '../services/orbitwatchApi.js';
 
 const zones=[...new Set(['UTC',...(typeof Intl.supportedValuesOf==='function'?Intl.supportedValuesOf('timeZone'):[])])];
+function zoneLabel(zone){try{const part=style=>new Intl.DateTimeFormat('en',{timeZone:zone,timeZoneName:style}).formatToParts(new Date()).find(p=>p.type==='timeZoneName').value;return `${part('long')} · ${part('longOffset').replace('GMT','UTC')}`;}catch{return zone||'';}}
 const validPoint=d=>String(d.latitude).trim()!==''&&String(d.longitude).trim()!==''&&Number.isFinite(Number(d.latitude))&&Number.isFinite(Number(d.longitude));
 export default function MobileLocationPicker({account}){
  const {state,owner}=account,draft=state.locationDraft;
  const [form,setForm]=useState(()=>({...draft})),[point,setPoint]=useState(()=>validPoint(draft)?{lat:Number(draft.latitude),lng:Number(draft.longitude)}:null);
  const [confirmedZone,setConfirmedZone]=useState(Boolean(draft.id&&draft.timezone)),[error,setError]=useState(''),[tileError,setTileError]=useState(false);
+ const [zoneState,setZoneState]=useState(draft.id?'saved':'idle'),[zoneText,setZoneLabel]=useState(()=>zoneLabel(draft.timezone)),[changeZone,setChangeZone]=useState(false);
  const dialog=useRef(null),host=useRef(null),mapRef=useRef(null),layers=useRef({});
+ const zoneRevision=useRef(0);
  const radius=state.preferences?.event_radius_km;
  const disabled=state.busy||state.phase!=='ready';
- function choosePoint(p){const next={lat:Math.max(-90,Math.min(90,p.lat)),lng:((p.lng+180)%360+360)%360-180};setPoint(next);setError('');}
+ function choosePoint(p){zoneRevision.current++;const next={lat:Math.max(-90,Math.min(90,p.lat)),lng:((p.lng+180)%360+360)%360-180};setZoneState('loading');setConfirmedZone(false);setPoint(next);setError('');}
+ useEffect(()=>{
+  if(!point)return;
+  if(draft.id&&point.lat===Number(draft.latitude)&&point.lng===Number(draft.longitude))return;
+  const controller=new AbortController(),revision=zoneRevision.current;
+  const timer=setTimeout(()=>{resolveLocationTimezone(point,controller.signal).then(result=>{
+   if(controller.signal.aborted||revision!==zoneRevision.current)return;
+   if(result.state!=='available'){setZoneState('unavailable');setChangeZone(true);return;}
+   setForm(value=>({...value,timezone:result.timezone}));setZoneLabel(zoneLabel(result.timezone));setConfirmedZone(true);setZoneState('ready');setChangeZone(false);
+  }).catch(()=>{if(!controller.signal.aborted&&revision===zoneRevision.current){setZoneState('unavailable');setChangeZone(true);}});},300);
+  return()=>{clearTimeout(timer);controller.abort();};
+ },[point,draft.id,draft.latitude,draft.longitude]);
  useEffect(()=>{
   const node=dialog.current,opener=document.activeElement;node.showModal();node.querySelector('button')?.focus({preventScroll:true});
-  const seed=validPoint(draft)?[Number(draft.latitude),Number(draft.longitude)]:[20,0];
+  const region=getCachedStartupCountry();const seed=validPoint(draft)?[Number(draft.latitude),Number(draft.longitude)]:[(region.south+region.north)/2,(region.west+region.east)/2];
   const map=L.map(host.current,{center:seed,zoom:validPoint(draft)?12:2,zoomControl:true,worldCopyJump:true});mapRef.current=map;
+  let alive=true;
+  if(!validPoint(draft)&&navigator.permissions&&navigator.geolocation){
+   navigator.permissions.query({name:'geolocation'}).then(permission=>{
+    if(!alive||permission.state!=='granted')return;
+    navigator.geolocation.getCurrentPosition(result=>{if(alive&&!layers.current.pin)map.setView([result.coords.latitude,result.coords.longitude],10);},()=>{},{timeout:1800,maximumAge:60000});
+   }).catch(()=>{});
+  }
   // Same approved labeled raster as the main map; visible tiles only, no geocoder or prefetch.
   L.tileLayer(STREET_MAP.url,{maxZoom:STREET_MAP.maximumLevel,keepBuffer:0,updateWhenIdle:true,attribution:STREET_MAP.attribution}).on('tileerror',()=>setTileError(true)).addTo(map);
   map.on('click',e=>choosePoint(e.latlng));
   let frame;const resize=new ResizeObserver(()=>{cancelAnimationFrame(frame);frame=requestAnimationFrame(()=>map.invalidateSize({pan:false}));});resize.observe(host.current);
-  return()=>{resize.disconnect();cancelAnimationFrame(frame);map.remove();mapRef.current=null;layers.current={};node.close();if(opener?.isConnected)opener.focus({preventScroll:true});};
+  return()=>{alive=false;resize.disconnect();cancelAnimationFrame(frame);map.remove();mapRef.current=null;layers.current={};node.close();if(opener?.isConnected)opener.focus({preventScroll:true});};
   // One independent map for the lifetime of this draft; point/radius updates never reset its camera.
   // eslint-disable-next-line react-hooks/exhaustive-deps
  },[]);
@@ -40,7 +63,7 @@ export default function MobileLocationPicker({account}){
  function save(event){
   event.preventDefault();if(!point){setError('Tap the map or use Set pin here to choose the observing point.');return;}
   try{new Intl.DateTimeFormat('en',{timeZone:form.timezone}).format();}catch{setError('Choose a valid IANA timezone.');return;}
-  if(!confirmedZone){setError('Confirm the timezone for this location.');return;}
+  if(!confirmedZone){setError('Choose the timezone for this location.');return;}
   owner.changeLocation({...form,latitude:String(point.lat),longitude:String(point.lng)});owner.saveLocation();
  }
  return createPortal(<dialog ref={dialog} className="mobile-location-picker" aria-label={draft.id?'Edit observation location':'Add observation location'} onCancel={e=>{e.preventDefault();if(!state.busy)owner.cancelLocation();}} onKeyDown={e=>e.stopPropagation()}>
@@ -51,10 +74,10 @@ export default function MobileLocationPicker({account}){
    {tileError&&<p role="status">Street tiles unavailable. Retry opening the picker when connected.</p>}
    <p className="location-point-status" role="status">{point?'Pin selected · pan or tap to adjust':'Tap the map to place your pin.'}</p>
    <label>Location name<input maxLength={80} required value={form.name} onChange={e=>change({name:e.target.value})}/></label>
-   <label>Location timezone<input list="location-picker-zones" required maxLength={64} placeholder="Search IANA timezone, e.g. Asia/Kolkata" value={form.timezone} onChange={e=>{change({timezone:e.target.value});setConfirmedZone(false);}}/></label>
+   <p role="status">Timezone · {zoneState==='loading'?'Finding timezone…':zoneState==='unavailable'?'Choose a timezone below':zoneText||'Choose a point first'}</p><button type="button" onClick={()=>setChangeZone(v=>!v)}>Change timezone</button>
+   {changeZone&&<><label>Search timezone<input list="location-picker-zones" required maxLength={64} placeholder="Search city or IANA timezone" value={form.timezone} onChange={e=>{zoneRevision.current++;change({timezone:e.target.value});setConfirmedZone(true);setZoneState('ready');setZoneLabel(zoneLabel(e.target.value));}}/></label><button type="button" onClick={()=>{try{new Intl.DateTimeFormat('en',{timeZone:form.timezone}).format();zoneRevision.current++;setConfirmedZone(true);setZoneState('ready');setZoneLabel(zoneLabel(form.timezone));setChangeZone(false);}catch{setError('Choose a valid timezone from the list.');}}}>Use timezone</button></>}
    <datalist id="location-picker-zones">{zones.map(zone=><option key={zone} value={zone}/>)}</datalist>
-   <label className="account-toggle"><input type="checkbox" required checked={confirmedZone} onChange={e=>setConfirmedZone(e.target.checked)}/> I confirm this location’s timezone</label>
-   <small>Choose the zone for the pin. Your phone timezone is never used to fill it.</small>
+   <small>Timezone follows your chosen pin. Your phone clock is never used. <a href="https://github.com/evansiroky/timezone-boundary-builder" target="_blank" rel="noreferrer">Timezone boundaries · ODbL</a></small>
    <label className="account-toggle"><input type="checkbox" checked={form.is_default} disabled={Boolean(draft.id&&state.locations.find(r=>r.id===draft.id)?.is_default)} onChange={e=>change({is_default:e.target.checked})}/> Use as default</label>
    <small>The first saved location becomes your default. The radius is shared across your account.</small>
    {(error||state.error)&&<p role="alert">{error||state.error}</p>}

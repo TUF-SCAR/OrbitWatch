@@ -28,6 +28,10 @@ export async function validateCloudJpeg(blob,width,height){
   throw Error('Missing cloud JPEG frame');
 }
 async function decodeFrame(blob, width, signal, height=width/2) {
+  if(blob.type==='image/png'){
+    const bitmap=await createImageBitmap(blob);
+    try{if(signal.aborted)throw abort();if(bitmap.width!==width||bitmap.height!==height)throw Error('Invalid prepared frame');return URL.createObjectURL(blob);}finally{bitmap.close();}
+  }
   // Reject oversized encoded dimensions before allocating decompressed pixels.
   await validateCloudJpeg(blob,width,height);
   const image=await createImageBitmap(blob);
@@ -49,13 +53,23 @@ async function decodeFrame(blob, width, signal, height=width/2) {
 // Browser memory only. OrbitWatch owns all source acquisition, leases and quotas.
 export function createCloudImageryService({metadata=fetchInfraredMetadata,image=fetchInfraredImage,
  decode=decodeFrame,revoke=url=>URL.revokeObjectURL(url),now=Date.now}={}) {
- let closed=false,requests=0,hits=0,retryAt=0;
+ let closed=false,requests=0,hits=0,retryAt=0,metadataMs=0,transferMs=0,displayPreparationMs=0;
+ const checks=new Map(),recent=new Map();
  const cache=new Map(),pending=new Map();
  function dispose(entry){if(!entry.cached&&!entry.refs&&!entry.revoked){entry.revoked=true;revoke(entry.frame.url);}}
  function release(entry){entry.refs=Math.max(0,entry.refs-1);dispose(entry);}
  function trim(region){const entries=[...cache].filter(([,entry])=>Boolean(entry.frame.bounds)===region);while(entries.length>2){const [key,entry]=entries.shift();cache.delete(key);entry.cached=false;dispose(entry);}}
  return {
-  async current(budget,signal){if(closed||signal.aborted)throw abort();requests++;return metadata(budget.width,signal);},
+  async current(budget,signal){
+   if(closed||signal.aborted)throw abort();
+   if(checks.has(budget.width))return checks.get(budget.width).promise;
+   const previous=recent.get(budget.width);if(previous&&now()-previous.at<60000)return previous.value;
+   if(now()<retryAt)throw Error('Observed imagery is cooling down.');
+   const started=now();requests++;
+   const controller=new AbortController();
+   const promise=metadata(budget.width,controller.signal).then(value=>{metadataMs=now()-started;recent.set(budget.width,{at:now(),value});return value;}).catch(error=>{if(!closed)retryAt=now()+1000*(error.retryAfterSeconds||60);throw error;}).finally(()=>checks.delete(budget.width));
+   checks.set(budget.width,{promise,controller});return promise;
+  },
   async frame(time,budget,signal,meta=null){
    if(closed||signal.aborted)throw abort();
    const height=budget.height||budget.width/2,bounds=budget.bounds;
@@ -67,8 +81,10 @@ export function createCloudImageryService({metadata=fetchInfraredMetadata,image=
    let url;
    try {
     const query=new URLSearchParams({time,width:String(budget.width),...(bounds?{bbox:bounds.join(','),height:String(height)}:{})});
-    requests++;const result=await image(`/api/weather/infrared/frame?${query}`,AbortSignal.any([signal,controller.signal]));
+    requests++;const started=now();const result=await image(`/api/weather/infrared/frame?${query}`,AbortSignal.any([signal,controller.signal]));transferMs=now()-started;
+    const prepare=now();
     url=await decode(result.blob,budget.width,signal,height);
+    displayPreparationMs=now()-prepare;
     if(closed||signal.aborted)throw abort();
     const entry={cached:true,refs:0,revoked:false};
     const frame={id:key,url,time,width:budget.width,height,bounds,retrievedAt:result.retrievedAt||meta?.retrieved_at||null,metadata:meta,
@@ -77,7 +93,7 @@ export function createCloudImageryService({metadata=fetchInfraredMetadata,image=
    }catch(error){if(url)revoke(url);if(!signal.aborted&&!closed)retryAt=now()+1000*(error.retryAfterSeconds||60);throw error;}
    finally{pending.delete(key);}
   },
-  diagnostics:()=>({requests,hits,cachedFrames:cache.size,pending:pending.size,retryAt}),
-  destroy(){closed=true;pending.forEach(c=>c.abort());cache.forEach(entry=>{entry.cached=false;dispose(entry);});cache.clear();},
+  diagnostics:()=>({requests,hits,cachedFrames:cache.size,pending:pending.size,retryAt,metadataMs,transferMs,displayPreparationMs}),
+  destroy(){closed=true;checks.forEach(check=>check.controller.abort());recent.clear();pending.forEach(c=>c.abort());cache.forEach(entry=>{entry.cached=false;dispose(entry);});cache.clear();},
  };
 }

@@ -44,6 +44,7 @@ import { SPACE_OBJECTS } from "./data/spaceObjects.js";
 import { TIME_OBJECTS, timeSatelliteAllowed } from './data/timeExplorerCatalog.js';
 import { useHistoricalSatellites } from './services/useHistoricalSatellites.js';
 import { navigationVisibility, PRODUCT_MODES, celestialDestinationAllowed } from "./utils/navigationVisibility.js";
+import {feedStatus} from './utils/feedStatus.js';
 import {usePhoneViewport} from './utils/usePhoneUI.js';
 
 const DEFAULT_MAJOR_OBJECTS = [25544, 20580, 48274, 39084, 58990, 26407];
@@ -86,6 +87,7 @@ export default function App({ currentUser, onLogout, hudActive = true, onSceneRe
   const [apiState, setApiState] = useState("checking");
   const [feedSnapshot, setFeedSnapshot] = useState(null);
   const [feedClock, setFeedClock] = useState(Date.now);
+  const trackedKey=liveTrackedIds.join(",");
   const feedAge = Number.isFinite(feedSnapshot?.age) ? feedSnapshot.age + Math.max(0, (feedClock - feedSnapshot.receivedAt) / 1000) : null;
   const [refreshNonce, setRefreshNonce] = useState(0);
   const [refreshBusy, setRefreshBusy] = useState(false);
@@ -237,9 +239,9 @@ export default function App({ currentUser, onLogout, hudActive = true, onSceneRe
     let timer;
     async function update() {
       try {
-        const data = await fetchSatelliteDataStatus(controller.signal);
+        const data = await fetchSatelliteDataStatus(controller.signal,trackedKey);
         if (controller.signal.aborted) return;
-        setApiState(data.stale || data.missing_supported_objects || !Number.isFinite(data.age_seconds) ? "stale" : "online");
+        setApiState(feedStatus(data));
         const receivedAt = Date.now(); setFeedClock(receivedAt);
         setFeedSnapshot({ age: data.age_seconds, receivedAt });
       } catch (error) {
@@ -250,7 +252,7 @@ export default function App({ currentUser, onLogout, hudActive = true, onSceneRe
     }
     update();
     return () => { controller.abort(); window.clearTimeout(timer); };
-  }, [refreshNonce]);
+  }, [refreshNonce,trackedKey]);
 
   useEffect(() => {
     if (!selectedId || mode !== "live") return undefined;
@@ -471,9 +473,10 @@ export default function App({ currentUser, onLogout, hudActive = true, onSceneRe
         {weatherActive&&eventFocus&&!layers.includes('weather')&&<aside className="event-focus-toolbar" aria-label="Focused event controls"><strong>{naturalEvents.events.find(event=>event.id===eventFocus)?.title||'SOURCE REPORTED EVENT'}</strong><small>Source-dated track / geometry · not real-time</small><button className="secondary-action" onClick={()=>{setWeatherTab('events');openLayer('weather');}}>BACK TO REPORT</button><button className="secondary-action" onClick={()=>{globeRef.current?.returnFromNaturalEvent();setEventFocus(null);}}>RETURN TO PREVIOUS VIEW</button></aside>}
         <WeatherPanel onFocusEvent={id=>{releaseCamera();locationWeather.clear();setCameraFollowing(false);const focused=globeRef.current?.focusNaturalEvent(id);if(focused){setEventFocus(id);if(window.innerWidth<1100)setLayers(current=>current.filter(layer=>layer!=='weather'));}return focused;}} onReturnEvent={()=>{globeRef.current?.returnFromNaturalEvent();setEventFocus(null);}} labelWeatherNote={labelWeatherNote} locationWeather={locationWeather} windEnabled={windEnabled} onWindEnabled={setWindEnabled} windField={selectedWindField} cameraAltitudeKm={viewTelemetry.cameraAltitudeKm} observedClouds={observedClouds} tab={weatherTab} onTab={setWeatherTab} events={naturalEvents} eventsEnabled={eventsEnabled} onEventsEnabled={setEventsEnabled} eventCategory={eventCategory} onEventCategory={value=>{setEventCategory(value);setSelectedEventId(null);}} selectedEventId={selectedEventId} onEventSelect={setSelectedEventId} open={weatherActive&&layers.includes('weather')} onClose={()=>closeLayer('weather')} weather={{...weather,field:selectedWeatherField,bundle:weather.field}} variable={weatherVariable} onVariable={setWeatherVariable} enabled={weatherEnabled} onEnabled={setWeatherEnabled} opacity={weatherOpacity} onOpacity={setWeatherOpacity} compatible={weatherCompatible} onCompatibleMap={()=>{setMapStyle('esri');setMapRetryNonce(v=>v+1);}} onRefresh={refreshWeather} refreshCooling={weatherCooling} onViewCenter={()=>{const point=globeRef.current?.weatherViewCenter();if(point)selectWeatherLocation(point);else locationWeather.clear();}}/>
         {weatherActive&&!eventFocus&&weatherEnabled&&weatherCompatible&&weatherVariable==='observedClouds'&&!hidden&&(!locationWeather.selection||phone)&&!layers.includes('weather')&&!layers.includes('explorer')&&<ObservedCloudLegend clouds={observedClouds} labelWeatherNote={labelWeatherNote}/>}
-        {weatherActive&&!eventFocus&&weatherEnabled&&weatherCompatible&&selectedWeatherField&&!hidden&&!layers.includes('weather')&&<TemperatureLegend field={selectedWeatherField} state={weather.state} labelWeatherNote={labelWeatherNote}/>}
+        {weatherActive&&!eventFocus&&weatherEnabled&&weatherCompatible&&weatherVariable!=='observedClouds'&&!hidden&&!layers.includes('weather')&&<TemperatureLegend variable={weatherVariable} field={selectedWeatherField} state={weather.state} labelWeatherNote={labelWeatherNote}/>}
         {<SystemScaleSlider scale={sceneScale} onChange={(value) => globeRef.current?.setCelestialScale(value)} />}
         {travelError && <div className="scene-notice" role="alert"><span>{travelError}</span><button type="button" onClick={() => setTravelError("")}>Dismiss</button></div>}
+        {phone&&!presentation&&<div className="phone-zoom" aria-label="Globe zoom" onPointerDown={e=>e.stopPropagation()} onClick={e=>e.stopPropagation()}><button aria-label="Zoom in" onClick={()=>globeRef.current?.zoomStep(1)}>＋</button><button aria-label="Zoom out" onClick={()=>globeRef.current?.zoomStep(-1)}>−</button></div>}
         {atEarth && mode === "live" && !travel && satelliteStatus && <div className="scene-notice" role="status">{satelliteStatus}</div>}
         {mode==='live'?<ObjectExplorer open={layers.includes('explorer')&&atEarth} onClose={()=>closeLayer('explorer')} objects={catalogObjects} trackedIds={liveTrackedIds} selectedId={selectedId} onSelect={selectObject} onLoad={loadObjects} onUnload={unloadObjects} limitMessage={limitMessage} userId={currentUser?.id} searchCycle={searchCycle}/>:<HistoricalSatelliteList open={layers.includes('explorer')&&atEarth} onClose={()=>closeLayer('explorer')} time={selectedTime} coverage={historyCoverage} historicalData={historicalData} trackedIds={timeTrackedIds} selectedId={selectedId} onSelect={selectObject} onToggle={(id,checked)=>{if(checked){loadObjects([id]);setTimeShownOrbitIds(current=>new Set([...current,id]));}else unloadObjects([id]);}}/>}
         <AnimatePresence>{layers.includes("inspector") && atEarth && <InspectorPanel inactive={activeInspector!=='satellite'} onActivate={()=>setActiveInspector('satellite')} onBack={()=>openLayer('explorer')} key={`${selectedId}:${settings.preview3d}`} object={selectedObject} historical={mode === "time"} historyStatus={historicalData.state} telemetry={mode === "time" ? historicalObject?.position : telemetry?.norad_id === selectedId ? telemetry : null} telemetryError={mode === "live" && telemetryError} cameraFollowing={cameraFollowing} rendered={selectedRendered} orbitVisible={shownOrbitIds.has(selectedId)} onClose={() => closeLayer("inspector")} onFocus={focusSelected} onFollow={followSelected} onReleaseCamera={releaseCamera} onToggleOrbit={toggleSelectedOrbit} preview3d={settings.preview3d} orbitDescription={mode === "time" ? historicalObject?.orbit?.path_kind === "arc" ? "Historical Orbit Trace · valid SGP4 arc" : "Historical Orbit Trace · SGP4 reconstruction" : orbitInfo.selectedDescription} orbitMetadata={mode === "time" ? historicalObject?.orbit : orbitInfo.selectedMetadata} coverageUnavailable={mode === "time" && !historicalObject} />}</AnimatePresence>
@@ -482,7 +485,7 @@ export default function App({ currentUser, onLogout, hudActive = true, onSceneRe
         <CinematicStage active={hudActive} loaderAnchor="clean" zIndex={42}><button type="button" className="presentation-toggle" title="Presentation mode (P)" onClick={() => setPresentation(true)}><Maximize2 size={15} /> CLEAN VIEW</button></CinematicStage>
         {atEarth && mode === "live" && <CinematicStage active={hudActive} loaderAnchor="refresh" zIndex={42}><button type="button" className={`manual-refresh ${cooldown || refreshBusy ? "is-cooling" : ""}`} disabled={cooldown || refreshBusy} onClick={refresh} title="Refresh satellite positions · 20 second cooldown" aria-label="Refresh satellite positions" aria-busy={refreshBusy}><RefreshCcw size={20} /><span>{refreshBusy ? "SYNCING" : cooldown ? "COOLDOWN" : "SYNC"}</span></button></CinematicStage>}
       </div>
-      {mode === "live" && !presentation && <CinematicStage active={hudActive} side="bottom" loaderAnchor="bottom" zIndex={32}><LiveDock bodyId={selectedCelestialBody} travel={travel} detailState={detailState} selectedObject={selectedObject} viewTelemetry={viewTelemetry} trackedCount={activeTrackedIds.length} allOrbitsVisible={allOrbitsVisible} onToggleAllOrbits={() => setShownOrbitIds(allOrbitsVisible ? new Set() : new Set(activeTrackedIds))} feedAge={feedAge} onOpenBody={() => openLayer("body")} /></CinematicStage>}
+      {mode === "live" && !presentation && <CinematicStage active={hudActive} side="bottom" loaderAnchor="bottom" zIndex={32}><LiveDock bodyId={selectedCelestialBody} travel={travel} detailState={detailState} selectedObject={selectedObject} viewTelemetry={viewTelemetry} trackedCount={activeTrackedIds.length} allOrbitsVisible={allOrbitsVisible} onToggleAllOrbits={() => setShownOrbitIds(allOrbitsVisible ? new Set() : new Set(activeTrackedIds))} feedAge={feedAge} feedState={apiState} onOpenBody={() => openLayer("body")} /></CinematicStage>}
       {mode==='time'&&!presentation&&<div className="time-dock-owner"><TimeDock coverage={historyCoverage} historicalData={historicalData} onRetryHistory={()=>setHistoryRetry(v=>v+1)} selectedTime={selectedTime} draftTime={requestedTime} onTimeChange={queueSceneTime} onLoad={loadSceneTime} busy={timeBusy} bodyId={selectedCelestialBody} onReturnLive={()=>changeMode('live')} trackedCount={timeTrackedIds.length} maxTracked={TIME_OBJECT_LIMIT} imageryStatus={atEarth?mapStatus:null} preparationIssue={timeIssue} onRetryScene={()=>loadSceneTime(selectedTime)} onRetryImagery={()=>setMapRetryNonce(v=>v+1)} notice={dateNotice} onDismissNotice={()=>setDateNotice('')}/></div>}
       <AnimatePresence>{mode === "time" && timeBusy && <TimePreparation key="time-preparation" time={selectedTime} />}</AnimatePresence>
       {travel && <span className="travel-mark">ORBITWATCH</span>}

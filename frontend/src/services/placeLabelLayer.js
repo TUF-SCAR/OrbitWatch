@@ -12,6 +12,10 @@ export function createPlaceLabelLayer(viewer,{
   weather=createPlaceWeatherReadings(),places=PLACE_LABEL_RECORDS,
 }={}) {
   const scene=viewer.scene,collection=scene.primitives.add(makeCollection());
+  // Render text at CSS/device resolution, independently of the scene's reduced
+  // GPU resolution. Selection, collision boxes and occlusion remain shared.
+  const overlay=scene.canvas.parentElement&&typeof document!=='undefined'?document.createElement('div'):null;
+  if(overlay){overlay.className='place-label-overlay';overlay.style.cssText='position:absolute;inset:0;pointer-events:none;overflow:hidden;z-index:2';scene.canvas.parentElement.appendChild(overlay);}
   const occluder=new EllipsoidalOccluder(scene.globe.ellipsoid),screen=new Cartesian2();
   const entries=places.map(place=>({...place,position:Cartesian3.fromDegrees(place.longitude,place.latitude,4500),range:labelAltitudeRange(place.kind,place.rank)}));
   const pool=[];let visible=new Map(),lastLayout=-Infinity;
@@ -33,6 +37,7 @@ export function createPlaceLabelLayer(viewer,{
   }
   function slot() {
     const group={entry:null,signature:null,labels:[]};
+    if(overlay){group.dom=document.createElement('div');group.dom.style.cssText='position:absolute;text-align:center;white-space:pre;transform:translate(-50%,-50%);font:500 13px/1.4 Inter,system-ui,sans-serif;color:white;text-shadow:0 1px 2px #000,1px 0 2px #000,-1px 0 2px #000,0 -1px 2px #000;background:#07121b55;border-radius:3px;padding:1px 3px';overlay.appendChild(group.dom);}
     for(let i=0;i<3;i++)group.labels.push(collection.add({text:'',position:Cartesian3.ZERO,show:false,horizontalOrigin:HorizontalOrigin.CENTER,verticalOrigin:VerticalOrigin.CENTER,
       fillColor:colors.weather,outlineColor:Color.BLACK.withAlpha(.95),outlineWidth:2,style:LabelStyle.FILL_AND_OUTLINE}));
     pool.push(group);return group;
@@ -49,7 +54,8 @@ export function createPlaceLabelLayer(viewer,{
       });
       group.entry=entry;group.signature=entry.signature;
     }
-    group.labels.forEach((label,index)=>{label.show=Boolean(entry.lines[index]);});
+    group.labels.forEach((label,index)=>{label.show=Boolean(entry.lines[index])&&!group.dom;});
+    if(group.dom){group.dom.textContent=entry.lines.join('\n');group.dom.hidden=false;group.dom.style.left=entry.x+'px';group.dom.style.top=entry.y+'px';}
     return changed;
   }
   return {
@@ -57,6 +63,10 @@ export function createPlaceLabelLayer(viewer,{
       const updated=weather.configure(context),show=Boolean(enabled&&customPlaceLabelsForMap(activeMap));
       if(updated||collection.show!==show)lastLayout=-Infinity;
       collection.show=show;
+      if(overlay){overlay.hidden=!show;occluder.cameraPosition=viewer.camera.positionWC;for(const group of visible.values()){
+        const point=project(group.entry,screen);group.dom.hidden=!point||scene.mode===SceneMode.SCENE3D&&!occluder.isPointVisible(group.entry.position);
+        if(point){group.dom.style.left=point.x+'px';group.dom.style.top=point.y+'px';}
+      }}
       if(!show||now-lastLayout<200)return;
       lastLayout=now;
       const altitude=viewer.camera.positionCartographic.height,flat=scene.mode!==SceneMode.SCENE3D;
@@ -73,7 +83,7 @@ export function createPlaceLabelLayer(viewer,{
       candidates.sort((a,b)=>priority[a.kind]-priority[b.kind]||a.rank-b.rank||Number(visible.has(b.id))-Number(visible.has(a.id))||a.id.localeCompare(b.id));
       const accepted=selectLabelBoxes(candidates,scene.canvas.clientWidth,scene.canvas.clientHeight,scene.canvas.clientWidth<600?28:45,new Set(visible.keys()));
       const wanted=new Set(accepted.map(entry=>entry.id)),next=new Map();let changed=false;
-      for(const [id,group] of visible)if(!wanted.has(id)){group.labels.forEach(label=>{label.show=false;});changed=true;}
+      for(const [id,group] of visible)if(!wanted.has(id)){group.labels.forEach(label=>{label.show=false;});if(group.dom)group.dom.hidden=true;changed=true;}
       const reserved=new Set(accepted.map(entry=>visible.get(entry.id)).filter(Boolean));
       const free=pool.filter(group=>!reserved.has(group));
       for(const entry of accepted) {
@@ -89,7 +99,7 @@ export function createPlaceLabelLayer(viewer,{
       const candidates=[],altitude=viewer.camera.positionCartographic.height;
       for(const group of visible.values()) {
         const entry=group.entry;
-        if(!group.labels[0].show||entry.kind==='country'||altitude<entry.range[0]/1.03||altitude>entry.range[1]*1.03)continue;
+        if((group.dom?group.dom.hidden:!group.labels[0].show)||entry.kind==='country'||altitude<entry.range[0]/1.03||altitude>entry.range[1]*1.03)continue;
         if(scene.mode===SceneMode.SCENE3D&&!occluder.isPointVisible(entry.position))continue;
         const projected=project(entry,screen);
         if(projected&&projected.x+entry.width/2>0&&projected.x-entry.width/2<scene.canvas.clientWidth&&
@@ -98,6 +108,6 @@ export function createPlaceLabelLayer(viewer,{
       return nearestSelectablePlace(candidates,point);
     },
     diagnostics:()=>({visible:collection.show?visible.size:0,glyphGroups:pool.length,labels:collection.length,weather:weather.diagnostics(),places:collection.show?[...visible.values()].map(({entry})=>({id:entry.id,name:entry.name,kind:entry.kind,lines:entry.lines,x:entry.x,y:entry.y})):[]}),
-    destroy(){scene.primitives.remove(collection);visible.clear();},
+    destroy(){overlay?.remove();scene.primitives.remove(collection);visible.clear();},
   };
 }

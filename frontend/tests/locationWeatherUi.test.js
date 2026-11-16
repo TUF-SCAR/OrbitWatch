@@ -14,7 +14,7 @@ test('card and Weather panel share real units/UTC content while coordinate editi
     const card=renderToStaticMarkup(createElement(Card,{weather:location}));
     assert.match(card,/Known city/);assert.match(card,/0 °C/);assert.match(card,/36 km\/h/);assert.match(card,/Unavailable/);assert.match(card,/12:00 UTC/);assert.match(card,/Close location weather/);
     const panel=renderToStaticMarkup(createElement(Panel,{open:true,tab:'layers',variable:'temperature',opacity:.55,enabled:true,compatible:true,locationWeather:location,weather:{state:'available',clock:location.clock,field:{valid_at:location.data.valid_at,kind:'forecast'}}}));
-    assert.match(panel,/Click anywhere on Earth/);assert.match(panel,/WEATHER AT VIEW CENTRE/);assert.match(panel,/Known city/);assert.match(panel,/36 km\/h/);
+    assert.doesNotMatch(panel,/Weather at a location|WEATHER AT VIEW CENTRE|Known city/);assert.match(panel,/Active weather layer/);assert.match(panel,/Wind Flow/);
     assert.doesNotMatch(panel,/Weather latitude|Weather longitude|GET WEATHER|weather-coordinates/);
     const stateCard=renderToStaticMarkup(createElement(Card,{weather:{...location,selection:{...location.selection,kind:'state',name:'Ontario',country:'Canada'}}}));
     assert.match(stateCard,/Ontario/);assert.match(stateCard,/State \/ province · Canada/);assert.match(stateCard,/representative label coordinate, not an average/);

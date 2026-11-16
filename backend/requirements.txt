@@ -14,4 +14,6 @@ tzdata==2026.5
 skyfield-data==7.0.0
 pywebpush==2.5.0
 cryptography==50.0.2
+Pillow==13.0.0
+timezonefinder==9.2.0
 ecmwf-datastores-client==0.5.3

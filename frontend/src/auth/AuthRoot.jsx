@@ -13,7 +13,7 @@ export default function AuthRoot() {
   const [verificationAttempt, setVerificationAttempt] = useState(0);
   const [verificationBusy, setVerificationBusy] = useState(Boolean(pendingToken));
   const [sessionError, setSessionError] = useState("");
-  const verificationMode = useRef("restore");
+  const [verificationMode,setVerificationMode] = useState("restore");
   const retryVerification = useCallback(() => { setVerificationBusy(true); setVerificationAttempt(value => value + 1); }, []);
   const [authPage, setAuthPage] = useState(pageFromPath);
   const [user, setUser] = useState(null);
@@ -29,8 +29,15 @@ export default function AuthRoot() {
   const liveVisible = (phase === "handoff" || authenticated);
   const startTravel = useCallback(() => { setTravelDone(false); setCycle((value) => value + 1); setPhase("travel"); window.history.replaceState({}, "", pendingNotification.current||"/");if(pendingNotification.current)window.dispatchEvent(new Event('orbitwatch:notification-open'));pendingNotification.current=null; }, []);
   const logoutBusy=useRef(false);
-  const logout = useCallback(async () => { if(logoutBusy.current)return;logoutBusy.current=true;await revokePushOnLogout();clearAccessToken(); setPendingToken(null); setVerificationBusy(false); setSessionError(""); setUser(null); setSceneReady(false); setTravelDone(false); setPhase("guest"); setAuthPage("login"); window.history.replaceState({}, "", "/login");logoutBusy.current=false; }, []);
+  const logout = useCallback(async (reason) => { if(logoutBusy.current)return;logoutBusy.current=true;const cleanup=revokePushOnLogout();clearAccessToken();void Promise.race([cleanup,new Promise(resolve=>setTimeout(resolve,1500))]); setPendingToken(null); setVerificationBusy(false); setSessionError(""); setUser(null); setSceneReady(false); setTravelDone(false); setPhase(reason?.type==="orbitwatch:unauthorized" || window.matchMedia("(prefers-reduced-motion: reduce)").matches?"guest":"return"); setAuthPage("login"); window.history.replaceState({}, "", "/login");}, []);
+  useEffect(()=>{
+    if(!['return','deliver','guest'].includes(phase))return;
+    if(phase==='guest'){logoutBusy.current=false;return;}
+    const timer=setTimeout(()=>setPhase(phase==='return'?'deliver':'guest'),phase==='return'?2200:1600);
+    return()=>clearTimeout(timer);
+  },[phase]);
   const onSceneReady = useCallback(() => setSceneReady(true), []);
+  const onReturnUnavailable=useCallback(()=>setPhase(previous=>['return','deliver'].includes(previous)?'guest':previous),[]);
   useEffect(() => { const timer = window.setTimeout(() => setBootDone(true), 850); return () => window.clearTimeout(timer); }, []);
   useEffect(() => {
     const controller = new AbortController();
@@ -43,7 +50,7 @@ export default function AuthRoot() {
     fetchCurrentUser(controller.signal).then((result) => {
       if (controller.signal.aborted) return;
       countryLocked.current = true; setUser(result); setSessionError("");
-      if (verificationMode.current === "login") { setSceneReady(false); setPhase("extract"); }
+      if (verificationMode === "login") { setSceneReady(false); setPhase("extract"); }
       else startTravel();
     }).catch((error) => {
       if (controller.signal.aborted) return;
@@ -51,7 +58,7 @@ export default function AuthRoot() {
       else { setSessionError(error.message || "Session verification is temporarily unavailable."); setPhase("unavailable"); }
     }).finally(() => { if (!controller.signal.aborted) setVerificationBusy(false); });
     return () => controller.abort();
-  }, [pendingToken, verificationAttempt, startTravel, logout]);
+  }, [pendingToken, verificationAttempt, startTravel, logout,verificationMode]);
   useEffect(() => {
     if (phase !== "unavailable" || verificationBusy) return;
     const timer = window.setTimeout(retryVerification, Math.min(30000, 5000 * 2 ** Math.min(verificationAttempt, 3)));
@@ -77,13 +84,13 @@ export default function AuthRoot() {
   async function completeAuthentication(response) {
     if (!response?.access_token) throw new Error("Backend did not return an access token.");
     storeAccessToken(response.access_token);
-    verificationMode.current = "login";
+    setVerificationMode("login");
     setVerificationBusy(true); setPendingToken(response.access_token); setVerificationAttempt(value => value + 1); setPhase("checking");
   }
   return <div className="auth-root-shell">
     {user && <div className={`auth-root-layer auth-root-layer--live ${liveVisible ? "is-visible" : ""}`} style={{ opacity: liveVisible ? 1 : 0, transition: "opacity 600ms ease" }} inert={!liveVisible} aria-hidden={!liveVisible}><App currentUser={user} onLogout={logout} hudActive={authenticated} hudCycle={cycle} onSceneReady={onSceneReady} startupCountry={country} /></div>}
-    {!authenticated && <div className="auth-root-layer auth-root-layer--auth" style={{ opacity: liveVisible ? 0 : 1, transition: "opacity 600ms ease", pointerEvents: liveVisible ? "none" : "auto" }} inert={phase !== "guest" && phase !== "extract"}><AuthPage authType={authPage} launching={phase === "travel" || phase === "handoff"} extracting={phase === "extract"} onExtracted={startTravel} startupCountry={country} showInterface={phase === "guest" || phase === "extract"} onAuthenticated={completeAuthentication} onSwitch={(next) => { setAuthPage(next); window.history.pushState({}, "", `/${next}`); }} /></div>}
-    {(!bootDone || phase === "checking") && <BootSequence preparingLive={phase === "checking"} />}
+    {!authenticated && <div className="auth-root-layer auth-root-layer--auth" style={{ opacity: liveVisible ? 0 : 1, transition: "opacity 600ms ease", pointerEvents: liveVisible ? "none" : "auto" }} inert={phase !== "guest" && phase !== "extract" && !(phase === "checking" && verificationMode === "login")}><AuthPage onReturnUnavailable={onReturnUnavailable} returning={phase==="return"} delivering={phase==="deliver"} authType={authPage} launching={phase === "travel" || phase === "handoff"} extracting={phase === "extract"} onExtracted={startTravel} startupCountry={country} verifying={verificationBusy && verificationMode === "login"} showInterface={phase === "deliver" || phase === "guest" || phase === "extract" || (phase === "checking" && verificationMode === "login")} onAuthenticated={completeAuthentication} onSwitch={(next) => { setAuthPage(next); window.history.pushState({}, "", `/${next}`); }} /></div>}
+    {(!bootDone || (phase === "checking" && verificationMode !== "login")) && <BootSequence preparingLive={phase === "checking"} />}
     {phase === "unavailable" && <section className="auth-session-recovery" role="alert" aria-busy={verificationBusy}>
       <h1>Unable to verify your session</h1><p>{sessionError}</p>
       <button autoFocus disabled={verificationBusy} onClick={retryVerification}>{verificationBusy ? "VERIFYING…" : "RETRY"}</button>

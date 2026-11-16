@@ -11,3 +11,4 @@ createRoot(document.getElementById("root")).render(
 );
 import "./styles/responsive.css";
 import "./styles/phone.css";
+import "./styles/catalog.css";

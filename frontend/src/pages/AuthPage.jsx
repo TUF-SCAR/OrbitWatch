@@ -34,6 +34,10 @@ export default function AuthPage({
   authType,
   launching,
   extracting = false,
+  returning = false,
+  onReturnUnavailable,
+  delivering = false,
+  verifying = false,
   onExtracted,
   startupCountry,
   onAuthenticated,
@@ -114,13 +118,13 @@ export default function AuthPage({
     } finally { if (!controller.signal.aborted) setRequestRunning(false); }
   }
 
-  const busy = requestRunning || launching || extracting;
-  const interfaceVisible = !launching && !previewOpen;
+  const busy = requestRunning || verifying || launching || extracting;
+  const interfaceVisible = !returning && !launching && !previewOpen;
 
   return (
     <main
       data-auth-interface={showInterface ? "visible" : "hidden"} className="auth-page">
-      <SolarSystemScene launching={launching} startupCountry={startupCountry} interactive={previewOpen} />
+      <SolarSystemScene onUnavailable={onReturnUnavailable} returning={returning} launching={launching} startupCountry={startupCountry} interactive={previewOpen} />
 
       <AnimatePresence>
         {interfaceVisible ? (
@@ -160,8 +164,8 @@ export default function AuthPage({
               <span data-depth="5">SECURE ACCESS</span>
             </SpatialSurface>
 
-            <div className={`auth-page__content ${extracting ? "is-extracting" : ""}`} inert={extracting}>
-              {extracting && <svg className="auth-extraction-arm" viewBox="0 0 650 260" aria-hidden="true"><defs><linearGradient id="arm-metal"><stop stopColor="#263b47" /><stop offset=".5" stopColor="#aec5ce" /><stop offset="1" stopColor="#314855" /></linearGradient></defs><path d="M640 200 L450 170 L300 50 L100 90" fill="none" stroke="url(#arm-metal)" strokeWidth="27" strokeLinejoin="round" /><g fill="#132c3a" stroke="#8cc4d4" strokeWidth="5"><circle cx="450" cy="170" r="22" /><circle cx="300" cy="50" r="22" /><circle cx="100" cy="90" r="16" /></g><path className="arm-grip" d="M100 90 L50 60 L14 60 M100 90 L50 120 L14 120" fill="none" stroke="#b1d4dc" strokeWidth="11" strokeLinecap="square" /><path d="M450 170 L300 50" stroke="#78e4f4" strokeWidth="3" /></svg>}
+            <div className={`auth-page__content ${extracting ? "is-extracting" : delivering ? "is-delivering" : ""}`} inert={extracting}>
+              {(extracting||delivering) && <svg className="auth-extraction-arm" viewBox="0 0 650 260" aria-hidden="true"><defs><linearGradient id="arm-metal"><stop stopColor="#263b47" /><stop offset=".5" stopColor="#aec5ce" /><stop offset="1" stopColor="#314855" /></linearGradient></defs><path d="M640 200 L450 170 L300 50 L100 90" fill="none" stroke="url(#arm-metal)" strokeWidth="27" strokeLinejoin="round" /><g fill="#132c3a" stroke="#8cc4d4" strokeWidth="5"><circle cx="450" cy="170" r="22" /><circle cx="300" cy="50" r="22" /><circle cx="100" cy="90" r="16" /></g><path className="arm-grip" d="M100 90 L50 60 L14 60 M100 90 L50 120 L14 120" fill="none" stroke="#b1d4dc" strokeWidth="11" strokeLinecap="square" /><path d="M450 170 L300 50" stroke="#78e4f4" strokeWidth="3" /></svg>}
               <SpatialSurface
                 as="section"
                 key={authType}
@@ -269,7 +273,7 @@ export default function AuthPage({
 
                   {formMessage ? <p id="auth-form-error" role="alert" className="auth-form-message">{formMessage}</p> : null}
 
-                  <button className="auth-submit-button" disabled={busy} type="submit">
+                  {verifying&&<p role="status">Verifying your session…</p>}<button className="auth-submit-button" disabled={busy} type="submit">
                     <span className="auth-submit-button__signal" />
                     {requestRunning
                       ? "AUTHENTICATING"

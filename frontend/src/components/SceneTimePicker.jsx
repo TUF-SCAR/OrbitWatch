@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { ChevronLeft, ChevronRight, X } from 'lucide-react';
 import { MONTHS, dateFields, daysInMonth, fieldsDate, shiftMonth, validSceneTime } from '../utils/sceneCalendar.js';
 
-export default function SceneTimePicker({time,onApply,onClose,coverage}) {
+export default function SceneTimePicker({time,onApply,onClose,coverage,children}) {
   const dialog=useRef(null),yearInput=useRef(null);
   const [zone,setZone]=useState('local'),[fields,setFields]=useState(()=>dateFields(time,'local'));
   const [representedInstant,setRepresentedInstant]=useState(time);
@@ -47,9 +47,10 @@ export default function SceneTimePicker({time,onApply,onClose,coverage}) {
       </div>
       <div className="scene-picker__time"><span>Time <small>24-hour</small></span><label>Hour<input type="number" min="0" max="23" aria-label="Hour" value={fields.hour} onChange={e=>setField('hour',e.target.value)}/></label><b>:</b><label>Minute<input type="number" min="0" max="59" aria-label="Minute" value={fields.minute} onChange={e=>setField('minute',e.target.value)}/></label></div>
       <p className="scene-picker__equivalent" aria-live="polite">{date ? `${date.toISOString().slice(0,16).replace('T',' · ')} UTC` : 'Choose a valid time from 1 January 1945 through the present. Local daylight-saving gaps cannot be selected.'}</p>
-      <button type="button" className="scene-picker__history-toggle" aria-expanded={showHistory} onClick={()=>setShowHistory(v=>!v)}>Available history <span>{showHistory?'−':'+'}</span></button>
+      <button type="button" className="scene-picker__history-toggle" aria-expanded={showHistory} onClick={()=>setShowHistory(v=>!v)}>Available dates <span>{showHistory?'−':'+'}</span></button>
       {showHistory&&<div className="scene-picker__history"><p>Verified instants · counts include the permanent catalog. Gaps between dates remain unavailable.</p>{coverage?.shortcuts?.length ? coverage.shortcuts.map(item=><button type="button" key={item.timestamp} onClick={()=>{const next=new Date(item.timestamp);setRepresentedInstant(next);setFields(dateFields(next,zone));}}><strong>{new Date(item.timestamp).toLocaleDateString('en-GB',{year:'numeric',month:'short',day:'numeric',timeZone:zone==='utc'?'UTC':undefined})}</strong><span>{item.available_count}/15 · {item.default_count}/4 defaults</span></button>) : <p>{coverage?.state==='unavailable'?'Coverage could not be loaded. You can still explore any scene date.':'No verified shortcuts loaded yet.'}</p>}</div>}
-      <footer><button type="button" onClick={onClose}>Cancel</button><button type="submit" className="scene-picker__apply" disabled={!date}>Use as draft</button></footer>
+      {children&&<details><summary>Applied scene &amp; source details</summary>{children}</details>}
+      <footer><button type="button" onClick={onClose}>Cancel</button><button type="submit" className="scene-picker__apply" disabled={!date}>Apply date &amp; time</button></footer>
     </form>
   </dialog>,document.body);
 }

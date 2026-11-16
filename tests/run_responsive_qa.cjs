@@ -17,13 +17,14 @@ async function ready(url){for(let i=0;i<240;i++){try{const r=await fetch(url,{si
 async function test(file){return new Promise((resolve,reject)=>{const child=spawn(process.execPath,[file],{cwd:root,env:process.env,windowsHide:true,stdio:'inherit'});child.on('error',reject);child.on('exit',code=>code===0?resolve():reject(Error(file+' exited '+code)));});}
 process.on('SIGINT',()=>{cleanup();process.exit(130);});process.on('SIGTERM',()=>{cleanup();process.exit(143);});
 (async()=>{
- const selection=process.argv[2]||'all';if(!['all','grid','journeys','mobile'].includes(selection))throw Error('Choose all, grid, journeys or mobile');
+ const selection=process.argv[2]||'all';if(!['all','grid','journeys','mobile','reliability'].includes(selection))throw Error('Choose all, grid, journeys, mobile or reliability');
  start(path.join(root,'backend/.venv/Scripts/python.exe'),['tests/check_notification_delivery.py','--serve'],root,{...process.env,ORBITWATCH_QA_INFRARED_CACHE:path.join(root,'.setup-cache/infrared-provider-qa')},'owned-backend');
  start(process.execPath,['node_modules/vite/bin/vite.js','--config',path.join(root,'.setup-cache/responsive-vite.config.mjs')],path.join(root,'frontend'),{...process.env,VITE_API_BASE_URL:'http://127.0.0.1:8001',VITE_CESIUM_ION_TOKEN:''},'owned-vite');
  await Promise.all([ready('http://127.0.0.1:8001/health/live'),ready('http://127.0.0.1:5174')]);
  if(servers.some(child=>child.exitCode!==null))throw Error('A QA server exited; inspect the owned server logs instead of reusing another process');
  console.log('Isolated backend and actual Vite application are ready');
- if(selection==='mobile')await test('tests/check_mobile_ui.cjs');
+ if(selection==='reliability')await test('tests/check_reliability_ui.cjs');
+ else if(selection==='mobile')await test('tests/check_mobile_ui.cjs');
  else {
  if(selection!=='journeys')await test('tests/check_responsive.cjs');
  if(selection!=='grid')await test('tests/check_responsive_journeys.cjs');

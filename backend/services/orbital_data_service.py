@@ -200,8 +200,9 @@ def _refresh_orbital_data(force: bool = False) -> dict:
     }
 
 
-def get_orbital_data_status() -> dict:
-    norad_ids = get_supported_norad_ids()
+def get_orbital_data_status(tracked_ids=None) -> dict:
+    catalog_ids = get_supported_norad_ids()
+    norad_ids = [n for n in tracked_ids if n in catalog_ids] if tracked_ids else catalog_ids
     latest_timestamp = get_latest_orbital_timestamp()
     oldest_timestamp = get_oldest_orbital_timestamp(norad_ids)
     age_seconds = None
@@ -218,7 +219,7 @@ def get_orbital_data_status() -> dict:
             latest_timestamp = latest_timestamp.replace(tzinfo=timezone.utc)
 
     return {
-        "supported_objects": len(norad_ids),
+        "supported_objects": len(catalog_ids),
         "current_records": get_orbital_record_count(),
         "history_records": get_orbital_history_count(),
         "latest_fetched_at": (
@@ -237,5 +238,7 @@ def get_orbital_data_status() -> dict:
             else None
         ),
         "stale": orbital_data_is_stale(norad_ids),
-        "missing_supported_objects": orbital_data_is_missing(norad_ids),
+        "missing_supported_objects": orbital_data_is_missing(catalog_ids),
+        "missing_tracked_objects": orbital_data_is_missing(norad_ids),
+        "tracked_objects": len(norad_ids),
     }

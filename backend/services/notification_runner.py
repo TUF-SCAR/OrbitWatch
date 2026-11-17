@@ -87,10 +87,16 @@ def fence(db,token):
     return state
 
 
+def configured_event_radius(preferences):
+    if preferences is not None:return int(preferences.event_radius_km)
+    default=NotificationPreferences.__table__.c.event_radius_km.default
+    return int(default.arg)
+
+
 def preferences_allow(db,owner,kind,subscription_id,location_id,now,target_id=None,category=None,danger=False):
     preferences=db.get(NotificationPreferences,owner)
     if danger:
-        return bool(preferences and kind=='event' and db.scalar(select(ObservationLocation.id).where(ObservationLocation.owner_id==owner,ObservationLocation.id==location_id)))
+        return bool(kind=='event' and db.scalar(select(ObservationLocation.id).where(ObservationLocation.owner_id==owner,ObservationLocation.id==location_id)))
     if not preferences or not preferences.notifications_enabled or not getattr(preferences,{'satellite':'satellite_alerts','celestial':'celestial_alerts','event':'natural_event_alerts'}[kind]):return False
     locations=list(db.scalars(select(ObservationLocation).where(ObservationLocation.owner_id==owner)))
     if not any(row.id==location_id for row in locations) or quiet(preferences,locations,now):return False
@@ -109,8 +115,8 @@ def persist(engine,token,owner,subscription_id,location_id,candidate,now):
         observer=candidate.get('observer')
         if observer and (abs(observer[0]-float(location.latitude))>1e-6 or abs(observer[1]-float(location.longitude))>1e-6 or observer[2]!=location.timezone or observer[3] is not None and observer[3]!=location.version):return False
         preferences=db.get(NotificationPreferences,owner)
-        if candidate.get('warning_minutes') is not None and preferences.advance_warning_minutes!=candidate['warning_minutes']:return False
-        if candidate.get('distance_km',0)>preferences.event_radius_km:return False
+        if candidate.get('warning_minutes') is not None and (not preferences or preferences.advance_warning_minutes!=candidate['warning_minutes']):return False
+        if candidate.get('distance_km',0)>configured_event_radius(preferences):return False
         # Bounded retention; nothing is deleted before it is long ineligible.
         # Long-running incident update keys must survive inbox cleanup/restarts.
         # Preserve event ledgers; the existing hard cap prevents unbounded growth.
@@ -172,7 +178,7 @@ def process_outbox(engine,token,deadline,send=send_push):
                 if row.kind=='event':
                     loc=db.get(ObservationLocation,row.location_id);pref=db.get(NotificationPreferences,row.owner_id)
                     source=next((event for event in current_events(schedule=False)['events'] if event['id']==row.target_id),None)
-                    if not source or not loc or not event_candidate(source,loc,pref.event_radius_km,now) or not preferences_allow(db,row.owner_id,row.kind,row.subscription_id,row.location_id,now,row.target_id,row.category,dangerous(source)):
+                    if not source or not loc or not event_candidate(source,loc,configured_event_radius(pref),now) or not preferences_allow(db,row.owner_id,row.kind,row.subscription_id,row.location_id,now,row.target_id,row.category,dangerous(source)):
                         row.state='suppressed';row.devices=entries;db.commit();break
                 if row.opportunity_id:
                     loc=db.get(ObservationLocation,row.location_id);pref=db.get(NotificationPreferences,row.owner_id)
@@ -221,14 +227,14 @@ def evaluate_owner(engine,token,owner,now,deadline,events):
         pref=db.get(NotificationPreferences,owner)
         locations=list(db.scalars(select(ObservationLocation).where(ObservationLocation.owner_id==owner).order_by(ObservationLocation.is_default.desc(),ObservationLocation.slot)))
         subscriptions=list(db.scalars(select(AlertSubscription).where(AlertSubscription.owner_id==owner).order_by(AlertSubscription.kind,AlertSubscription.slot)))
-        if not pref or not locations:return 0
+        if not locations:return 0
         # Keep detached immutable snapshots; release DB before expensive geometry.
-        pref=SimpleNamespace(**{column.name:getattr(pref,column.name) for column in pref.__table__.columns})
+        if pref is not None:pref=SimpleNamespace(**{column.name:getattr(pref,column.name) for column in pref.__table__.columns})
         locations=[SimpleNamespace(**{column.name:getattr(row,column.name) for column in row.__table__.columns}) for row in locations]
         subscriptions=[SimpleNamespace(**{column.name:getattr(row,column.name) for column in row.__table__.columns}) for row in subscriptions]
         records={str(row.norad_id):SimpleNamespace(**{key:getattr(row,key) for key in ('norad_id','object_name','epoch','source','tle_line1','tle_line2')}) for row in db.scalars(select(SatelliteOrbitalData).where(SatelliteOrbitalData.norad_id.in_([int(s.target_id) for s in subscriptions if s.kind=='satellite'])))}
     generated=0;weather={};owner_deadline=min(deadline,time.monotonic()+8)
-    pairs=[(sub,location) for sub in subscriptions if sub.kind in ('satellite','celestial') and pref.notifications_enabled and not quiet(pref,locations,now) and getattr(pref,sub.kind+'_alerts') for location in locations]
+    pairs=[(sub,location) for sub in subscriptions if sub.kind in ('satellite','celestial') and pref and pref.notifications_enabled and not quiet(pref,locations,now) and getattr(pref,sub.kind+'_alerts') for location in locations]
     if pairs:
         offset=(int(now.timestamp())//300*12)%len(pairs);pairs=(pairs[offset:]+pairs[:offset])[:140]
     if events:
@@ -239,14 +245,14 @@ def evaluate_owner(engine,token,owner,now,deadline,events):
             if time.monotonic()>=owner_deadline or generated>=5:break
             sub=by_category.get(event.get('category'))
             danger=dangerous(event)
-            if not danger and (not sub or not pref.notifications_enabled or not pref.natural_event_alerts or quiet(pref,locations,now)):continue
+            if not danger and (not sub or not pref or not pref.notifications_enabled or not pref.natural_event_alerts or quiet(pref,locations,now)):continue
             previous=event_severity.get(event['id'])
             # One report alert/account, associated with closest relevant saved point.
             def reported_distance(point):
                 km=proximity(event.get('geometry') or {},float(point.latitude),float(point.longitude))
                 return km if km is not None else float('inf')
             for location in sorted(locations,key=reported_distance):
-                candidate=event_candidate(event,location,pref.event_radius_km,now,previous)
+                candidate=event_candidate(event,location,configured_event_radius(pref),now,previous)
                 if candidate:
                     candidate['dangerous']=danger
                     candidate['details']={'dangerous':danger,'event':event}
@@ -327,7 +333,7 @@ def run_once(engine=None,mode='once'):
                     raise RuntimeError('Notification storage reserve reached')
                 state=db.get(NotificationRun,1);cursor=state.cursor_owner
                 plan_due=not state.last_planned_at or now-utc(state.last_planned_at)>=timedelta(minutes=5)
-                def batch(after):return list(db.scalars(select(NotificationPreferences.owner_id).where(NotificationPreferences.owner_id>after).order_by(NotificationPreferences.owner_id).limit(MAX_USERS)))
+                def batch(after):return list(db.scalars(select(ObservationLocation.owner_id).distinct().where(ObservationLocation.owner_id>after).order_by(ObservationLocation.owner_id).limit(MAX_USERS)))
                 owners=(batch(cursor) or batch(0)) if plan_due else []
                 db.execute(delete(ViewingOpportunity).where(ViewingOpportunity.end_at<now-timedelta(days=2)))
                 db.execute(update(ViewingOpportunity).where(ViewingOpportunity.status=='scheduled',ViewingOpportunity.end_at<=now).values(status='ended',

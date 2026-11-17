@@ -218,14 +218,54 @@ def run(postgres=False,serve=False):
             with Session(engine) as db:
                 critical=db.scalar(select(NotificationDelivery).where(NotificationDelivery.target_id==danger['id']))
                 assert critical.inbox_id and critical.subscription_id is None and critical.details['dangerous']
-                pref=db.get(NotificationPreferences,users[1]);pref.notifications_enabled=True;pref.quiet_hours_enabled=False;db.commit()
+                pref=db.get(NotificationPreferences,users[1]);pref.notifications_enabled=True;pref.natural_event_alerts=True;db.commit()
+            request('POST','/api/account/alert-subscriptions',201,json={'kind':'event','target_id':'earthquake'})
+            ordinary_quiet={**event,'id':'usgs:quiet-ordinary'}
+            assert event_candidate(ordinary_quiet,loc,100,now)
+            with lease(engine) as token:
+                assert evaluate_owner(engine,token,users[1],now,time.monotonic()+10,[ordinary_quiet])==0
             request('DELETE','/api/account/push-subscriptions/'+danger_device,204)
+            # Regression: a saved-location account with no preference row must
+            # be selected by the worker and receive a qualifying dangerous event.
+            fresh_endpoint='https://fcm.googleapis.com/fcm/send/ISOLATED-FRESH-ACCOUNT'
+            fresh_device=request('POST','/api/account/push-subscriptions',201,who=2,json={**subscription,'endpoint':fresh_endpoint,'consent':True}).json()['id']
+            with Session(engine) as db:
+                assert db.get(NotificationPreferences,users[2]) is None
+                remote=db.get(ObservationLocation,locations[1]);remote.latitude=0;remote.longitude=0;remote.version+=1
+                state=db.get(NotificationRun,1);state.last_planned_at=now-timedelta(minutes=6);state.cursor_owner=0
+                db.commit()
+            fresh_danger={**danger,'id':'usgs:fresh-account-danger'}
+            with patch('services.notification_runner.shared_prediction',return_value={'state':'unavailable','windows':[]}),patch('services.notification_runner.current_events',return_value={'events':[fresh_danger]}),patch('services.notification_runner.process_outbox'):
+                fresh_result=run_once(engine)
+            assert fresh_result['generated']==1,fresh_result
+            with Session(engine) as db:
+                fresh_delivery=db.scalar(select(NotificationDelivery).where(NotificationDelivery.owner_id==users[2],NotificationDelivery.target_id==fresh_danger['id']))
+                assert fresh_delivery and db.get(InboxNotification,fresh_delivery.inbox_id)
+            # The actual outbox path must revalidate and send without a prefs row.
+            with lease(engine) as token,patch('services.notification_runner.current_events',return_value={'events':[fresh_danger]}):
+                fresh_sent=[]
+                process_outbox(engine,token,time.monotonic()+5,lambda device,payload,ttl:fresh_sent.append(payload) or 201)
+                assert len(fresh_sent)==1 and fresh_sent[0]['target_id']==fresh_danger['id']
+            # Re-evaluation remains deduplicated; stale qualifying-severity data
+            # remains ineligible and creates no inbox or delivery record.
+            with Session(engine) as db:
+                state=db.get(NotificationRun,1);state.last_planned_at=now-timedelta(minutes=6);state.cursor_owner=0;db.commit()
+            with patch('services.notification_runner.shared_prediction',return_value={'state':'unavailable','windows':[]}),patch('services.notification_runner.current_events',return_value={'events':[fresh_danger]}),patch('services.notification_runner.process_outbox'):
+                assert run_once(engine)['generated']==0
+            stale_danger={**fresh_danger,'id':'usgs:stale-danger','reported_at':(now-timedelta(days=3)).isoformat()}
+            with Session(engine) as db:
+                state=db.get(NotificationRun,1);state.last_planned_at=now-timedelta(minutes=6);state.cursor_owner=0;db.commit()
+            with patch('services.notification_runner.shared_prediction',return_value={'state':'unavailable','windows':[]}),patch('services.notification_runner.current_events',return_value={'events':[stale_danger]}),patch('services.notification_runner.process_outbox'):
+                assert run_once(engine)['generated']==0
+            with Session(engine) as db:
+                assert db.scalar(select(NotificationDelivery.id).where(NotificationDelivery.owner_id==users[2],NotificationDelivery.target_id==stale_danger['id'])) is None
             # Runner heartbeat; no network providers are invoked by this fixture.
             with patch('services.notification_runner.shared_prediction',return_value={'state':'unavailable','windows':[]}),patch('services.notification_runner.current_events',return_value={'events':[]}):
                 result=run_once(engine);assert result['state']=='completed'
                 assert run_once(engine)['generated']==0
             assert request('GET','/api/account/notification-delivery').json()['scheduler_state']=='recent_success'
-            assert request('GET','/api/account/notifications',who=2).json()['items']==[]
+            fresh_inbox=request('GET','/api/account/notifications',who=2).json()['items']
+            assert any(item['destination']['target_id']==fresh_danger['id'] and item['destination']['kind']=='event' for item in fresh_inbox)
             request('DELETE','/api/account/push-subscriptions/'+device,204)
             assert request('GET','/api/account/notification-delivery').json()['devices']==[]
             if postgres:

@@ -1,5 +1,7 @@
 # OrbitWatch
 
+hello
+
 OrbitWatch is a React/Vite/Cesium satellite tracking and Earth observation project with two modes:
 
 - **Live Mode:** real SGP4 satellite positions, Orbit Trace predicted inertial paths, Earth maps, real NOAA temperature/cloud/precipitation/wind fields, Open-Meteo location weather and reported natural events, and travel to47 named celestial destinations.

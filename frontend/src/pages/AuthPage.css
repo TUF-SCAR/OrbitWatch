@@ -698,10 +698,9 @@
     position: relative;
     display: block;
     flex: 0 0 auto;
-    width: min(430px, calc(100vw - 28px));
+    width: max-content;
+    max-width: 100%;
   }
-
-  .auth-panel-stage .auth-panel { width: 100%; }
 
   .auth-page__content.is-extracting .auth-panel-stage .auth-panel,
   .auth-page__content.is-delivering .auth-panel-stage .auth-panel { animation: none; }

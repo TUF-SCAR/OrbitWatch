@@ -51,3 +51,27 @@ Result: **PASS**, Vite built 2,154 modules. Vite reported its existing-style bun
 ## Checks not run
 
 No production login, backend, deployment, or release checks were run; they are not needed for this frontend-only animation change. The Playwright harness was temporary and is not included in the branch.
+
+## Follow-up: landscape panel width
+
+### Change
+
+The phone stage previously set a 430 px width and forced the panel to `width: 100%`. That overrode the existing 450 px panel rule on a touch device at 844 × 390. The stage now uses its panel's max-content width, capped by its containing width, and no longer overrides the panel width. The arm remains positioned relative to the stage, so its center and bottom anchors follow the panel's responsive dimensions. No desktop selectors or keyframes changed.
+
+### Verification
+
+A temporary Playwright check rendered the actual `AuthPage.css` in Chrome with touch emulation. Its command was:
+
+```powershell
+& (Get-Command node.exe).Source .setup-cache\browser-qa\mobile-arm-followup.cjs
+```
+
+Results:
+
+- 844 × 390 landscape: **PASS**; panel and stage both 450 px; grip errors were 0.01 px horizontally and 0.04 px vertically.
+- 390 × 844 portrait: **PASS**; panel and stage both 362 px; grip errors were 0.03 px horizontally and 0.02 px vertically.
+- 360 × 800 portrait: **PASS**; panel and stage both 332 px; grip errors were 0.00 px horizontally and 0.07 px vertically.
+- Desktop at 1280 × 900: **PASS**; computed stage, arm position/size/origin, and panel geometry matched the pre-follow-up stylesheet exactly (`display: contents` for the stage; 650 × 260 px arm at 820 × 315 px; 500 px panel).
+- Frontend build from `frontend`: **PASS**, 2,154 modules. Vite retained its warning that the main JavaScript chunk is 1,762 kB after minification.
+
+The temporary Playwright check was removed after use. No backend or production services were started.

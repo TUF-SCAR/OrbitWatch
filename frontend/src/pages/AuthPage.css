@@ -680,10 +680,13 @@
 .auth-preview-toggle span, .auth-preview-toggle strong { writing-mode:horizontal-tb; transform:none; }
 .auth-preview-toggle span { font-size: var(--ui-type-10); }
 .auth-preview-toggle strong { font-size: var(--ui-type-12); }
-.auth-extraction-arm { position:absolute; z-index:40; width:650px; height:260px; left:calc(50% + 180px); top:calc(50% - 135px); transform-origin:100% 80%; animation:arm-reach 1600ms cubic-bezier(.22,.7,.3,1) both; pointer-events:none; filter:drop-shadow(0 10px 14px #0009); }
+.auth-extraction-arm { position:absolute; z-index:40; width:650px; height:260px; left:calc(50% + 180px); top:calc(50% - 135px); transform-origin:100% 80%; opacity:0; visibility:hidden; animation:none; pointer-events:none; filter:drop-shadow(0 10px 14px #0009); }
 .auth-panel-stage { display:contents; }
+.auth-page__content.is-extracting .auth-extraction-arm,
+.auth-page__content.is-delivering .auth-extraction-arm { opacity:1; visibility:visible; animation:arm-reach 1600ms cubic-bezier(.22,.7,.3,1) both; }
 .auth-page__content.is-extracting .auth-panel { animation:panel-carry 1600ms cubic-bezier(.22,.7,.3,1) both; pointer-events:none; }
 .auth-extraction-arm .arm-grip { transform-origin:100px 90px; animation:grip-close 1600ms ease both; }
+.auth-page__content:not(.is-extracting):not(.is-delivering) .auth-extraction-arm .arm-grip { animation:none; }
 .auth-page__content.is-delivering .auth-extraction-arm { animation-direction:reverse; }
 .auth-page__content.is-delivering .arm-grip { animation-direction:reverse; }
 .auth-page__content.is-delivering .auth-panel { animation:panel-carry 1600ms cubic-bezier(.22,.7,.3,1) reverse both; }
@@ -714,7 +717,18 @@
     overflow: visible;
     transform: rotate(90deg);
     transform-origin: center;
+  }
+
+  .auth-page__content.is-extracting .auth-extraction-arm {
+    opacity: 1;
+    visibility: visible;
     animation: phone-auth-arm-vertical 1600ms cubic-bezier(.22,.7,.3,1) both;
+  }
+
+  .auth-page__content.is-delivering .auth-extraction-arm {
+    opacity: 1;
+    visibility: visible;
+    animation: phone-auth-arm-delivery 1600ms cubic-bezier(.22,.7,.3,1) both;
   }
 
   .auth-page__content.is-extracting .auth-panel-stage {
@@ -724,10 +738,6 @@
 
   .auth-page__content.is-delivering .auth-panel-stage {
     animation: phone-auth-panel-delivery 1600ms cubic-bezier(.22,.7,.3,1) both;
-  }
-
-  .auth-page__content.is-delivering .auth-extraction-arm {
-    animation: phone-auth-arm-delivery 1600ms cubic-bezier(.22,.7,.3,1) both;
   }
 
   .auth-page__content.is-delivering .auth-extraction-arm .arm-grip { animation-direction: reverse; }

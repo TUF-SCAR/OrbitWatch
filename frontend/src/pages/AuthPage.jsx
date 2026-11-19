@@ -56,12 +56,59 @@ export default function AuthPage({
   const [requestRunning, setRequestRunning] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(false);
   const requestRef = useRef(null);
+  const extractionCompletionRef = useRef(null);
   useEffect(() => () => requestRef.current?.abort(), []);
   useEffect(() => {
-    if (!extracting) return;
-    const timer = window.setTimeout(onExtracted, window.matchMedia("(prefers-reduced-motion: reduce)").matches ? 150 : 1600);
-    return () => window.clearTimeout(timer);
+    if (!extracting) {
+      extractionCompletionRef.current = null;
+      return undefined;
+    }
+
+    let completed = false;
+    let timer;
+    const completeExtraction = () => {
+      if (completed) return;
+      completed = true;
+      window.clearTimeout(timer);
+      extractionCompletionRef.current = null;
+      onExtracted?.();
+    };
+
+    const markExtractionAnimationEnd = (part) => {
+      animationEnds.add(part);
+      if (animationEnds.size === 2) completeExtraction();
+    };
+    const animationEnds = new Set();
+    extractionCompletionRef.current = markExtractionAnimationEnd;
+    timer = window.setTimeout(
+      completeExtraction,
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches ? 150 : 2200,
+    );
+    return () => {
+      window.clearTimeout(timer);
+      if (extractionCompletionRef.current === markExtractionAnimationEnd) {
+        extractionCompletionRef.current = null;
+      }
+    };
   }, [extracting, onExtracted]);
+
+  function handleExtractionArmAnimationEnd(event) {
+    if (event.target !== event.currentTarget) return;
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    if (["arm-reach", "phone-auth-arm-vertical"].includes(event.animationName)) {
+      extractionCompletionRef.current?.("arm");
+    }
+  }
+
+  function handleExtractionPanelAnimationEnd(event) {
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    if (
+      (event.animationName === "panel-carry" && event.target.matches(".auth-panel")) ||
+      (event.animationName === "phone-auth-panel-extraction" && event.target.matches(".auth-panel-stage"))
+    ) {
+      extractionCompletionRef.current?.("panel");
+    }
+  }
 
   async function submitAuthentication(event) {
     event.preventDefault();
@@ -165,8 +212,8 @@ export default function AuthPage({
             </SpatialSurface>
 
             <div className={`auth-page__content ${extracting ? "is-extracting" : delivering ? "is-delivering" : ""}`} inert={extracting}>
-              <div className="auth-panel-stage">
-                {(extracting||delivering) && <svg className="auth-extraction-arm" viewBox="0 0 650 260" aria-hidden="true"><defs><linearGradient id="arm-metal"><stop stopColor="#263b47" /><stop offset=".5" stopColor="#aec5ce" /><stop offset="1" stopColor="#314855" /></linearGradient></defs><path d="M640 200 L450 170 L300 50 L100 90" fill="none" stroke="url(#arm-metal)" strokeWidth="27" strokeLinejoin="round" /><g fill="#132c3a" stroke="#8cc4d4" strokeWidth="5"><circle cx="450" cy="170" r="22" /><circle cx="300" cy="50" r="22" /><circle cx="100" cy="90" r="16" /></g><path className="arm-grip" d="M100 90 L50 60 L14 60 M100 90 L50 120 L14 120" fill="none" stroke="#b1d4dc" strokeWidth="11" strokeLinecap="square" /><path d="M450 170 L300 50" stroke="#78e4f4" strokeWidth="3" /></svg>}
+              <div className="auth-panel-stage" onAnimationEnd={handleExtractionPanelAnimationEnd}>
+                <svg className="auth-extraction-arm" viewBox="0 0 650 260" aria-hidden="true" onAnimationEnd={handleExtractionArmAnimationEnd}><defs><linearGradient id="arm-metal"><stop stopColor="#263b47" /><stop offset=".5" stopColor="#aec5ce" /><stop offset="1" stopColor="#314855" /></linearGradient></defs><path d="M640 200 L450 170 L300 50 L100 90" fill="none" stroke="url(#arm-metal)" strokeWidth="27" strokeLinejoin="round" /><g fill="#132c3a" stroke="#8cc4d4" strokeWidth="5"><circle cx="450" cy="170" r="22" /><circle cx="300" cy="50" r="22" /><circle cx="100" cy="90" r="16" /></g><path className="arm-grip" d="M100 90 L50 60 L14 60 M100 90 L50 120 L14 120" fill="none" stroke="#b1d4dc" strokeWidth="11" strokeLinecap="square" /><path d="M450 170 L300 50" stroke="#78e4f4" strokeWidth="3" /></svg>
                 <SpatialSurface
                   as="section"
                   key={authType}

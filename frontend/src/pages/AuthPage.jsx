@@ -165,14 +165,15 @@ export default function AuthPage({
             </SpatialSurface>
 
             <div className={`auth-page__content ${extracting ? "is-extracting" : delivering ? "is-delivering" : ""}`} inert={extracting}>
-              {(extracting||delivering) && <svg className="auth-extraction-arm" viewBox="0 0 650 260" aria-hidden="true"><defs><linearGradient id="arm-metal"><stop stopColor="#263b47" /><stop offset=".5" stopColor="#aec5ce" /><stop offset="1" stopColor="#314855" /></linearGradient></defs><path d="M640 200 L450 170 L300 50 L100 90" fill="none" stroke="url(#arm-metal)" strokeWidth="27" strokeLinejoin="round" /><g fill="#132c3a" stroke="#8cc4d4" strokeWidth="5"><circle cx="450" cy="170" r="22" /><circle cx="300" cy="50" r="22" /><circle cx="100" cy="90" r="16" /></g><path className="arm-grip" d="M100 90 L50 60 L14 60 M100 90 L50 120 L14 120" fill="none" stroke="#b1d4dc" strokeWidth="11" strokeLinecap="square" /><path d="M450 170 L300 50" stroke="#78e4f4" strokeWidth="3" /></svg>}
-              <SpatialSurface
-                as="section"
-                key={authType}
-                side="center"
-                strength={3.2}
-                className={`auth-panel ${registrationOpen ? "auth-panel--register" : ""}`}
-              >
+              <div className="auth-panel-stage">
+                {(extracting||delivering) && <svg className="auth-extraction-arm" viewBox="0 0 650 260" aria-hidden="true"><defs><linearGradient id="arm-metal"><stop stopColor="#263b47" /><stop offset=".5" stopColor="#aec5ce" /><stop offset="1" stopColor="#314855" /></linearGradient></defs><path d="M640 200 L450 170 L300 50 L100 90" fill="none" stroke="url(#arm-metal)" strokeWidth="27" strokeLinejoin="round" /><g fill="#132c3a" stroke="#8cc4d4" strokeWidth="5"><circle cx="450" cy="170" r="22" /><circle cx="300" cy="50" r="22" /><circle cx="100" cy="90" r="16" /></g><path className="arm-grip" d="M100 90 L50 60 L14 60 M100 90 L50 120 L14 120" fill="none" stroke="#b1d4dc" strokeWidth="11" strokeLinecap="square" /><path d="M450 170 L300 50" stroke="#78e4f4" strokeWidth="3" /></svg>}
+                <SpatialSurface
+                  as="section"
+                  key={authType}
+                  side="center"
+                  strength={3.2}
+                  className={`auth-panel ${registrationOpen ? "auth-panel--register" : ""}`}
+                >
                 <div className="auth-panel__topline" data-depth="3">
                   <span>IDENTITY GATEWAY</span>
                   <span>{registrationOpen ? "NEW ACCOUNT" : "AUTHENTICATION"}</span>
@@ -300,7 +301,8 @@ export default function AuthPage({
                   <span><i /> SECURE ACCOUNT ACCESS</span>
                   <span>SOLAR SYSTEM ACTIVE</span>
                 </div>
-              </SpatialSurface>
+                </SpatialSurface>
+              </div>
             </div>
           </motion.div>
         ) : null}

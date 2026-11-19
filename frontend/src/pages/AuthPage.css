@@ -681,6 +681,7 @@
 .auth-preview-toggle span { font-size: var(--ui-type-10); }
 .auth-preview-toggle strong { font-size: var(--ui-type-12); }
 .auth-extraction-arm { position:absolute; z-index:40; width:650px; height:260px; left:calc(50% + 180px); top:calc(50% - 135px); transform-origin:100% 80%; animation:arm-reach 1600ms cubic-bezier(.22,.7,.3,1) both; pointer-events:none; filter:drop-shadow(0 10px 14px #0009); }
+.auth-panel-stage { display:contents; }
 .auth-page__content.is-extracting .auth-panel { animation:panel-carry 1600ms cubic-bezier(.22,.7,.3,1) both; pointer-events:none; }
 .auth-extraction-arm .arm-grip { transform-origin:100px 90px; animation:grip-close 1600ms ease both; }
 .auth-page__content.is-delivering .auth-extraction-arm { animation-direction:reverse; }
@@ -690,3 +691,65 @@
 @keyframes panel-carry { 0%,53% { transform:translateX(0) rotateY(0); } 100% { transform:translateX(110vw) rotateY(-10deg); } }
 @keyframes grip-close { 0%,35% { transform:scaleY(1.8); } 48%,100% { transform:scaleY(.8); } }
 @media(max-width:760px) { .auth-preview-toggle { top:auto; bottom:15px; right:15px; height:45px; width:170px; transform:none; } .auth-preview-toggle span { display:none; } .auth-panel { max-height:calc(100dvh - 130px); width:min(430px,calc(100vw - 28px)); } .auth-extraction-arm { left:calc(50% + 140px); } }
+
+/* Keep the existing robot artwork and desktop choreography; only phone mode uses this vertical stage. */
+@media (max-width:600px), (max-width:1000px) and (max-height:600px) and (pointer:coarse) {
+  .auth-panel-stage {
+    position: relative;
+    display: block;
+    flex: 0 0 auto;
+    width: min(430px, calc(100vw - 28px));
+  }
+
+  .auth-panel-stage .auth-panel { width: 100%; }
+
+  .auth-page__content.is-extracting .auth-panel-stage .auth-panel,
+  .auth-page__content.is-delivering .auth-panel-stage .auth-panel { animation: none; }
+
+  .auth-extraction-arm {
+    --phone-arm-width: min(45dvh, 360px);
+    width: var(--phone-arm-width);
+    height: auto;
+    left: calc(50% - min(25.27dvh, 202.2px));
+    top: calc(100% + min(6.57dvh, 52.6px));
+    overflow: visible;
+    transform: rotate(90deg);
+    transform-origin: center;
+    animation: phone-auth-arm-vertical 1600ms cubic-bezier(.22,.7,.3,1) both;
+  }
+
+  .auth-page__content.is-extracting .auth-panel-stage {
+    animation: phone-auth-panel-extraction 1600ms cubic-bezier(.22,.7,.3,1) both;
+    pointer-events: none;
+  }
+
+  .auth-page__content.is-delivering .auth-panel-stage {
+    animation: phone-auth-panel-delivery 1600ms cubic-bezier(.22,.7,.3,1) both;
+  }
+
+  .auth-page__content.is-delivering .auth-extraction-arm {
+    animation: phone-auth-arm-delivery 1600ms cubic-bezier(.22,.7,.3,1) both;
+  }
+
+  .auth-page__content.is-delivering .auth-extraction-arm .arm-grip { animation-direction: reverse; }
+}
+
+@keyframes phone-auth-arm-vertical {
+  0% { translate: 0 110dvh; }
+  42%, 100% { translate: 0 0; }
+}
+
+@keyframes phone-auth-arm-delivery {
+  0%, 65% { translate: 0 0; }
+  100% { translate: 0 110dvh; }
+}
+
+@keyframes phone-auth-panel-extraction {
+  0%, 48% { translate: 0 0; }
+  100% { translate: 0 110dvh; }
+}
+
+@keyframes phone-auth-panel-delivery {
+  0% { translate: 0 110dvh; }
+  48%, 100% { translate: 0 0; }
+}

@@ -288,6 +288,15 @@ function satelliteIconDataUri(colorCss, category) {
 
 function controllerIdle(viewer) { return viewer.scene.screenSpaceCameraController.enableInputs; }
 
+function zoomEarth(viewer, ratio) {
+  const height = viewer.camera.positionCartographic.height;
+  if (!Number.isFinite(height) || ratio === 1) return;
+  const change = Math.max(-8_000_000, Math.min(8_000_000, Math.max(100, height) * (ratio - 1)));
+  if (change < 0) viewer.camera.zoomIn(Math.min(-change, Math.max(0, height - 100)));
+  else if (change > 0) viewer.camera.zoomOut(Math.min(change, Math.max(0, 2_000_000_000 - height)));
+  viewer.scene.requestRender();
+}
+
 function applyQuality(viewer, tileset, quality) {
   const choices = {
     performance: { resolutionScale: 0.65, targetFrameRate: 30, googleCacheBytes: 80 * MIB, googleOverflowBytes: 16 * MIB, googleSse: 18, terrainTileCacheSize: 24 },
@@ -434,11 +443,9 @@ export default function OrbitGlobe({
     zoomStep(direction){
       const viewer=viewerRef.current;if(!viewer||viewer.isDestroyed())return;
       lastInteractionRef.current=performance.now();
-      const height=Math.max(100,viewer.camera.positionCartographic.height);
-      const step=Math.min(height*.22,8000000);
-      if(direction>0)viewer.camera.zoomIn(Math.min(step,Math.max(0,height-100)));
-      else if(height<2000000000)viewer.camera.zoomOut(Math.min(step,2000000000-height));
-      viewer.scene.requestRender();
+      if (solarSystemLayerRef.current?.zoomByRatio(direction > 0 ? 1 / 1.28 : 1.28)) return;
+      if (!viewer.scene.screenSpaceCameraController.enableInputs) return;
+      zoomEarth(viewer, direction > 0 ? 0.78 : 1.22);
     },
     focusNaturalEvent(id){lastInteractionRef.current=performance.now();return naturalEventLayerRef.current?.focusEvent(id);},
     returnFromNaturalEvent(){return naturalEventLayerRef.current?.returnFromFocus();},
@@ -772,6 +779,8 @@ export default function OrbitGlobe({
         {
           ephemeris:modeEphemeris(()=>modeRef.current),
           isLive: () => true,
+          isFollowing: () => Boolean(followStateRef.current),
+          zoomEarth: (ratio) => zoomEarth(viewer, ratio),
           onDetailReady: (id) => callbacksRef.current.onDetailReady?.(id),
           onScaleChange: (state) => callbacksRef.current.onScaleChange?.(state),
           getQuality: () => qualityRef.current,

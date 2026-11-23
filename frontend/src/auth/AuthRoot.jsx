@@ -5,6 +5,7 @@ import AuthPage from "../pages/AuthPage.jsx";
 import BootSequence from "../components/BootSequence.jsx";
 import { clearAccessToken, fetchCurrentUser, getStoredAccessToken, storeAccessToken } from "../services/orbitwatchApi.js";
 import { getCachedStartupCountry, resolveStartupCountry } from "../services/startupCountry.js";
+import { usePhoneUI } from "../utils/usePhoneUI.js";
 import "./AuthRoot.css";
 function pageFromPath() { return window.location.pathname === "/register" ? "register" : "login"; }
 export default function AuthRoot() {
@@ -27,6 +28,9 @@ export default function AuthRoot() {
   const pendingNotification=useRef(notificationParams.get('notifications')==='1'?'/?'+new URLSearchParams({notifications:'1',...(/^[a-f0-9-]{36}$/.test(notificationParams.get('notice')||'')?{notice:notificationParams.get('notice')}:{})}):null);
   const authenticated = phase === "ready";
   const liveVisible = (phase === "handoff" || authenticated);
+  const phone = usePhoneUI();
+  // Give pickup the phone's first frames before starting a second WebGL scene.
+  const mountLiveScene = user && (!phone || phase !== "extract");
   const startTravel = useCallback(() => { setTravelDone(false); setCycle((value) => value + 1); setPhase("travel"); window.history.replaceState({}, "", pendingNotification.current||"/");if(pendingNotification.current)window.dispatchEvent(new Event('orbitwatch:notification-open'));pendingNotification.current=null; }, []);
   const logoutBusy=useRef(false);
   const logout = useCallback(async (reason) => { if(logoutBusy.current)return;logoutBusy.current=true;const cleanup=revokePushOnLogout();clearAccessToken();void Promise.race([cleanup,new Promise(resolve=>setTimeout(resolve,1500))]); setPendingToken(null); setVerificationBusy(false); setSessionError(""); setUser(null); setSceneReady(false); setTravelDone(false); setPhase(reason?.type==="orbitwatch:unauthorized" || window.matchMedia("(prefers-reduced-motion: reduce)").matches?"guest":"return"); setAuthPage("login"); window.history.replaceState({}, "", "/login");}, []);
@@ -88,7 +92,7 @@ export default function AuthRoot() {
     setVerificationBusy(true); setPendingToken(response.access_token); setVerificationAttempt(value => value + 1); setPhase("checking");
   }
   return <div className="auth-root-shell">
-    {user && <div className={`auth-root-layer auth-root-layer--live ${liveVisible ? "is-visible" : ""}`} style={{ opacity: liveVisible ? 1 : 0, transition: "opacity 600ms ease" }} inert={!liveVisible} aria-hidden={!liveVisible}><App currentUser={user} onLogout={logout} hudActive={authenticated} hudCycle={cycle} onSceneReady={onSceneReady} startupCountry={country} /></div>}
+    {mountLiveScene && <div className={`auth-root-layer auth-root-layer--live ${liveVisible ? "is-visible" : ""}`} style={{ opacity: liveVisible ? 1 : 0, transition: "opacity 600ms ease" }} inert={!liveVisible} aria-hidden={!liveVisible}><App currentUser={user} onLogout={logout} hudActive={authenticated} hudCycle={cycle} onSceneReady={onSceneReady} startupCountry={country} /></div>}
     {!authenticated && <div className="auth-root-layer auth-root-layer--auth" style={{ opacity: liveVisible ? 0 : 1, transition: "opacity 600ms ease", pointerEvents: liveVisible ? "none" : "auto" }} inert={phase !== "guest" && phase !== "extract" && !(phase === "checking" && verificationMode === "login")}><AuthPage onReturnUnavailable={onReturnUnavailable} returning={phase==="return"} delivering={phase==="deliver"} authType={authPage} launching={phase === "travel" || phase === "handoff"} extracting={phase === "extract"} onExtracted={startTravel} startupCountry={country} verifying={verificationBusy && verificationMode === "login"} showInterface={phase === "deliver" || phase === "guest" || phase === "extract" || (phase === "checking" && verificationMode === "login")} onAuthenticated={completeAuthentication} onSwitch={(next) => { setAuthPage(next); window.history.pushState({}, "", `/${next}`); }} /></div>}
     {(!bootDone || (phase === "checking" && verificationMode !== "login")) && <BootSequence preparingLive={phase === "checking"} />}
     {phase === "unavailable" && <section className="auth-session-recovery" role="alert" aria-busy={verificationBusy}>

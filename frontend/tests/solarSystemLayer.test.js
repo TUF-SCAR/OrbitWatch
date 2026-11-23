@@ -407,10 +407,23 @@ test("all 47 destinations share canonical render-time centers and exclusive repr
 test("slider changes only range, wheel and slider share scale, Earth orientation is preserved", async (context) => {
   const fixture = harness(context), { viewer, actions } = fixture;
   let state;
-  const layer = createSolarSystemLayer(viewer, { onScaleChange: (next) => { state = next; } });
+  let earthRatio, following = false;
+  const layer = createSolarSystemLayer(viewer, {
+    onScaleChange: (next) => { state = next; },
+    zoomEarth: (ratio) => { earthRatio = ratio; },
+    isFollowing: () => following,
+  });
   context.after(() => { layer.destroy(); fixture.dispose(); });
   await layer.focus("kerberos");
   const offset = { ...viewer.camera.offset }, transform = Matrix4.clone(viewer.camera.transform);
+  assert.equal(layer.zoomByRatio(0.5), true, "buttons use the active local controller");
+  assert.equal(viewer.camera.offset.range, offset.range * 0.5);
+  actions.get(ScreenSpaceEventType.PINCH_MOVE)({ distance: { startPosition: { y: 20 }, endPosition: { y: 40 } } });
+  assert.equal(viewer.camera.offset.range, offset.range * 0.25);
+  layer.zoomByRatio(0.001);
+  const minimum = viewer.camera.offset.range;
+  layer.zoomByRatio(0.001);
+  assert.equal(viewer.camera.offset.range, minimum, "local inputs share the minimum");
   layer.setScale(0.6);
   assert.equal(viewer.camera.offset.heading, offset.heading);
   assert.equal(viewer.camera.offset.pitch, offset.pitch);
@@ -422,12 +435,26 @@ test("slider changes only range, wheel and slider share scale, Earth orientation
   await layer.focus("earth");
   const direction = Cartesian3.clone(viewer.camera.directionWC), up = Cartesian3.clone(viewer.camera.upWC);
   assert.equal(layer.isSystemScale(), false, "ordinary Earth remains eligible for idle framing");
+  assert.equal(layer.zoomByRatio(0.5), false, "ordinary Earth leaves solar range control");
+  actions.get(ScreenSpaceEventType.WHEEL)(120);
+  assert.ok(earthRatio > 0 && earthRatio < 1, "Earth wheel uses the bounded dolly");
+  earthRatio = undefined;
+  following = true;
+  actions.get(ScreenSpaceEventType.WHEEL)(120);
+  assert.equal(earthRatio, undefined, "Follow keeps native wheel zoom");
+  following = false;
   layer.setScale(0.9);
   assert.equal(layer.isSystemScale(), true, "wider Earth excludes idle framing before heliocentric context");
   assert.ok(Cartesian3.equals(viewer.camera.directionWC, direction));
   assert.ok(Cartesian3.equals(viewer.camera.upWC, up));
   assert.ok(Math.abs(state.value - 0.9) < 1e-12);
   assert.equal(viewer.scene.screenSpaceCameraController.maximumZoomDistance, MAX_SOLAR_RANGE, "native wheel shares the slider ceiling");
+  const wide = Cartesian3.magnitude(viewer.camera.positionWC);
+  actions.get(ScreenSpaceEventType.PINCH_MOVE)({ distance: { startPosition: { y: 40 }, endPosition: { y: 50 } } });
+  assert.ok(Math.abs(Cartesian3.magnitude(viewer.camera.positionWC) / wide - 0.8) < 1e-12);
+  assert.ok(state.value < 0.9, "overview pinch updates the slider");
+  layer.zoomByRatio(1000);
+  assert.equal(state.value, 1, "overview buttons respect the slider ceiling");
   for (const range of [7e6, 15e6, 30e6, 40e6, 50e6]) {
     viewer.camera.positionWC = new Cartesian3(0, 0, range); layer.updatePositions(true);
     assert.equal(layer.isSystemScale(), false, `idle eligibility returns at ordinary Earth range ${range}`);

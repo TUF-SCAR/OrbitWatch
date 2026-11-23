@@ -1,4 +1,4 @@
-import { ArcType, BoundingSphere, CallbackPositionProperty, CallbackProperty, Cartesian2, Cartesian3, Color, CustomDataSource, HeadingPitchRange, JulianDate, Matrix3, Matrix4, Model, SceneTransforms, ScreenSpaceEventHandler, ScreenSpaceEventType } from "cesium";
+import { ArcType, BoundingSphere, CallbackPositionProperty, CallbackProperty, CameraEventType, Cartesian2, Cartesian3, Color, CustomDataSource, HeadingPitchRange, JulianDate, KeyboardEventModifier, Matrix3, Matrix4, Model, SceneTransforms, ScreenSpaceEventHandler, ScreenSpaceEventType } from "cesium";
 import { StableOrbitCollection } from "./stableOrbitCollection.js";
 import { ALL_CELESTIAL_IDS, CELESTIAL_BODIES } from "../data/celestialBodies.js";
 import { AU_METERS, bodyPositionFixed, inertialToFixedMatrix, sampleBodyOrbitFixed } from "../data/solarSystemEphemeris.js";
@@ -39,6 +39,11 @@ export function createSolarSystemLayer(viewer, options = {}) {
   let localView = null, drag = null;
   const controller = viewer.scene.screenSpaceCameraController;
   const originalBounds = [controller.minimumZoomDistance, controller.maximumZoomDistance];
+  const originalZoomEvents = controller.zoomEventTypes;
+  const nativeZoomEvents = [CameraEventType.RIGHT_DRAG, CameraEventType.WHEEL, CameraEventType.PINCH,
+    { eventType: CameraEventType.WHEEL, modifier: KeyboardEventModifier.CTRL }];
+  const earthZoomEvents = [CameraEventType.RIGHT_DRAG, CameraEventType.PINCH];
+  const wideZoomEvents = [CameraEventType.RIGHT_DRAG];
   const originalFar = viewer.camera.frustum?.far;
   const alive = () => !destroyed && !viewer.isDestroyed();
   const delay = (ms) => new Promise((resolve) => { const timer = window.setTimeout(() => { timers.delete(timer); resolve(false); }, ms); timers.set(timer, resolve); });
@@ -48,6 +53,8 @@ export function createSolarSystemLayer(viewer, options = {}) {
   const positionOf = (id, time = sceneTime) => canonicalPosition(id, time);
   const bodyLocalTransform=(id,time,basis)=>Matrix4.fromRotationTranslation(Matrix3.multiply(inertialToFixedMatrix(time),basis,new Matrix3()),positionOf(id,time),new Matrix4());
   const scaleMinimum = () => scales.localStart;
+  const cameraRange = () => localView?.range ?? Cartesian3.distance(viewer.camera.positionWC, positionOf(selectedId));
+  const usesWideZoom = (range) => (options.isLive?.() ?? true) && !options.isFollowing?.() && range >= scaleMinimum();
   const symbols = createCelestialSymbols(viewer.scene, positionOf);
   const populations = createProceduralPopulationLayer(viewer.scene, options);
   const ringPose = new Matrix4(), ringRotation = new Matrix3();
@@ -149,11 +156,16 @@ export function createSolarSystemLayer(viewer, options = {}) {
     if (!force && now - lastLod < 32) return;
     const elapsed = Math.min(0.1, (now - lastLod) / 1000);
     lastLod = now;
-    const range = localView?.range ?? Cartesian3.distance(viewer.camera.positionWC, positionOf(selectedId));
+    const range = cameraRange();
     const reduced = prefersReducedMotion(), live = options.isLive?.() ?? true;
-    // Native Earth wheel zoom shares the slider's wide-scale ceiling. Restore
-    // its original bounds at ordinary globe scale and outside Live Mode.
-    if (!localView) controller.maximumZoomDistance = live && range >= scales.localStart ? MAX_SOLAR_RANGE : originalBounds[1];
+    // Leave Earth pinch and the right-drag, rotate and tilt mappings in
+    // Cesium. Wide views use center-relative range for both wheel and pinch.
+    if (!localView) {
+      const wide = usesWideZoom(range);
+      controller.maximumZoomDistance = wide ? MAX_SOLAR_RANGE : originalBounds[1];
+      controller.zoomEventTypes = wide ? wideZoomEvents
+        : options.zoomEarth && !options.isFollowing?.() ? earthZoomEvents : nativeZoomEvents;
+    }
     lod = solarSystemLod(scales, range, reduced, lod.stage);
     if (!live) lod = { local: 0, solar: 0, overview: 0, stage: "close" };
     let fading = false;
@@ -365,6 +377,7 @@ export function createSolarSystemLayer(viewer, options = {}) {
   const localHandler = new ScreenSpaceEventHandler(viewer.scene.canvas);
   const endDrag = () => { drag = null; };
   window.addEventListener("pointerup", endDrag);
+  window.addEventListener("pointercancel", endDrag);
   window.addEventListener("blur", endDrag);
   localHandler.setInputAction(() => { if (localBody && !travelling) drag = "orbit"; }, ScreenSpaceEventType.LEFT_DOWN);
   localHandler.setInputAction(() => { if (localBody && !travelling) drag = "pan"; }, ScreenSpaceEventType.RIGHT_DOWN);
@@ -384,12 +397,22 @@ export function createSolarSystemLayer(viewer, options = {}) {
     }
     viewer.scene.requestRender();
   }, ScreenSpaceEventType.MOUSE_MOVE);
-  localHandler.setInputAction((delta) => {
-    if (!localView || travelling) return;
-    const radius = placeholders.get(localBody).radius;
-    localView.range = Math.max(radius * 1.15, Math.min(MAX_SOLAR_RANGE, localView.range * Math.exp(-delta * 0.0015)));
-    viewer.scene.requestRender();
-  }, ScreenSpaceEventType.WHEEL);
+  const wheelZoom = (delta) => {
+    const ratio = Math.exp(-delta * 0.0015);
+    if (!zoomByRatio(ratio) && controller.enableInputs && !options.isFollowing?.()) {
+      // Use the bounded Earth button dolly. Cesium's cursor-pick wheel path
+      // can return an invalid camera position in a cold renderer.
+      options.zoomEarth?.(ratio);
+    }
+  };
+  localHandler.setInputAction(wheelZoom, ScreenSpaceEventType.WHEEL, KeyboardEventModifier.CTRL);
+  localHandler.setInputAction(wheelZoom, ScreenSpaceEventType.WHEEL);
+  localHandler.setInputAction(endDrag, ScreenSpaceEventType.PINCH_START);
+  localHandler.setInputAction(endDrag, ScreenSpaceEventType.PINCH_END);
+  localHandler.setInputAction(({ distance }) => {
+    const start = distance.startPosition.y, end = distance.endPosition.y;
+    if (start > 0 && end > 0) zoomByRatio(start / end);
+  }, ScreenSpaceEventType.PINCH_MOVE);
   // DataSourceDisplay updates custom sources before its default Entity
   // visualizers. Resolve the frame and representation flags here so models
   // and points change ownership in the same frame (preUpdate alone is later
@@ -409,9 +432,7 @@ export function createSolarSystemLayer(viewer, options = {}) {
   const offRender = viewer.scene.preRender?.addEventListener((_scene, time) => {
     if (alive()) renderSymbols(time);
   });
-  function setScale(value) {
-    if (!alive() || travelling || !(options.isLive?.() ?? true) || !Number.isFinite(value)) return false;
-    const range = scaleToRange(value, scaleMinimum());
+  function applyRange(range) {
     if (localView) localView.range = range;
     else {
       const center = positionOf(selectedId), offset = Cartesian3.subtract(viewer.camera.positionWC, center, new Cartesian3());
@@ -419,10 +440,23 @@ export function createSolarSystemLayer(viewer, options = {}) {
       const destination = Cartesian3.add(center, Cartesian3.multiplyByScalar(offset, range, offset), offset);
       viewer.camera.setView({ destination, orientation: { direction: Cartesian3.clone(viewer.camera.directionWC), up: Cartesian3.clone(viewer.camera.upWC) } });
     }
-    updatePositions(prefersReducedMotion());
-    publishedScale = { visible: scaleVisible, value: rangeToScale(range, scaleMinimum()), range, stage: lod.stage, populationContext:populations.context() };
-    options.onScaleChange?.(publishedScale);
+    updatePositions(true);
     viewer.scene.requestRender(); return true;
+  }
+  function zoomByRatio(ratio) {
+    if (!alive()) return false;
+    if (travelling) return true;
+    const range = cameraRange();
+    if (!localView && (!controller.enableInputs || !usesWideZoom(range))) return false;
+    if (!(ratio > 0) || ratio === 1) return true;
+    const minimum = localView ? placeholders.get(localBody).radius * 1.15 : scales.radius + 100;
+    const next = Math.max(minimum, Math.min(MAX_SOLAR_RANGE, range * ratio));
+    if (next !== range) return applyRange(next);
+    return true;
+  }
+  function setScale(value) {
+    if (!alive() || travelling || !(options.isLive?.() ?? true) || !Number.isFinite(value)) return false;
+    return applyRange(scaleToRange(value, scaleMinimum()));
   }
   // The local camera remains the sole owner of its transform. Idle motion only
   // adjusts the same heading/range/pan used by drag and zoom controls.
@@ -541,11 +575,15 @@ export function createSolarSystemLayer(viewer, options = {}) {
     if (alive()) symbols.destroy();
     if (alive()) populations.destroy();
     if (frameSource && !dataSources.isDestroyed()) dataSources.remove(frameSource, true);
-    if (alive()) [controller.minimumZoomDistance, controller.maximumZoomDistance] = originalBounds;
+    if (alive()) {
+      [controller.minimumZoomDistance, controller.maximumZoomDistance] = originalBounds;
+      controller.zoomEventTypes = originalZoomEvents;
+    }
     if (originalFar && alive()) viewer.camera.frustum.far = originalFar;
     options.setEarthRepresentation?.(true);
     localHandler.destroy();
     window.removeEventListener("pointerup", endDrag);
+    window.removeEventListener("pointercancel", endDrag);
     window.removeEventListener("blur", endDrag);
     finishFlight?.();
     for (const [timer, resolve] of timers) { window.clearTimeout(timer); resolve(false); }
@@ -561,7 +599,7 @@ export function createSolarSystemLayer(viewer, options = {}) {
     destroyed = true;
     placeholders.clear(); pending.clear();
   }
-  return { focus, setSelected, updatePositions, setScale, canonicalPosition, idleOrbit,
+  return { focus, setSelected, updatePositions, setScale, zoomByRatio, canonicalPosition, idleOrbit,
     scientificReference:()=>options.ephemeris?.describe?.(selectedId,sceneTime),
     idleTarget: () => ({id:selectedId, local:!!localView, ready:!travelling && !drag && (selectedId==='earth'||!!localView)}),
     cameraDiagnostics: () => localView ? {heading:localView.heading,pitch:localView.pitch,range:localView.range} : null,

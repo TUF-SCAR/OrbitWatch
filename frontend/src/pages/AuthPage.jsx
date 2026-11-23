@@ -55,9 +55,39 @@ export default function AuthPage({
   const [formMessage, setFormMessage] = useState("");
   const [requestRunning, setRequestRunning] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(false);
+  const interfaceVisible = !returning && !launching && !previewOpen;
   const requestRef = useRef(null);
+  const armRef = useRef(null);
+  const armPreparationRef = useRef(null);
   const extractionCompletionRef = useRef(null);
   useEffect(() => () => requestRef.current?.abort(), []);
+  useEffect(() => {
+    const arm = armRef.current;
+    if (!interfaceVisible || !arm || reduced) return;
+
+    let firstFrame, secondFrame, timeout;
+    let finish;
+    const preparation = new Promise((resolve) => {
+      finish = () => {
+        window.clearTimeout(timeout);
+        cancelAnimationFrame(firstFrame);
+        cancelAnimationFrame(secondFrame);
+        resolve();
+      };
+      // Resolve the parked SVG's geometry and give the browser a paint
+      // opportunity before authentication can switch on its keyframes.
+      firstFrame = requestAnimationFrame(() => {
+        arm.getBoundingClientRect();
+        secondFrame = requestAnimationFrame(finish);
+      });
+      timeout = window.setTimeout(finish, 120);
+    });
+    armPreparationRef.current = preparation;
+    return () => {
+      finish();
+      armPreparationRef.current = null;
+    };
+  }, [interfaceVisible, reduced]);
   useEffect(() => {
     if (!extracting) {
       extractionCompletionRef.current = null;
@@ -154,7 +184,8 @@ export default function AuthPage({
             signal: controller.signal,
           });
 
-      await onAuthenticated(authResponse);
+      await armPreparationRef.current;
+      if (!controller.signal.aborted) await onAuthenticated(authResponse);
     } catch (error) {
       if (controller.signal.aborted) return;
       setFormMessage(
@@ -166,7 +197,6 @@ export default function AuthPage({
   }
 
   const busy = requestRunning || verifying || launching || extracting;
-  const interfaceVisible = !returning && !launching && !previewOpen;
 
   return (
     <main
@@ -179,7 +209,7 @@ export default function AuthPage({
             key="auth-interface"
             className="auth-interface"
             initial={{ opacity: 0, filter: reduced ? "none" : "blur(10px)" }}
-            animate={{ opacity: 1, filter: "blur(0px)" }}
+            animate={{ opacity: 1, filter: "none" }}
             exit={{
               opacity: 0,
               filter: reduced ? "none" : "blur(8px)",
@@ -213,7 +243,7 @@ export default function AuthPage({
 
             <div className={`auth-page__content ${extracting ? "is-extracting" : delivering ? "is-delivering" : ""}`} inert={extracting}>
               <div className="auth-panel-stage" onAnimationEnd={handleExtractionPanelAnimationEnd}>
-                <svg className="auth-extraction-arm" viewBox="0 0 650 260" aria-hidden="true" onAnimationEnd={handleExtractionArmAnimationEnd}><defs><linearGradient id="arm-metal"><stop stopColor="#263b47" /><stop offset=".5" stopColor="#aec5ce" /><stop offset="1" stopColor="#314855" /></linearGradient></defs><path d="M640 200 L450 170 L300 50 L100 90" fill="none" stroke="url(#arm-metal)" strokeWidth="27" strokeLinejoin="round" /><g fill="#132c3a" stroke="#8cc4d4" strokeWidth="5"><circle cx="450" cy="170" r="22" /><circle cx="300" cy="50" r="22" /><circle cx="100" cy="90" r="16" /></g><path className="arm-grip" d="M100 90 L50 60 L14 60 M100 90 L50 120 L14 120" fill="none" stroke="#b1d4dc" strokeWidth="11" strokeLinecap="square" /><path d="M450 170 L300 50" stroke="#78e4f4" strokeWidth="3" /></svg>
+                <svg ref={armRef} className="auth-extraction-arm" viewBox="0 0 650 260" aria-hidden="true" onAnimationEnd={handleExtractionArmAnimationEnd}><defs><linearGradient id="arm-metal"><stop stopColor="#263b47" /><stop offset=".5" stopColor="#aec5ce" /><stop offset="1" stopColor="#314855" /></linearGradient></defs><path d="M640 200 L450 170 L300 50 L100 90" fill="none" stroke="url(#arm-metal)" strokeWidth="27" strokeLinejoin="round" /><g fill="#132c3a" stroke="#8cc4d4" strokeWidth="5"><circle cx="450" cy="170" r="22" /><circle cx="300" cy="50" r="22" /><circle cx="100" cy="90" r="16" /></g><path className="arm-grip" d="M100 90 L50 60 L14 60 M100 90 L50 120 L14 120" fill="none" stroke="#b1d4dc" strokeWidth="11" strokeLinecap="square" /><path d="M450 170 L300 50" stroke="#78e4f4" strokeWidth="3" /></svg>
                 <SpatialSurface
                   as="section"
                   key={authType}

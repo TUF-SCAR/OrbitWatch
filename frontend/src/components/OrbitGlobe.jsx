@@ -345,7 +345,7 @@ export default function OrbitGlobe({
   quality = "auto",
   onOrbitInfo,
   onDetailReady,
-  naturalEvents, eventsVisible=false, eventCategory='all', selectedEventId=null, onEventSelect,
+  naturalEvents, eventsVisible=false, eventCategory='all', selectedEventId=null, onEventSelect, onEventCluster,
   cloudFrame,
   cloudService,
   cloudReady,
@@ -382,7 +382,11 @@ export default function OrbitGlobe({
   const windLayerRef = useRef(null);
   const windFieldRef = useRef(null);
   const naturalEventLayerRef=useRef(null),onEventSelectRef=useRef(onEventSelect);
-  useEffect(()=>{onEventSelectRef.current=onEventSelect;},[onEventSelect]);
+  const onEventClusterRef = useRef(onEventCluster);
+  useEffect(() => {
+    onEventSelectRef.current = onEventSelect;
+    onEventClusterRef.current = onEventCluster;
+  }, [onEventSelect, onEventCluster]);
   const startupCameraCommittedRef = useRef(false);
   const initialModeCameraResetRef = useRef(true);
   const initialCountryRef = useRef(startupCountry);
@@ -878,7 +882,7 @@ export default function OrbitGlobe({
     handler.setInputAction((movement) => {
       if(cameraDragged||weatherGestureBlocked){if(import.meta.env.DEV)mountRef.current?.setAttribute('data-place-pick',JSON.stringify({result:'gesture',cameraDragged,weatherGestureBlocked}));return;}
       const result=routeEarthWeatherClick(movement.position,{
-        eventPick:()=>naturalEventLayerRef.current?.pick(viewer.scene.pick(movement.position)),
+        eventPick:()=>naturalEventLayerRef.current?.pick(()=>viewer.scene.pick(movement.position),movement.position),
         pickObject:()=>pickSceneObject(movement.position),
         onCelestial:id=>onCelestialSelectRef.current?.(id,solarSystemLayerRef.current?.isWide()),
         onSatellite:id=>onObjectSelectRef.current?.(id),atEarth:earthActiveRef.current,following:Boolean(followStateRef.current||viewer.trackedEntity),
@@ -1160,7 +1164,10 @@ export default function OrbitGlobe({
 
   useEffect(()=>{
     const viewer=viewerRef.current;if(!viewer||viewer.isDestroyed())return;
-    naturalEventLayerRef.current ||= createNaturalEventLayer(viewer,{onSelect:id=>onEventSelectRef.current?.(id)});
+    naturalEventLayerRef.current ||= createNaturalEventLayer(viewer, {
+      onSelect: id => onEventSelectRef.current?.(id),
+      onCluster: ids => onEventClusterRef.current?.(ids),
+    });
     naturalEventLayerRef.current.update({events:naturalEvents,visible:eventsVisible&&mode==='live'&&selectedCelestialBody==='earth',category:eventCategory,selectedId:selectedEventId});
   },[naturalEvents,eventsVisible,eventCategory,selectedEventId,mode,selectedCelestialBody]);
 

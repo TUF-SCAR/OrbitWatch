@@ -117,10 +117,6 @@
 .event-actions { display:flex;gap:8px;flex-wrap:wrap;margin:12px 0; }
 .event-actions button { flex:1;min-width:110px; }
 .event-more { width:100%;margin:12px 0; }
-.event-focus-toolbar { position:absolute;z-index:33;left:var(--ui-content-left,90px);bottom:calc(var(--hud-dock-height,64px) + 26px);width:300px;max-width:calc(100vw - var(--ui-content-left,90px) - 12px);padding:12px;border:1px solid #72c8cd70;border-radius:8px;background:#071522ed;display:flex;flex-wrap:wrap;gap:8px; }
-.event-focus-toolbar strong { width:100%;font-size:10px;letter-spacing:1px;color:#9fdddf; }
-.event-focus-toolbar small { width:100%;font-size:10px;line-height:1.5;color:var(--ui-text-muted); }
-.event-focus-toolbar button { flex:1;font-size:10px;min-height:36px; }
 .cyclone-track-details { margin:16px 0;padding:12px;border:1px solid #70d4cf50;border-radius:8px;background:#0a222c60; }
 .cyclone-track-details p { font-size:var(--ui-font-sm);line-height:1.65;overflow-wrap:anywhere; }
 .cyclone-track-legend { display:grid;gap:8px;color:var(--ui-text-muted);font-size:var(--ui-font-sm); }

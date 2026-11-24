@@ -1,67 +1,164 @@
-import {useState,useEffect} from 'react';
-import {EVENT_CATEGORIES} from '../data/eventCategories.js';
-import {eventFilter,trackPoints} from '../services/cycloneTracks.js';
+import { useEffect, useState } from 'react';
+import { ArrowLeft, Crosshair, ExternalLink } from 'lucide-react';
+import { EVENT_CATEGORIES } from '../data/eventCategories.js';
+import { eventFilter, trackPoints } from '../services/cycloneTracks.js';
+import { eventIcon } from '../services/naturalEventArt.js';
+import './NaturalEvents.css';
 
-function time(value){const d=new Date(value);return value&&Number.isFinite(d.getTime())?d.toISOString().slice(0,16).replace('T',' ')+' UTC':'Unavailable';}
-function sourceUrl(value){try{const url=new URL(value);return ['https:','http:'].includes(url.protocol)&&!url.username&&!url.password?url.href:null;}catch{return null;}}
+function time(value) {
+  const date = new Date(value);
+  return value && Number.isFinite(date.getTime()) ? `${date.toISOString().slice(0, 16).replace('T', ' ')} UTC` : 'Unavailable';
+}
 
-export default function NaturalEventsPanel({data,enabled,onEnabled,category,onCategory,selectedId,onSelect,onFocus,onReturn}){
-  const [filter,setFilter]=useState({provider:'all',status:'all',limit:40});
-  const [clock,setClock]=useState(Date.now);
-  useEffect(()=>{const timer=setInterval(()=>setClock(Date.now()),60000);return()=>clearInterval(timer);},[]);
-  const selected=data.events.find(event=>event.id===selectedId);
-  const events=eventFilter(data.events,{category,provider:filter.provider,status:filter.status,now:clock});
-  const categories=new Set(data.events.map(event=>event.category));
-  const observed=trackPoints(selected?.track,'observed',clock),forecast=trackPoints(selected?.track,'forecast',clock);
-  const latest=observed.at(-1);
-  function change(key,value){setFilter(previous=>({...previous,[key]:value,limit:key==='limit'?value:40}));}
-  function back(){onReturn?.();onSelect(null);}
+function sourceUrl(value) {
+  try {
+    const url = new URL(value);
+    return ['https:', 'http:'].includes(url.protocol) && !url.username && !url.password ? url.href : null;
+  } catch { return null; }
+}
+
+function SourceLink({ url, children }) {
+  const href = sourceUrl(url);
+  return href && <a className="event-report-link" href={href} target="_blank" rel="noopener noreferrer">{children}<ExternalLink size={14} aria-hidden="true" /></a>;
+}
+
+function CycloneTrack({ group, report, clock }) {
+  const observedTrack = group?.path?.track || report.track;
+  const forecastTrack = group?.forecast?.track || report.track;
+  const observed = trackPoints(observedTrack, 'observed', clock);
+  const forecast = trackPoints(forecastTrack, 'forecast', clock);
+  const latest = observed.at(-1);
+  return (
+    <section className="cyclone-track-details" aria-label="Cyclone trajectory">
+      <h3>Cyclone trajectory</h3>
+      {observed.length > 1 ? <>
+        <div className="cyclone-track-legend"><span><i />Reported positions</span><span><i />Official forecast</span></div>
+        <p>{observed.length} reported positions · {time(observed[0].at)} → {time(latest.at)}</p>
+        <p className="weather-source">{observedTrack.source} · {observedTrack.official_id}{observedTrack.basin ? ` · ${observedTrack.basin} ${observedTrack.season}` : ''}</p>
+      </> : <p>No validated observed path is available for this storm.</p>}
+      {forecast.length > 0 ? <>
+        <p>Official forecast · {time(forecast[0].at)} → {time(forecast.at(-1).at)}</p>
+        <p className="weather-source">Issued {time(forecastTrack.issued_at)} · Expires {time(forecastTrack.expires_at)}. Forecast passage is uncertain.</p>
+        <SourceLink url={forecastTrack.forecast_source_url || forecastTrack.source_url}>Official forecast source</SourceLink>
+      </> : <p className="weather-source">No current verified forecast available.</p>}
+      {observed.length + forecast.length > 0 && <details><summary>Dated track positions</summary>
+        <ol className="event-timeline">{[...observed.map(point => ({ point, kind: 'Reported' })), ...forecast.map(point => ({ point, kind: 'Forecast' }))].map(({ point, kind }) =>
+          <li key={`${kind}:${point.at}`}>{kind} · {time(point.at)} · {point.latitude.toFixed(2)}°, {point.longitude.toFixed(2)}°{Number.isFinite(point.wind) ? ` · ${point.wind} ${point.wind_units} (${point.wind_averaging_minutes || '?'} min)` : ''}{point.agency ? ` · ${point.agency}` : ''}</li>)}</ol>
+        <p className="weather-source">{observedTrack?.note} Lines connect supplied positions and skip gaps. Point colors encode intensity only when the source provides the one-minute wind convention.</p>
+        <SourceLink url={observedTrack?.source_url}>Observed track source</SourceLink>
+      </details>}
+    </section>
+  );
+}
+
+function ReportDetails({ report, group, clock, data, onFocus, onReturn, onSelect }) {
+  const category = EVENT_CATEGORIES[report.category] || EVENT_CATEGORIES.other;
+  const stamp = report.last_report_at || report.reported_at;
+  const age = Number.isFinite(Date.parse(stamp)) ? `${Math.max(0, Math.floor((clock - Date.parse(stamp)) / 3600000))} h` : 'Unavailable';
+  const measurements = report.measurements || [];
+  const canFocus = group?.position || group?.path || trackPoints(group?.forecast?.track || report.track, 'forecast', clock).length
+    || ['Polygon', 'MultiPolygon'].includes(report.geometry?.type) || report.boundaries?.length;
+  return (
+    <section className="event-inspector" aria-label="Selected natural event" style={{ '--event-accent': category.color }}>
+      <button className="secondary-action event-back" type="button" onClick={() => { onReturn?.(); onSelect(null); }}><ArrowLeft size={16} aria-hidden="true" />Reports</button>
+      <div className="event-report-heading">
+        <img src={eventIcon(report.category)} alt="" width="60" height="60" />
+        <div><span>{category.label} · {report.provider.toUpperCase()}</span><h3>{report.title}</h3></div>
+      </div>
+      <p className="event-report-status">{time(stamp)} · {report.status || 'Status unavailable'}{report.data_state === 'stale' ? ' · Stale cache' : ''}</p>
+      <div className="event-actions">
+        <button className="primary-action" type="button" disabled={!canFocus} onClick={() => onFocus?.(report.id)}><Crosshair size={16} aria-hidden="true" /> Focus on globe</button>
+        <SourceLink url={report.source_url}>Source report</SourceLink>
+      </div>
+      {report.description && <p className="weather-source">{report.description}</p>}
+      {group?.reports.length > 1 && <div className="event-linked-reports">
+        <strong>{group.reports.length} verified reports · one map marker</strong>
+        <p className="weather-source">Latest mapped position from {group.anchor?.report.provider.toUpperCase() || 'no observed anchor'}{group.anchor ? ` · ${time(group.anchor.at)}` : ''}.</p>
+        <div>{group.reports.map(item => <button type="button" className="secondary-action" key={item.id}
+          aria-pressed={item.id === report.id} onClick={() => onSelect(item.id)}>{item.provider.toUpperCase()}</button>)}</div>
+      </div>}
+      {report.category === 'cyclone' && <CycloneTrack group={group} report={report} clock={clock} />}
+      {report.provider === 'gdacs' && <div className="event-boundary-action">
+        <button type="button" className="secondary-action" disabled={data.boundaryStatus?.id === report.id && data.boundaryStatus.state === 'loading'}
+          onClick={() => data.loadBoundary?.(report.id)}>Load official boundaries</button>
+        {data.boundaryStatus?.id === report.id && <p className="weather-source" role="status">{data.boundaryStatus.state === 'loading' ? 'Loading source geometry…' : data.boundaryStatus.message}</p>}
+        <p className="weather-source">A published boundary may describe a forecast or impact product.</p>
+      </div>}
+      <details className="event-metadata"><summary>Scientific details and source status</summary>
+        <p className="weather-source">{report.position ? `${report.position[1].toFixed(3)}°, ${report.position[0].toFixed(3)}° · ` : ''}{report.position_meaning}</p>
+        <dl className="event-facts">
+          <div><dt>Source identity</dt><dd>{report.provider_event_id}</dd></div>
+          <div><dt>First report or start</dt><dd>{time(report.started_at)}</dd></div>
+          <div><dt>Last report</dt><dd>{time(stamp)} · {age}</dd></div>
+          <div><dt>Source modification</dt><dd>{time(report.source_updated_at || report.updated_at)}</dd></div>
+          <div><dt>Verified material change</dt><dd>{report.material_update ? `${report.material_update.kind.replaceAll('_', ' ')} · ${time(report.material_update.at)}` : 'Unavailable'}</dd></div>
+          <div><dt>Overall source status</dt><dd>{report.status || 'Unavailable'}</dd></div>
+          {report.episode_status && <div><dt>Episode alert</dt><dd>Episode {report.source_episode_id} · {report.episode_status}</dd></div>}
+          {!measurements.length && <div><dt>Quantified intensity</dt><dd>Not supplied</dd></div>}
+          {measurements.map((item, index) => <div key={index}><dt>{item.label}</dt><dd>{item.value} {item.units || ''}{item.description && <small>{item.description}</small>}</dd></div>)}
+        </dl>
+        <p className="weather-source">{report.status_meaning} A recent report or open record does not independently verify ongoing activity. Selection animation and symbol size are illustrative.</p>
+        {['Polygon', 'MultiPolygon'].includes(report.geometry?.type) && <p className="weather-source">Published boundaries retain their rings and components. No center or danger area is inferred.</p>}
+        <p className="weather-source">Retrieved {time(report.retrieved_at)} · Source validated {time(report.provider_validated_at)}. These are cache timestamps.</p>
+        {report.related_ids?.length > 0 && <p className="weather-source">Source references: {report.related_ids.join(', ')}</p>}
+        {(report.references || []).map((ref, index) => <SourceLink key={index} url={ref.url}>{ref.provider || 'Source reference'}</SourceLink>)}
+      </details>
+    </section>
+  );
+}
+
+export default function NaturalEventsPanel({ data, enabled, onEnabled, category, onCategory, selectedId, onSelect,
+  onFocus, onReturn, cluster, onClearCluster }) {
+  const [filter, setFilter] = useState({ provider: 'all', status: 'all', limit: 40 });
+  const [clock, setClock] = useState(Date.now);
+  useEffect(() => {
+    const timer = setInterval(() => setClock(Date.now()), 60000);
+    return () => clearInterval(timer);
+  }, []);
+  const selected = data.events.find(event => event.id === selectedId);
+  const display = data.display?.reportGroups;
+  const clusterKeys = cluster && new Set(cluster.map(id => display?.get(id)?.id || id));
+  const candidates = clusterKeys ? data.events.filter(event => clusterKeys.has(display?.get(event.id)?.id || event.id)) : data.events;
+  const events = eventFilter(candidates, { category, provider: filter.provider, status: filter.status, now: clock });
+  const categories = new Set(data.events.map(event => event.category));
+  function change(key, value) { setFilter(previous => ({ ...previous, [key]: value, limit: key === 'limit' ? value : 40 })); }
+
   return <div className="natural-events">
-    <label className="weather-toggle"><input type="checkbox" checked={enabled} onChange={e=>onEnabled(e.target.checked)}/><span>Reported event markers & tracks</span></label>
-    <label className="weather-field-picker">Event category<select aria-label="Event category" value={category} onChange={e=>{onReturn?.();onCategory(e.target.value);change('limit',40);}}><option value="all">All reported categories</option>{Object.entries(EVENT_CATEGORIES).map(([key,spec])=><option value={key} key={key}>{spec.label}{categories.has(key)?'':' · no reports'}</option>)}</select></label>
-    {!selected&&<div className="event-filters" aria-label="Report list filters"><label>Source<select aria-label="Event source" value={filter.provider} onChange={e=>change('provider',e.target.value)}><option value="all">All sources</option>{Object.keys(data.providers).map(p=><option key={p} value={p}>{p.toUpperCase()}</option>)}</select></label><label>Report context<select aria-label="Event report context" value={filter.status} onChange={e=>change('status',e.target.value)}><option value="all">All loaded reports</option><option value="recent">Reported in 7 days</option><option value="older">Older source-monitored</option><option value="tracks">Cyclone tracks</option><option value="fresh">Source cache fresh</option><option value="stale">Source cache stale</option></select></label><small>List filters · the map follows the selected category.</small></div>}
-    {selected&&<section className="event-inspector" aria-label="Selected natural event">
-      <div className="weather-section-heading"><span style={{color:EVENT_CATEGORIES[selected.category]?.color}}>{EVENT_CATEGORIES[selected.category]?.label||selected.category}</span><button className="secondary-action" onClick={back}>BACK TO REPORTS</button></div>
-      <h3>{selected.title}</h3>
-      <div className="event-actions"><button className="primary-action" onClick={()=>onFocus?.(selected.id)}>{selected.track?'VIEW TRACK / FOCUS STORM':'VIEW REPORTED GEOMETRY'}</button><button className="secondary-action" onClick={()=>onReturn?.()}>RETURN TO PREVIOUS VIEW</button></div>
-      <p className="weather-source">{selected.position?`${selected.position[1].toFixed(3)}°, ${selected.position[0].toFixed(3)}° · `:''}{selected.position_meaning}</p>
-      <dl className="event-facts"><div><dt>Source identity</dt><dd>{selected.provider.toUpperCase()} · {selected.provider_event_id}</dd></div>
-        <div><dt>First source report / event start</dt><dd>{time(selected.started_at)}</dd></div><div><dt>Last reported position / report</dt><dd>{time(selected.last_report_at||selected.reported_at)}</dd></div>
-        <div><dt>Reported position / report age</dt><dd>{Math.max(0,Math.floor((clock-Date.parse(selected.last_report_at||selected.reported_at))/3600000))} h · does not verify ongoing hazard activity</dd></div>
-        <div><dt>Last source modification</dt><dd>{time(selected.source_updated_at||selected.updated_at)}</dd></div>
-        <div><dt>Verified material change</dt><dd>{selected.material_update?`${selected.material_update.kind.replaceAll('_',' ')} · ${time(selected.material_update.at)}`:'Not verified from comparable source revisions'}</dd></div>
-        <div><dt>Overall source status</dt><dd>{selected.status||'Unavailable'}</dd></div>
-        {selected.episode_status&&<div><dt>Latest episode alert</dt><dd>Episode {selected.source_episode_id} · {selected.episode_status}</dd></div>}
-        {selected.measurements.length===0&&<div><dt>Quantified intensity</dt><dd>Not supplied</dd></div>}
-        {selected.measurements.map((m,index)=><div key={index}><dt>{m.label}</dt><dd>{m.value} {m.units||''}{m.description&&<small>{m.description}</small>}</dd></div>)}
-      </dl>
-      {selected.track&&<section className="cyclone-track-details" aria-label="Cyclone track details"><h3>Source track</h3><p className="weather-source">{selected.track.source} · {selected.track.official_id}{selected.track.basin?` · ${selected.track.basin} ${selected.track.season}`:''}</p>
-        <div className="cyclone-track-legend"><span><i/>Solid · reported positions</span><span><i/>Dashed · official forecast</span></div>
-        <p>{observed.length} reported positions<br/>{time(observed[0]?.at)} → {time(latest?.at)}</p>
-        {latest&&<p className="weather-source">Latest: {latest.latitude.toFixed(2)}°, {latest.longitude.toFixed(2)}° · {latest.classification?.replaceAll('_',' ')} · {latest.agency}. {Number.isFinite(latest.wind)?`${latest.wind} ${latest.wind_units} · ${latest.wind_averaging_minutes||'unknown'}-minute averaging.`:'Wind intensity not supplied at this point.'}</p>}
-        {forecast.length?<><p>Official forecast: {time(forecast[0].at)} → {time(forecast.at(-1).at)}</p><p className="weather-source">Issued {time(selected.track.issued_at)} · expires {time(selected.track.expires_at)} · {selected.track.forecast_source||selected.track.source}. Forecast passage is not certain impact.</p></>:<p className="inline-warning">No verified forecast track available.</p>}
-        <p className="weather-source">{selected.track.note} Lines connect supplied positions geographically; they do not simulate elapsed storm motion. Point colours indicate reported intensity only for known 1-minute wind conventions, otherwise neutral. No landfall, probability or danger radius is inferred.</p>
-        <details><summary>Dated track positions</summary><ol className="event-timeline">{[...observed.map(p=>({...p,kind:'Reported'})),...forecast.map(p=>({...p,kind:'Forecast'}))].map((p,i)=><li key={i}>{p.kind} · {time(p.at)} · {p.latitude.toFixed(2)}°, {p.longitude.toFixed(2)}°{Number.isFinite(p.wind)?` · ${p.wind} ${p.wind_units} (${p.wind_averaging_minutes||'?'} min)`:''}</li>)}</ol></details>
-      </section>}
-      {selected.category==='cyclone'&&!selected.track&&<p className="inline-warning">No verified forecast track available. This source supplies no validated observed route; its ordinary report remains available.</p>}
-      {selected.description&&<p className="weather-source">{selected.description}</p>}
-      <p className="weather-source">{selected.status_meaning} Physical hazard activity has not been independently verified. A recent report or an open curated record is not an active emergency designation.</p>
-      {['cyclone','earthquake'].includes(selected.category)&&<p className="weather-source">Illustrative stationary marker animation. Symbol size is not a geographical extent or measured motion.</p>}
-      {['Polygon','MultiPolygon'].includes(selected.geometry?.type)&&<p className="weather-source">Source-reported boundary; no precise centre marker is invented. Polygon holes and components are preserved.</p>}
-      {selected.provider==='gdacs'&&<><button className="secondary-action" disabled={data.boundaryStatus?.id===selected.id&&data.boundaryStatus.state==='loading'} onClick={()=>data.loadBoundary?.(selected.id)}>LOAD OFFICIAL SOURCE BOUNDARIES</button>{data.boundaryStatus?.id===selected.id&&<p className="weather-source" role="status">{data.boundaryStatus.state==='loading'?'Requesting one bounded source geometry product…':data.boundaryStatus.message}</p>}<p className="weather-source">Optional boundaries may include forecast/impact products. They are not treated as a verified current danger area or used for automatic alerts.</p></>}
-      <p className="weather-source">Retrieved {time(selected.retrieved_at)} · {selected.data_state==='stale'?'CACHED / STALE':'SOURCE CACHE FRESH'}. Retrieval is not a new event timestamp. Source cache validated {time(selected.provider_validated_at)}.</p>
-      {sourceUrl(selected.source_url)&&<a className="event-report-link" href={sourceUrl(selected.source_url)} target="_blank" rel="noopener noreferrer">OPEN OFFICIAL SOURCE REPORT ↗</a>}
-      {selected.related_ids?.length>0&&<p className="weather-source">Linked source identities: {selected.related_ids.join(', ')}</p>}
-    </section>}
-    {!selected&&<><div className="weather-section-heading"><h3>Reported events</h3><span>{events.length} / {data.events.length} loaded</span></div>
-      {data.state==='preparing'&&<p role="status">Loading official event feeds…</p>}
-      {data.state==='offline'&&<p className="inline-warning" role="status">Event service unreachable. Retained reports keep their original timestamps.</p>}
-      {events.length===0&&data.state!=='preparing'&&<p role="status">No usable reports match these list filters. This does not mean no hazard exists.</p>}
-      {data.coverage?.truncated&&<p className="weather-source">Showing a fair bounded subset of {data.coverage.normalized_reports} normalized reports. Up to {data.coverage.provider_cap} per source / {data.coverage.display_cap} total; coverage is incomplete.</p>}
-      <ul className="event-list">{events.slice(0,filter.limit).map(event=><li key={event.id}><button onClick={()=>{onEnabled(true);onSelect(event.id);}}><i style={{background:EVENT_CATEGORIES[event.category]?.color}}/><span><strong>{event.title}</strong><small>{event.provider.toUpperCase()} · {time(event.last_report_at||event.reported_at)}{event.track?' · TRACK':''}{event.data_state==='stale'?' · STALE':''}</small><small>{event.status||'Source status unavailable'}{clock-Date.parse(event.reported_at)>30*86400000?' · OLDER SOURCE REPORT':''}</small></span></button></li>)}</ul>
-      {events.length>filter.limit&&(filter.limit<200?<button className="secondary-action event-more" onClick={()=>change('limit',Math.min(200,filter.limit+40))}>SHOW 40 MORE REPORTS</button>:<p className="weather-source">List limited to 200 rows. Refine the category, source or report context to inspect more loaded reports.</p>)}
+    <label className="weather-toggle"><input type="checkbox" checked={enabled} onChange={e => onEnabled(e.target.checked)} /><span>Show reported events on the globe</span></label>
+    <label className="weather-field-picker">Event category<select aria-label="Event category" value={category} onChange={e => { onReturn?.(); onCategory(e.target.value); change('limit', 40); }}>
+      <option value="all">All reported categories</option>{Object.entries(EVENT_CATEGORIES).map(([key, item]) => <option value={key} key={key}>{item.label}{categories.has(key) ? '' : ' · no reports'}</option>)}</select></label>
+    {selected ? <ReportDetails report={selected} group={display?.get(selected.id)} clock={clock} data={data} onFocus={onFocus} onReturn={onReturn} onSelect={onSelect} /> : <>
+      {cluster && <div className="event-cluster-banner"><strong>{cluster.length} nearby events</strong><button type="button" className="secondary-action" onClick={onClearCluster}>Show all reports</button></div>}
+      <div className="event-filters" aria-label="Report list filters">
+        <label>Source<select aria-label="Event source" value={filter.provider} onChange={e => change('provider', e.target.value)}><option value="all">All sources</option>{Object.keys(data.providers).map(provider => <option key={provider} value={provider}>{provider.toUpperCase()}</option>)}</select></label>
+        <label>Report context<select aria-label="Event report context" value={filter.status} onChange={e => change('status', e.target.value)}><option value="all">All loaded reports</option><option value="recent">Reported in 7 days</option><option value="older">Older source reports</option><option value="tracks">Cyclone tracks</option><option value="fresh">Fresh cache</option><option value="stale">Stale cache</option></select></label>
+      </div>
+      <div className="weather-section-heading"><h3>Reported events</h3><span>{events.length} / {candidates.length} reports</span></div>
+      {data.state === 'preparing' && <p role="status">Loading official event feeds…</p>}
+      {['offline', 'unavailable'].includes(data.state) && <p className="inline-warning" role="status">Event feeds unavailable. Retained reports keep their original timestamps.</p>}
+      {events.length === 0 && data.state !== 'preparing' && <p role="status">No loaded reports match these filters.</p>}
+      {data.coverage?.truncated && <p className="weather-source">Showing a bounded subset of {data.coverage.normalized_reports} reports. Feed coverage is incomplete.</p>}
+      <ul className="event-list">{events.slice(0, filter.limit).map(event =>
+        <li key={event.id}><button type="button" onClick={() => { onEnabled(true); onSelect(event.id); }}>
+          <img src={eventIcon(event.category)} alt="" width="43" height="43" loading="lazy" />
+          <span><strong>{event.title}</strong><small>{event.provider.toUpperCase()} · {time(event.last_report_at || event.reported_at)}</small>
+            <small>{event.status || 'Status unavailable'}{event.data_state === 'stale' ? ' · Stale cache' : ''}{(display?.get(event.id)?.reports.length || 0) > 1 ? ' · Linked storm' : ''}</small></span>
+        </button></li>)}</ul>
+      {events.length > filter.limit && (filter.limit < 200
+        ? <button type="button" className="secondary-action event-more" onClick={() => change('limit', Math.min(200, filter.limit + 40))}>Show more reports</button>
+        : <p className="weather-source">Refine the filters to inspect more than 200 reports.</p>)}
     </>}
-    <details><summary>Providers & reporting limits</summary>{Object.entries(data.providers).map(([provider,p])=><div className="event-provider" key={provider}><strong>{provider.toUpperCase()} · {p.state.toUpperCase()}</strong><p>{p.limitation}</p><p>{p.count} normalized reports · Retrieved {time(p.retrieved_at)} · Validated {time(p.validated_at)} · Latest observation {time(p.latest_observation)}</p>{p.coverage?.truncated&&<p className="inline-warning">Source result/page limit reached; coverage is incomplete.</p>}{p.coverage?.notes?.map((note,i)=><p key={i}>{note}</p>)}{p.failure&&<p>Provider {p.failure.replaceAll('_',' ')}{p.http_status?` (HTTP ${p.http_status})`:''}. Retry no sooner than {p.retry_after_seconds} s.</p>}</div>)}{Object.entries(data.optional_sources||{}).map(([key,value])=><p key={key}>{key.toUpperCase()}: {value}</p>)}<p>NOAA IBTrACS v4r01 / NCEI, NASA EONET, USGS and Global Disaster Alert and Coordination System (GDACS). No synthetic events are added to Live results.</p></details>
-    <p className="weather-source">Educational visualization of reported natural events, not a public warning service or complete global disaster inventory. Consult official local authorities. Open reports may describe past incidents.</p>
+    <details><summary>Providers and reporting limits</summary>
+      {Object.entries(data.providers).map(([provider, item]) => <div className="event-provider" key={provider}>
+        <strong>{provider.toUpperCase()} · {item.state.toUpperCase()}</strong><p>{item.limitation}</p>
+        <p>{item.count} reports · Retrieved {time(item.retrieved_at)} · Validated {time(item.validated_at)} · Latest observation {time(item.latest_observation)}</p>
+        {item.coverage?.truncated && <p className="inline-warning">Provider result limit reached. Coverage is incomplete.</p>}
+        {item.coverage?.notes?.map((note, index) => <p key={index}>{note}</p>)}
+        {item.failure && <p>Provider {item.failure.replaceAll('_', ' ')}{item.http_status ? ` (HTTP ${item.http_status})` : ''}. Retry after {item.retry_after_seconds} s.</p>}
+      </div>)}
+      {Object.entries(data.optional_sources || {}).map(([key, value]) => <p key={key}>{key.toUpperCase()} · {value}</p>)}
+      <p>NOAA IBTrACS and NHC, NASA EONET, USGS, and GDACS.</p>
+    </details>
+    <p className="weather-source">Educational view of reported events. Consult local authorities for emergency information.</p>
   </div>;
 }

@@ -27,6 +27,7 @@ import CelestialTravelCard from "./components/CelestialTravelCard.jsx";
 import CelestialInspector from "./components/CelestialInspector.jsx";
 import PlaceSearch from "./components/PlaceSearch.jsx";
 import WeatherPanel, { TemperatureLegend } from './components/WeatherPanel.jsx';
+import NaturalEventSummary from './components/NaturalEventSummary.jsx';
 import LocationWeatherCard from './components/LocationWeatherCard.jsx';
 import HistoricalWeatherPanel,{HistoricalWeatherInspector,HistoricalWeatherLegend} from './components/HistoricalWeatherPanel.jsx';
 import {useHistoricalWeather} from './utils/useHistoricalWeather.js';
@@ -117,6 +118,7 @@ export default function App({ currentUser, onLogout, hudActive = true, onSceneRe
   const [windEnabled,setWindEnabled]=useState(LIVE_EARTH_DEFAULTS.windEnabled);
   const [weatherTab,setWeatherTab]=useState('layers'),[eventsEnabled,setEventsEnabled]=useState(false);
   const [eventCategory,setEventCategory]=useState('all'),[selectedEventId,setSelectedEventId]=useState(null),[eventFocus,setEventFocus]=useState(null);
+  const [eventCluster, setEventCluster] = useState(null);
   const [weatherRefresh,setWeatherRefresh]=useState(0),[weatherCooling,setWeatherCooling]=useState(false);
   const weatherCooldown=useRef(null),weatherDeadline=useRef(0);
   const [settings, setSettings] = useState(readSettings);
@@ -163,6 +165,8 @@ export default function App({ currentUser, onLogout, hudActive = true, onSceneRe
   const observedClouds=useObservedClouds(weatherActive&&weatherEnabled&&weatherCompatible&&weatherVariable==='observedClouds',settings.quality);
   const weather=useLiveWeather(weatherActive&&needsModelWeather(weatherVariable,windEnabled,weatherLabels)&&(weatherEnabled||layers.includes('weather')),weatherRefresh);
   const naturalEvents=useNaturalEvents(weatherActive&&(eventsEnabled||(weatherTab==='events'&&layers.includes('weather'))));
+  const activeEvent = naturalEvents.events.find(event => event.id === selectedEventId && (eventCategory === 'all' || event.category === eventCategory));
+  const activeEventGroup = naturalEvents.display.reportGroups.get(activeEvent?.id);
   const selectedWeatherField=useMemo(()=>selectWeatherField(weather.field,weatherVariable),[weather.field,weatherVariable]);
   const selectedWindField=useMemo(()=>selectWeatherField(weather.field,'wind'),[weather.field]);
   const placeWeather=useMemo(()=>({bundle:weather.field,variable:weatherVariable,windEnabled,enabled:weatherEnabled&&weatherActive,compatible:weatherCompatible,mode,freshness:weather.state,clock:weather.clock}),[weather.field,weather.state,weather.clock,weatherVariable,windEnabled,weatherEnabled,weatherActive,weatherCompatible,mode]);
@@ -222,6 +226,34 @@ export default function App({ currentUser, onLogout, hudActive = true, onSceneRe
     setLayers(current=>toggleWeatherLayers(current,window.innerWidth));
   };
   const releaseCamera = useCallback(() => { globeRef.current?.releaseCamera(); setCameraFollowing(false); }, []);
+  function selectMapEvent(id, cluster = null) {
+    setSelectedEventId(id);
+    setEventCluster(cluster);
+    setWeatherTab('events');
+    setLayers([]);
+  }
+
+  function returnFromEvent() {
+    globeRef.current?.returnFromNaturalEvent();
+    setEventFocus(null);
+  }
+
+  function dismissEvent() {
+    returnFromEvent();
+    setSelectedEventId(null);
+    setEventCluster(null);
+  }
+
+  function focusEvent(id) {
+    releaseCamera();
+    locationWeather.clear();
+    const focused = globeRef.current?.focusNaturalEvent(id);
+    if (focused) {
+      setEventFocus(id);
+      setLayers(current => current.filter(layer => layer !== 'weather'));
+    }
+    return focused;
+  }
 
   useEffect(() => {
     const controller = new AbortController();
@@ -438,6 +470,7 @@ export default function App({ currentUser, onLogout, hudActive = true, onSceneRe
       if (key === "escape") {
         if (presentation) setPresentation(false);
         else if (layers.length) closeLayer(layers[layers.length - 1]);
+        else if (weatherActive && eventsEnabled && (activeEvent || eventCluster)) dismissEvent();
         else if (historicalWeather.selection) historicalWeather.select(null);
         else if (locationWeather.selection) locationWeather.clear();
         else if (cameraFollowing) releaseCamera();
@@ -463,7 +496,7 @@ export default function App({ currentUser, onLogout, hudActive = true, onSceneRe
   const hidden = presentation || Boolean(travel) || !hudActive || timeBusy;
   return (
     <HudAssembly active={hudActive} cycle={hudCycle}><main ref={shellRef} className={`orbitwatch-shell mode-${mode} ${atEarth ? "at-earth" : "off-earth"} ${layers.includes("place") ? "has-place-search" : ""} ${layers.includes("weather") ? "has-weather-panel" : ""} ${travel ? "is-travelling" : ""}`}>
-      <SceneBoundary onUnavailable={phone?()=>{setSceneUnavailable(true);setTimeBusy(false);setTimeIssue('The 3D scene is unavailable. Retry the scene to display this date.');}:undefined} onReady={onSceneReady} onReset={() => { setSceneUnavailable(false); setSelectedCelestialBody("earth"); setDetailState("ready"); setCameraFollowing(false); setTravel(null); travelLockRef.current = false; setLayers([]); }}><OrbitGlobe timeLoadId={timeLoadId} placeWeather={placeWeather} locationPickingEnabled={!presentation&&(weatherActive||Boolean(historicalWeatherActive&&historicalWeather.snapshot))} onLocationSelect={mode==='time'?selectHistoricalLocation:selectWeatherLocation} locationSelection={mode==='time'?historicalWeather.selection:locationWeather.selection} historicalData={historicalData} trackedIds={activeTrackedIds} selectedId={selectedId} selectedTime={selectedTime} mode={mode} startupCountry={startupCountry} selectedCelestialBody={selectedCelestialBody} onCelestialSelect={(id, wide) => { if (travelLockRef.current || !celestialDestinationAllowed(mode,id)) return; if (!phone && !wide && id === selectedCelestialBody && id !== "earth") { setInspectedBody(id); openLayer("body"); } else { setCelestialMarker(id); openLayer("celestial"); } }} refreshNonce={refreshNonce} mapStyle={activeMapStyle} mapRetryNonce={mapRetryNonce} labelsEnabled={activeLabelsEnabled} shownOrbitIds={shownOrbitIds} onObjectSelect={selectObject} onScaleChange={setSceneScale} onViewTelemetry={setViewTelemetry} globeRef={globeRef} onSceneReady={onSceneReady} onRefreshComplete={() => setRefreshBusy(false)} onSatelliteStatus={setSatelliteStatus} onMapStatus={setMapStatus} onTimeReady={timePrepared} onDetailReady={(id) => { if (id === selectedCelestialBody) setDetailState("ready"); }} naturalEvents={naturalEvents.events} eventsVisible={eventsEnabled&&weatherActive} eventCategory={eventCategory} selectedEventId={selectedEventId} onEventSelect={id=>{setSelectedEventId(id);setWeatherTab('events');openLayer('weather');}} cloudService={observedClouds.service} cloudReady={Boolean(observedClouds.frame)} onCloudError={observedClouds.reportError} cloudFrame={weatherVariable==='observedClouds'?observedClouds.frame:null} weatherField={mode==='time'?historicalWeather.field:selectedWeatherField} windField={mode==='time'?historicalWeather.wind:selectedWindField} windVisible={mode==='time'?historicalWeatherActive&&historicalWeather.enabled&&historicalWeather.windEnabled:windEnabled&&weatherEnabled&&weatherActive} weatherVisible={mode==='time'?historicalWeatherActive&&historicalWeather.enabled:weatherEnabled&&weatherActive} weatherOpacity={mode==='time'?historicalWeather.opacity:weatherOpacity} weatherCompatible={mode==='time'?Boolean(mapStatus?.activeMap&&mapStatus.activeMap!=='google'):weatherCompatible} quality={settings.quality} onOrbitInfo={setOrbitInfo} /></SceneBoundary>
+      <SceneBoundary onUnavailable={phone?()=>{setSceneUnavailable(true);setTimeBusy(false);setTimeIssue('The 3D scene is unavailable. Retry the scene to display this date.');}:undefined} onReady={onSceneReady} onReset={() => { setSceneUnavailable(false); setSelectedCelestialBody("earth"); setDetailState("ready"); setCameraFollowing(false); setTravel(null); travelLockRef.current = false; setLayers([]); }}><OrbitGlobe timeLoadId={timeLoadId} placeWeather={placeWeather} locationPickingEnabled={!presentation&&(weatherActive||Boolean(historicalWeatherActive&&historicalWeather.snapshot))} onLocationSelect={mode==='time'?selectHistoricalLocation:selectWeatherLocation} locationSelection={mode==='time'?historicalWeather.selection:locationWeather.selection} historicalData={historicalData} trackedIds={activeTrackedIds} selectedId={selectedId} selectedTime={selectedTime} mode={mode} startupCountry={startupCountry} selectedCelestialBody={selectedCelestialBody} onCelestialSelect={(id, wide) => { if (travelLockRef.current || !celestialDestinationAllowed(mode,id)) return; if (!phone && !wide && id === selectedCelestialBody && id !== "earth") { setInspectedBody(id); openLayer("body"); } else { setCelestialMarker(id); openLayer("celestial"); } }} refreshNonce={refreshNonce} mapStyle={activeMapStyle} mapRetryNonce={mapRetryNonce} labelsEnabled={activeLabelsEnabled} shownOrbitIds={shownOrbitIds} onObjectSelect={selectObject} onScaleChange={setSceneScale} onViewTelemetry={setViewTelemetry} globeRef={globeRef} onSceneReady={onSceneReady} onRefreshComplete={() => setRefreshBusy(false)} onSatelliteStatus={setSatelliteStatus} onMapStatus={setMapStatus} onTimeReady={timePrepared} onDetailReady={(id) => { if (id === selectedCelestialBody) setDetailState("ready"); }} naturalEvents={naturalEvents.events} eventsVisible={eventsEnabled&&weatherActive} eventCategory={eventCategory} selectedEventId={selectedEventId} onEventSelect={id => selectMapEvent(id)} onEventCluster={ids => selectMapEvent(null, ids)} cloudService={observedClouds.service} cloudReady={Boolean(observedClouds.frame)} onCloudError={observedClouds.reportError} cloudFrame={weatherVariable==='observedClouds'?observedClouds.frame:null} weatherField={mode==='time'?historicalWeather.field:selectedWeatherField} windField={mode==='time'?historicalWeather.wind:selectedWindField} windVisible={mode==='time'?historicalWeatherActive&&historicalWeather.enabled&&historicalWeather.windEnabled:windEnabled&&weatherEnabled&&weatherActive} weatherVisible={mode==='time'?historicalWeatherActive&&historicalWeather.enabled:weatherEnabled&&weatherActive} weatherOpacity={mode==='time'?historicalWeather.opacity:weatherOpacity} weatherCompatible={mode==='time'?Boolean(mapStatus?.activeMap&&mapStatus.activeMap!=='google'):weatherCompatible} quality={settings.quality} onOrbitInfo={setOrbitInfo} /></SceneBoundary>
       <div className="space-vignette" aria-hidden="true" />
       <div className={`live-interface ${hidden ? "is-hidden" : ""}`} inert={hidden || timeBusy}>
         <CinematicStage active={hudActive} side="top" loaderAnchor="top" zIndex={30}><TopHud unreadCount={account.state.unreadCount} onNotifications={()=>{setProfileTab('notifications');openLayer('profile');}} historicalState={historicalData} sceneTime={selectedTime} mode={mode} bodyId={selectedCelestialBody} apiState={apiState} currentUser={currentUser} onProfileToggle={() => toggleLayer("profile")} /></CinematicStage>
@@ -480,8 +513,8 @@ export default function App({ currentUser, onLogout, hudActive = true, onSceneRe
         <HistoricalWeatherPanel open={historicalWeatherActive&&layers.includes('weather')} onClose={()=>closeLayer('weather')} weather={historicalWeather} time={selectedTime} onNearest={loadSceneTime} onViewCenter={()=>{const point=globeRef.current?.weatherViewCenter();if(point)selectHistoricalLocation(point);}}/>
         <HistoricalWeatherInspector inactive={activeInspector!=='weather'} onActivate={()=>setActiveInspector('weather')} weather={historicalWeather} time={selectedTime}/>
         {historicalWeatherActive&&historicalWeather.field&&!hidden&&!layers.includes('weather')&&<aside className="weather-legend" aria-label="Historical weather legend"><HistoricalWeatherLegend weather={historicalWeather} time={selectedTime}/><small>ERA5 reanalysis · {historicalWeather.windEnabled?'Wind Flow ON · ':''}Modern reference basemap.</small></aside>}
-        {weatherActive&&eventFocus&&!layers.includes('weather')&&<aside className="event-focus-toolbar" aria-label="Focused event controls"><strong>{naturalEvents.events.find(event=>event.id===eventFocus)?.title||'SOURCE REPORTED EVENT'}</strong><small>Source-dated track / geometry · not real-time</small><button className="secondary-action" onClick={()=>{setWeatherTab('events');openLayer('weather');}}>BACK TO REPORT</button><button className="secondary-action" onClick={()=>{globeRef.current?.returnFromNaturalEvent();setEventFocus(null);}}>RETURN TO PREVIOUS VIEW</button></aside>}
-        <WeatherPanel onFocusEvent={id=>{releaseCamera();locationWeather.clear();setCameraFollowing(false);const focused=globeRef.current?.focusNaturalEvent(id);if(focused){setEventFocus(id);if(window.innerWidth<1100)setLayers(current=>current.filter(layer=>layer!=='weather'));}return focused;}} onReturnEvent={()=>{globeRef.current?.returnFromNaturalEvent();setEventFocus(null);}} labelWeatherNote={labelWeatherNote} locationWeather={locationWeather} windEnabled={windEnabled} onWindEnabled={setWindEnabled} windField={selectedWindField} cameraAltitudeKm={viewTelemetry.cameraAltitudeKm} observedClouds={observedClouds} tab={weatherTab} onTab={setWeatherTab} events={naturalEvents} eventsEnabled={eventsEnabled} onEventsEnabled={setEventsEnabled} eventCategory={eventCategory} onEventCategory={value=>{setEventCategory(value);setSelectedEventId(null);}} selectedEventId={selectedEventId} onEventSelect={setSelectedEventId} open={weatherActive&&layers.includes('weather')} onClose={()=>closeLayer('weather')} weather={{...weather,field:selectedWeatherField,bundle:weather.field}} variable={weatherVariable} onVariable={setWeatherVariable} enabled={weatherEnabled} onEnabled={setWeatherEnabled} opacity={weatherOpacity} onOpacity={setWeatherOpacity} compatible={weatherCompatible} onCompatibleMap={()=>{setMapStyle('esri');setMapRetryNonce(v=>v+1);}} onRefresh={refreshWeather} refreshCooling={weatherCooling} onViewCenter={()=>{const point=globeRef.current?.weatherViewCenter();if(point)selectWeatherLocation(point);else locationWeather.clear();}}/>
+        {weatherActive && eventsEnabled && !layers.length && <NaturalEventSummary report={activeEvent} group={activeEventGroup} cluster={activeEvent ? null : eventCluster} focused={Boolean(eventFocus)} onDetails={() => { setWeatherTab("events"); openLayer("weather"); }} onFocus={() => focusEvent(activeEvent.id)} onReturn={returnFromEvent} onClose={dismissEvent} />}
+        <WeatherPanel onFocusEvent={focusEvent} onReturnEvent={returnFromEvent} eventCluster={eventCluster} onClearEventCluster={() => setEventCluster(null)} labelWeatherNote={labelWeatherNote} locationWeather={locationWeather} windEnabled={windEnabled} onWindEnabled={setWindEnabled} windField={selectedWindField} cameraAltitudeKm={viewTelemetry.cameraAltitudeKm} observedClouds={observedClouds} tab={weatherTab} onTab={setWeatherTab} events={naturalEvents} eventsEnabled={eventsEnabled} onEventsEnabled={value => { setEventsEnabled(value); if (!value) dismissEvent(); }} eventCategory={eventCategory} onEventCategory={value => { setEventCategory(value); dismissEvent(); }} selectedEventId={selectedEventId} onEventSelect={setSelectedEventId} open={weatherActive&&layers.includes('weather')} onClose={()=>closeLayer('weather')} weather={{...weather,field:selectedWeatherField,bundle:weather.field}} variable={weatherVariable} onVariable={setWeatherVariable} enabled={weatherEnabled} onEnabled={setWeatherEnabled} opacity={weatherOpacity} onOpacity={setWeatherOpacity} compatible={weatherCompatible} onCompatibleMap={()=>{setMapStyle('esri');setMapRetryNonce(v=>v+1);}} onRefresh={refreshWeather} refreshCooling={weatherCooling} onViewCenter={()=>{const point=globeRef.current?.weatherViewCenter();if(point)selectWeatherLocation(point);else locationWeather.clear();}}/>
         {weatherActive&&!eventFocus&&weatherEnabled&&weatherCompatible&&weatherVariable==='observedClouds'&&!hidden&&(!locationWeather.selection||phone)&&!layers.includes('weather')&&!layers.includes('explorer')&&<ObservedCloudLegend clouds={observedClouds} labelWeatherNote={labelWeatherNote}/>}
         {weatherActive&&!eventFocus&&weatherEnabled&&weatherCompatible&&weatherVariable!=='observedClouds'&&!hidden&&!layers.includes('weather')&&<TemperatureLegend variable={weatherVariable} field={selectedWeatherField} state={weather.state} labelWeatherNote={labelWeatherNote}/>}
         {<SystemScaleSlider scale={sceneScale} onChange={(value) => globeRef.current?.setCelestialScale(value)} />}

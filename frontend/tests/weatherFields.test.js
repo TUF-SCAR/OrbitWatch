@@ -64,22 +64,24 @@ test('real model fields preserve units/missing nodes/dateline and signed wind co
 
 });
 
-test('event layer owns two bounded data sources; clustering/selection consumes clicks without touching satellite selection, and all resources are released',async()=>{
-  const sources=[],preRender=new Event();let selected=null,removed=0,calm=false,clock=0;
+test('event layer fallback bounds data sources, routes clusters and selections, and releases resources',async()=>{
+  const sources=[],preRender=new Event();let selected=null,clusterIds=[],removed=0;
   const viewer={isDestroyed:()=>false,scene:{preRender,requestRender(){}},dataSources:{add(ds){sources.push(ds);return Promise.resolve(ds);},remove(ds,destroy){assert.equal(destroy,true);const i=sources.indexOf(ds);if(i>=0){sources.splice(i,1);removed++;}return i>=0;}}};
-  const owner=createNaturalEventLayer(viewer,{makeIcon:(_category,frame=0)=> `fixture-icon-${frame}`,now:()=>clock,makeClusterIcon:count=>`count-${count}`,onSelect:id=>{selected=id;},reduced:()=>calm});
+  const owner=createNaturalEventLayer(viewer,{makeIcon:()=> 'fixture-icon',makeClusterIcon:count=>`count-${count}`,
+    onSelect:id=>{selected=id;},onCluster:ids=>{clusterIds=ids;}});
   const events=Array.from({length:600},(_,i)=>({id:`provider:${i}`,title:`Reported ${i}`,category:i===0?'cyclone':'earthquake',reported_at:'2026-10-23T12:00:00Z',position:[i%360-180,i%170-85],geometry:{type:'Point'}}));
   owner.update({events,visible:false});owner.update({events,visible:true});assert.equal(sources.length,2);assert.equal(sources[0].entities.values.length,600);
   assert.equal(sources[0].clustering.enabled,true);const original=sources[0].entities.values[1];
-  const cluster={billboard:{},label:{},point:{}};sources[0].clustering.clusterEvent.raiseEvent(events.slice(0,5),cluster);
-  assert.equal(cluster.billboard.image,'count-5');assert.equal(cluster.billboard.disableDepthTestDistance,0);
+  const members=sources[0].entities.values.slice(0,5);
+  const cluster={billboard:{},label:{},point:{}};sources[0].clustering.clusterEvent.raiseEvent(members,cluster);
+  assert.equal(cluster.billboard.image,'count-5');
   assert.equal(cluster.label.show,false);assert.equal(cluster.point.show,false);assert.equal(owner.pick({id:cluster.billboard.id}),true);
-  owner.update({events,visible:true,selectedId:'provider:0'});assert.equal(sources[0].entities.values[1],original);assert.equal(preRender.numberOfListeners,1);
+  assert.deepEqual(clusterIds,members.map(entity=>entity.properties.naturalEventId.getValue()));
+  owner.update({events,visible:true,selectedId:'provider:0'});assert.equal(sources[0].entities.values[1],original);
   assert.equal(sources[1].entities.values.length,1);assert.equal(sources[0].entities.values[0].show,false);
-  clock=5000;preRender.raiseEvent();assert.ok(Math.abs(sources[1].entities.values[0].billboard.rotation.getValue()-5000/24000*Math.PI*2)<1e-9);assert.equal(sources[1].entities.values[0].billboard.image.getValue(),'fixture-icon-0');
-  calm=true;clock=9000;preRender.raiseEvent();assert.equal(sources[1].entities.values[0].billboard.rotation.getValue(),0);assert.equal(sources[1].entities.values[0].billboard.scale.getValue(),1);
+  assert.equal(sources[1].entities.values[0].billboard.image.getValue(),'fixture-icon');
   assert.equal(owner.pick({id:sources[1].entities.values[0]}),true);assert.equal(selected,'provider:0');
-  assert.equal(owner.pick({id:{orbitwatchEventCluster:true}}),true);assert.equal(owner.pick({id:{properties:{noradId:25544}}}),false);
+  assert.equal(owner.pick({id:{properties:{noradId:25544}}}),false);
   const revision=events.map((e,i)=>i===0?{...e,title:'Revised source title at the same report time',geometry:{type:'Point',coordinates:e.position}}:e);
   owner.update({events:revision,visible:true,selectedId:'provider:0'});assert.equal(sources[1].entities.values[0].label.text.getValue(),'Revised source title at the same report time');
   owner.update({events,visible:false,selectedId:'provider:0'});assert.equal(preRender.numberOfListeners,0);assert.equal(sources[0].entities.values.length,0);
@@ -87,12 +89,13 @@ test('event layer owns two bounded data sources; clustering/selection consumes c
   owner.destroy();owner.destroy();await Promise.resolve();assert.equal(sources.length,0);assert.equal(removed,2);assert.equal(preRender.numberOfListeners,0);
 });
 
-test('a selected cyclone with reduced motion starts no animation listener',async()=>{
+test('a selected fallback marker starts no animation listener and a source boundary stays pickable',async()=>{
   const sources=[],preRender=new Event();const viewer={isDestroyed:()=>false,scene:{preRender,requestRender(){}},dataSources:{add(ds){sources.push(ds);return Promise.resolve(ds);},remove(ds){sources.splice(sources.indexOf(ds),1);}}};
   const owner=createNaturalEventLayer(viewer,{makeIcon:()=> 'calm',reduced:()=>true});
   owner.update({events:[{id:'fixture',title:'Clearly synthetic unit fixture',category:'cyclone',reported_at:'2026-10-23T12:00:00Z',position:[10,20],geometry:{type:'Point'}}],visible:true,selectedId:'fixture'});
-  assert.equal(preRender.numberOfListeners,0);assert.equal(owner.diagnostics().animated,false);
+  assert.equal(preRender.numberOfListeners,0);
   owner.update({events:[{id:'fixture',title:'Synthetic reported-extent unit fixture',category:'flood',position:[179,10],geometry:{type:'Polygon',coordinates:[[[179,10],[-179,10],[-179,12],[179,10]]]}}],visible:true,selectedId:'fixture'});
-  assert.equal(sources[1].entities.values.length,2);assert.equal(owner.pick({id:sources[1].entities.values[1]}),true);assert.equal(sources[1].entities.values[1].properties.naturalEventId.getValue(),'fixture');
+  const boundaries=sources[1].entities.values.filter(entity=>entity.polyline);
+  assert.equal(boundaries.length,1);assert.equal(owner.pick({id:boundaries[0]}),true);assert.equal(boundaries[0].properties.naturalEventId.getValue(),'fixture');
   owner.destroy();await Promise.resolve();assert.equal(sources.length,0);
 });

@@ -4,7 +4,7 @@ from datetime import datetime,timezone,timedelta
 from hashlib import sha256
 import io
 import re
-from services.natural_event_data import date,iso,number,text,point,safe_url
+from services.natural_event_data import date,geometry,iso,number,text,point,safe_url
 
 IBTRACS_URL='https://www.ncei.noaa.gov/data/international-best-track-archive-for-climate-stewardship-ibtracs/v04r01/access/csv/ibtracs.ACTIVE.list.v04r01.csv'
 NHC_URL='https://www.nhc.noaa.gov/CurrentStorms.json'
@@ -96,6 +96,53 @@ def nhc_time(value):
     return None
 
 
+def nhc_status(storm, now):
+    identity = str(storm.get('id', '')).upper()
+    observed = nhc_time(storm.get('lastUpdate'))
+    if not re.fullmatch(r'(AL|EP|CP)\d{6}', identity) or not observed or observed > now:
+        return None
+    code = storm.get('classification')
+    labels = {'TD': 'Tropical Depression', 'TS': 'Tropical Storm', 'HU': 'Hurricane',
+              'STD': 'Subtropical Depression', 'STS': 'Subtropical Storm', 'PTC': 'Post-tropical Cyclone'}
+    if not isinstance(code, str) or code not in labels:
+        return None
+    position = point([storm.get('longitudeNumeric'), storm.get('latitudeNumeric')])
+    if code != 'PTC' and not position:
+        return None
+    return {'official_id': identity, 'name': text(storm.get('name'), 90) or identity,
+            'state': 'ended_confirmed' if code == 'PTC' else 'active_confirmed',
+            'classification': labels[code], 'at': iso(observed), 'position': position, 'agency': 'NOAA NHC/CPHC',
+            'source_url': NHC_URL}
+
+
+def nhc_cone(storm, track, collection, source_url):
+    """Accept only a published center-uncertainty polygon of this exact advisory."""
+    features = collection.get('features') if isinstance(collection, dict) else None
+    if not isinstance(features, list) or not 1 <= len(features) <= 4 or collection.get('exceededTransferLimit'):
+        return None
+    identity = track['official_id']
+    advisories = {point.get('advisory') for point in track['forecast']}
+    if len(advisories) != 1 or not re.fullmatch(r'\d{1,4}', str(next(iter(advisories)))):
+        return None
+    advisory = int(next(iter(advisories)))
+    matches = []
+    for feature in features:
+        properties = {key.lower(): value for key, value in (feature.get('properties') or {}).items()}
+        if (str(properties.get('binnumber', '')).upper() != str(storm.get('binNumber', '')).upper()
+                or str(properties.get('basin', '')).upper() != identity[:2]
+                or numeric(properties.get('stormnum'), 1, 99) != int(identity[2:4])
+                or numeric(properties.get('advisnum'), 0, 9999) != advisory
+                or nhc_time(properties.get('advdate')) != date(track['issued_at'])):
+            continue
+        shape = geometry(feature.get('geometry'))
+        if shape and shape['type'] in ('Polygon', 'MultiPolygon'):
+            matches.append(shape)
+    if len(matches) != 1:
+        return None
+    return {'geometry': matches[0], 'official_id': identity, 'issued_at': track['issued_at'],
+            'expires_at': track['expires_at'], 'source_url': source_url, 'source': 'NOAA NHC/CPHC forecast cone'}
+
+
 def nhc_forecast(storm,collection,retrieved_at,now=None):
     now=now or datetime.now(timezone.utc);identity=str(storm.get('id','')).upper()
     if not re.fullmatch(r'(AL|EP|CP)\d{6}',identity):return None
@@ -143,7 +190,8 @@ def attach_forecasts(events,forecasts,now=None):
             matches=[f for f in forecasts if f['official_id'] in track.get('atcf_ids',[]) and date(f['expires_at'])>now
                 and sum(f['official_id'] in (other.get('track') or {}).get('atcf_ids',[]) for other in events)==1]
             if len(matches)==1:
-                f=matches[0];used.add(f['official_id']);track={**track,'forecast':f['forecast'],'issued_at':f['issued_at'],'expires_at':f['expires_at'],'forecast_source':f['source'],'forecast_source_url':f['source_url']}
+                f=matches[0];used.add(f['official_id']);track={**track,'forecast':f['forecast'],'issued_at':f['issued_at'],'expires_at':f['expires_at'],'forecast_source':f['source'],'forecast_source_url':f['source_url'],
+                    'forecast_official_id':f['official_id'],'cone':f.get('cone')}
                 event={**event,'track':track}
         out.append(event)
     # Unmatched forecast records are never guessed onto a named nearby storm.

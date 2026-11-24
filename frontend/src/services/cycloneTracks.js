@@ -7,8 +7,9 @@ export function trackPoints(track,kind='observed',now=Date.now()){
   for(const p of raw){
     const at=Date.parse(p.at);
     if(!Number.isFinite(at)||at<=previous||!Number.isFinite(p.longitude)||Math.abs(p.longitude)>180||!Number.isFinite(p.latitude)||Math.abs(p.latitude)>90)return [];
-    if(kind==='observed'&&at>now||kind==='forecast'&&(at<=now||p.classification!=='forecast'||Date.parse(p.issued_at)!==Date.parse(track.issued_at)||at>Date.parse(track.issued_at)+126*3600000))return [];
-    previous=at;result.push(p);
+    if(kind==='observed'&&at>now||kind==='forecast'&&(p.classification!=='forecast'||Date.parse(p.issued_at)!==Date.parse(track.issued_at)||at<=Date.parse(track.issued_at)||at>Date.parse(track.issued_at)+126*3600000))return [];
+    previous=at;
+    if(kind==='observed'||at>now)result.push(p);
   }
   return result;
 }
@@ -25,6 +26,31 @@ export function trackSegments(points){
   }
   if(segment.length>1)segments.push(segment);
   return segments;
+}
+
+export function forecastCone(track, now = Date.now()) {
+  const cone = track?.cone;
+  if (!cone || cone.official_id !== (track.forecast_official_id || track.official_id)
+    || Date.parse(cone.issued_at) !== Date.parse(track.issued_at) || Date.parse(cone.expires_at) !== Date.parse(track.expires_at)
+    || !trackPoints(track, 'forecast', now).length) return null;
+  let source;
+  try { source = new URL(cone.source_url); } catch { return null; }
+  if (source.origin !== 'https://mapservices.weather.noaa.gov'
+    || !/^\/tropical\/rest\/services\/tropical\/NHC_tropical_weather\/MapServer\/\d+$/.test(source.pathname)) return null;
+  const shape = cone.geometry;
+  const polygons = shape?.type === 'Polygon' ? [shape.coordinates] : shape?.type === 'MultiPolygon' ? shape.coordinates : [];
+  if (!Array.isArray(polygons) || !polygons.length || polygons.length > 32) return null;
+  let vertices = 0;
+  for (const polygon of polygons) {
+    if (!Array.isArray(polygon) || !polygon.length || polygon.length > 32) return null;
+    for (const ring of polygon) {
+      if (!Array.isArray(ring) || ring.length < 4 || (vertices += ring.length) > 2048
+        || !ring.every(point => Array.isArray(point) && Number.isFinite(point[0]) && Math.abs(point[0]) <= 180
+          && Number.isFinite(point[1]) && Math.abs(point[1]) <= 90)
+        || ring[0][0] !== ring.at(-1)[0] || ring[0][1] !== ring.at(-1)[1]) return null;
+    }
+  }
+  return { ...cone, polygons };
 }
 export function datedPointSubset(points,max=48){
   const step=Math.max(1,Math.ceil(points.length/max));return points.filter((_,i)=>i%step===0||i===points.length-1);

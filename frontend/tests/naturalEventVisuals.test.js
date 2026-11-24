@@ -115,11 +115,12 @@ test('clustering uses projected proximity, leaves a selected member out and boun
 test('overlay paint and hit tests use CSS/device pixels, honor reduced motion and clean up on mode changes', context => {
   let paints = 0, requests = 0, removed = false, reduce = true;
   const strokes = [];
-  let dash = [];
+  let dash = [], coneFills = 0;
   const c = new Proxy({
     clearRect() { paints++; }, measureText: text => ({ width: text.length * 7 }),
     setLineDash(value) { dash = value; },
     stroke() { if (this.lineWidth === 2.6) strokes.push([this.strokeStyle, dash]); },
+    fill(rule) { if (rule === 'evenodd') coneFills++; },
   }, { get: (target, key) => target[key] || (() => {}) });
   const overlay = { width: 0, height: 0, setAttribute() {}, getContext: () => c, remove() { removed = true; } };
   const previous = [globalThis.document, globalThis.window, globalThis.Image];
@@ -162,14 +163,21 @@ test('overlay paint and hit tests use CSS/device pixels, honor reduced motion an
     return { x: 100 + (position.longitude * 180 / Math.PI - 70) * 10, y: 180 };
   });
   const cyclone = { ...archive, track: { ...archive.track, issued_at: at(-1000), expires_at: at(3600000),
+    cone: { official_id: archive.track.official_id, issued_at: at(-1000), expires_at: at(3600000),
+      source_url: 'https://mapservices.weather.noaa.gov/tropical/rest/services/tropical/NHC_tropical_weather/MapServer/268',
+      geometry: { type: 'Polygon', coordinates: [[[87, 18], [92, 19], [93, 21], [87, 18]]] } },
     forecast: [88, 92].map((longitude, index) => ({ longitude, latitude: 20, at: at((index + 1) * 3600000),
       issued_at: at(-1000), classification: 'forecast' })) } };
   fixture.owner.update({ events: [cyclone], visible: true, selectedId: cyclone.id });
   fixture.render.raiseEvent();
   assert.deepEqual(strokes, [[EVENT_CATEGORIES.cyclone.color, []], [FORECAST_COLOR, [7, 6]]]);
+  assert.equal(coneFills, 1);
   assert.equal(fixture.owner.pick(null, { x: 300, y: 180 }), true, 'an on-screen path routes to its source report');
   assert.equal(fixture.picked.at(-1), cyclone.id);
   assert.equal(fixture.owner.pick(null, { x: 250, y: 180 }), false, 'the gap between observed and forecast is preserved');
+  fixture.owner.update({ events: [cyclone], visible: true, selectedId: cyclone.id, cone: false });
+  fixture.render.raiseEvent();
+  assert.equal(coneFills, 1);
   fixture.owner.update({ events: [cyclone], visible: true });
   assert.equal(fixture.owner.pick(null, { x: 300, y: 180 }), false);
   fixture.owner.update({ events, visible: false });

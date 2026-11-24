@@ -1,6 +1,7 @@
 import { BookOpen, Crosshair, Layers3, RotateCcw, X } from 'lucide-react';
 import { EVENT_CATEGORIES } from '../data/eventCategories.js';
 import { eventIcon } from '../services/naturalEventArt.js';
+import { EVENT_STATUS_LABELS, eventLabel, eventStatus } from '../services/naturalEventPresentation.js';
 import './NaturalEvents.css';
 
 function eventTime(value) {
@@ -15,6 +16,7 @@ export default function NaturalEventSummary({ group, report, cluster, focused, o
     || ['Polygon', 'MultiPolygon'].includes(report?.geometry?.type) || report?.boundaries?.length;
   if (!report && !cluster) return null;
   const anchor = group?.anchor;
+  const status = group?.status || eventStatus(report);
   const positionSource = anchor?.report.provider || report?.provider;
   return (
     <aside className="event-summary" aria-label={cluster ? 'Nearby reported events' : 'Selected natural event'}
@@ -22,13 +24,13 @@ export default function NaturalEventSummary({ group, report, cluster, focused, o
       <div className="event-summary__main">
         {category ? <img src={eventIcon(report.category)} alt="" width="46" height="46" /> : <Layers3 size={28} aria-hidden="true" />}
         <div className="event-summary__title" aria-live="polite">
-          <small>{category ? category.label : 'Map cluster'}{report?.data_state === 'stale' ? ' · Stale cache' : ''}</small>
-          <strong>{cluster ? `${cluster.length} nearby events` : group?.report.title || report.title}</strong>
+          <small>{category ? EVENT_STATUS_LABELS[status.state] : 'Nearby events'}{report?.data_state === 'stale' ? ' · Stale cache' : ''}</small>
+          <strong>{cluster ? `${cluster.length} nearby events` : group?.label || eventLabel(report, status)}</strong>
         </div>
         <button type="button" className="event-summary__close" aria-label="Dismiss event selection" onClick={onClose}><X size={18} aria-hidden="true" /></button>
       </div>
       <p>{cluster ? 'Open the list to inspect individual reports.'
-        : `${positionSource.toUpperCase()}${positionSource === 'gdacs' && report.category === 'cyclone' && anchor ? ' centroid' : ''} · ${eventTime(anchor ? new Date(anchor.at).toISOString() : report.last_report_at || report.reported_at)}`}</p>
+        : `${status.agency || positionSource.toUpperCase()}${positionSource === 'gdacs' && report.category === 'cyclone' && anchor ? ' centroid' : ''} · ${eventTime(status.at || (anchor ? new Date(anchor.at).toISOString() : report.last_report_at || report.reported_at))}`}</p>
       <div className="event-summary__actions">
         <button type="button" onClick={onDetails}><BookOpen size={16} aria-hidden="true" />{cluster ? 'View reports' : 'Details'}</button>
         {focused ? <button type="button" onClick={onReturn}><RotateCcw size={16} aria-hidden="true" />Previous view</button>

@@ -346,6 +346,7 @@ export default function OrbitGlobe({
   onOrbitInfo,
   onDetailReady,
   naturalEvents, eventsVisible=false, eventCategory='all', selectedEventId=null, onEventSelect, onEventCluster,
+  eventLiveAt, eventArchive, eventForecast, eventCone,
   cloudFrame,
   cloudService,
   cloudReady,
@@ -1168,8 +1169,9 @@ export default function OrbitGlobe({
       onSelect: id => onEventSelectRef.current?.(id),
       onCluster: ids => onEventClusterRef.current?.(ids),
     });
-    naturalEventLayerRef.current.update({events:naturalEvents,visible:eventsVisible&&mode==='live'&&selectedCelestialBody==='earth',category:eventCategory,selectedId:selectedEventId});
-  },[naturalEvents,eventsVisible,eventCategory,selectedEventId,mode,selectedCelestialBody]);
+    naturalEventLayerRef.current.update({events:naturalEvents,visible:eventsVisible&&mode==='live'&&selectedCelestialBody==='earth',
+      category:eventCategory,selectedId:selectedEventId,liveOnly:true,archive:eventArchive,at:eventLiveAt,forecast:eventForecast,cone:eventCone});
+  },[naturalEvents,eventsVisible,eventCategory,selectedEventId,mode,selectedCelestialBody,eventArchive,eventLiveAt,eventForecast,eventCone]);
 
   useEffect(() => {
     if(mapRetryNonceRef.current!==mapRetryNonce) {

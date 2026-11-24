@@ -16,12 +16,13 @@ import httpx
 ROOT=Path(__file__).resolve().parents[1];sys.path.insert(0,str(ROOT/'backend'))
 os.environ['DATABASE_URL']='sqlite://';os.environ['JWT_SECRET_KEY']='isolated-event-expansion-tests'
 from services.natural_event_data import normalize,iso
-from services.cyclone_tracks import ibtracs_events,nhc_forecast,attach_forecasts
+from services.cyclone_tracks import ibtracs_events,nhc_forecast,nhc_status,nhc_cone,attach_forecasts
 from services.event_geometry import proximity
 from services.event_policy import material_updates,fair_events
 from services.notification_policy import event_candidate
 from services.natural_events import EventCache
 from services.natural_event_sources import acquire
+from services.natural_event_status import live_status,presentation_events
 
 NOW=datetime(2026,11,2,12,tzinfo=timezone.utc)
 
@@ -31,6 +32,40 @@ def gdacs(level='Orange',episode='Orange',updated=None):
 
 
 class EventExpansion(unittest.TestCase):
+    def test_live_state_uses_occurrence_and_official_status_without_changing_reports(self):
+        now=datetime(2026,11,24,8,tzinfo=timezone.utc)
+        report=dict(id='ibtracs:2026321N11087',provider='ibtracs',category='cyclone',reported_at=iso(now-timedelta(days=4)))
+        self.assertEqual(live_status(report,now)['state'],'ended_confirmed')
+        self.assertEqual(live_status({**report,'id':'ibtracs:other'},now)['state'],'stale_unverified')
+        quake=dict(id='usgs:q1',provider='usgs',category='earthquake',reported_at=iso(now-timedelta(hours=23)))
+        self.assertEqual(live_status(quake,now)['state'],'recent_occurrence')
+        self.assertEqual(live_status(quake,now+timedelta(hours=2))['state'],'stale_unverified')
+        flood=dict(id='eonet:old',provider='eonet',category='flood',status='open',reported_at=iso(now-timedelta(hours=1)))
+        self.assertEqual(live_status(flood,now)['state'],'verification_pending')
+        self.assertEqual(live_status({**flood,'category':'drought'},now+timedelta(days=11))['state'],'verification_pending')
+        storm=dict(id='al012026',name='Isolated test storm',classification='TS',lastUpdate=iso(now),
+                   longitudeNumeric=-65,latitudeNumeric=19)
+        evidence=nhc_status(storm,now)
+        cache={'generated_at':iso(now),'events':[report,quake,flood], 'official_storms':[evidence]}
+        before=copy.deepcopy(cache)
+        output=presentation_events(cache)
+        self.assertEqual(cache,before)
+        self.assertEqual(output[-1]['live_status']['state'],'active_confirmed')
+        self.assertEqual(output[-1]['position'],[-65,19])
+        self.assertEqual(presentation_events({**cache,'generated_at':iso(now+timedelta(hours=12))})[-1]['live_status']['state'],'stale_unverified')
+        self.assertIsNone(nhc_status({**storm,'classification':'PC'},now))
+
+    def test_cone_is_bound_to_a_noaa_bin_storm_and_advisory(self):
+        issued=iso(NOW-timedelta(hours=1));expires=iso(NOW+timedelta(hours=11))
+        track=dict(official_id='CP012026',issued_at=issued,expires_at=expires,forecast=[dict(advisory='007')])
+        storm={'binNumber':'CP1'}
+        shape={'type':'Polygon','coordinates':[[[179,9],[-175,10],[-175,12],[179,9]]]}
+        feature=dict(geometry=shape,properties=dict(binnumber='CP1',basin='CP',stormnum=1,advisnum='007',advdate=issued))
+        cone_url='https://mapservices.weather.noaa.gov/tropical/rest/services/tropical/NHC_tropical_weather/MapServer/268'
+        self.assertEqual(nhc_cone(storm,track,{'features':[feature]},cone_url)['geometry'],shape)
+        self.assertIsNone(nhc_cone(storm,track,{'features':[feature,feature]},cone_url))
+        self.assertIsNone(nhc_cone(storm,track,{'features':[{**feature,'properties':{**feature['properties'],'advisnum':'008'}}]},cone_url))
+
     def test_open_eonet_older_than_month_is_not_physical_activity(self):
         row={'id':'isolated','title':'Source monitored wildfire','closed':None,'categories':[{'id':'wildfires'}],
             'geometry':[{'type':'Point','coordinates':[10,20],'date':iso(NOW-timedelta(days=100))}]}

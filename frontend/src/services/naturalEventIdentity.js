@@ -1,4 +1,5 @@
 import { trackPoints } from './cycloneTracks.js';
+import { groupStatus, eventLabel } from './naturalEventPresentation.js';
 
 const providerOrder = { ibtracs: 0, eonet: 1, gdacs: 2, nhc: 3 };
 const atcf = /^(?:AL|EP|CP|WP|IO|SH)\d{6}$/;
@@ -75,10 +76,13 @@ function displayGroup(reports, now) {
   });
   anchors.sort((a, b) => Number(a.report.provider === 'gdacs') - Number(b.report.provider === 'gdacs')
     || b.at - a.at || compareReports(a.report, b.report));
-  const anchor = anchors[0];
+  const { evidence: status, report: statusReport } = groupStatus(sorted, now);
+  const anchor = status.state === 'active_confirmed' && validPoint(status.position)
+    ? { report: statusReport, position: status.position, at: instant(status.at) } : anchors[0];
   const identity = sorted[0].id;
   return {
-    id: identity, reports: sorted, report: sorted[0], anchor, path, forecast,
+    id: identity, reports: sorted, report: sorted[0], anchor, path, forecast, status,
+    label: eventLabel(status.state === 'verification_pending' ? sorted[0] : statusReport, status),
     position: anchor?.position ?? null,
   };
 }

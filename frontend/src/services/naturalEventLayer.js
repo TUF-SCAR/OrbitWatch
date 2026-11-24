@@ -1,13 +1,14 @@
 import {
   ArcType, BoundingSphere, Cartesian2, Cartesian3, Color, CustomDataSource, HeadingPitchRange,
-  Matrix4, PolylineDashMaterialProperty, PolylineGlowMaterialProperty,
+  Matrix4, PolygonHierarchy, PolylineDashMaterialProperty, PolylineGlowMaterialProperty,
 } from 'cesium';
 import { EVENT_CATEGORIES } from '../data/eventCategories.js';
 import { prefersReducedMotion } from '../utils/motionPreferences.js';
-import { datedPointSubset, trackPoints, trackSegments, windColor } from './cycloneTracks.js';
+import { datedPointSubset, forecastCone, trackPoints, trackSegments, windColor } from './cycloneTracks.js';
 import { eventIcon, clusterIcon } from './naturalEventArt.js';
 import { groupNaturalEvents, validPoint } from './naturalEventIdentity.js';
 import { createNaturalEventOverlay, FORECAST_COLOR, MAX_EVENT_ALTITUDE } from './naturalEventOverlay.js';
+import { isLiveEvent } from './naturalEventPresentation.js';
 
 const colorFor = category => (EVENT_CATEGORIES[category] || EVENT_CATEGORIES.other).color;
 export { EVENT_CATEGORIES, eventIcon, clusterIcon };
@@ -39,7 +40,7 @@ export function createNaturalEventLayer(viewer, {
   const overlay = createNaturalEventOverlay(viewer, { reduced, now });
   let destroyed = false, enabled = false, selected = null, savedCamera = null, focusFlight = false;
   let eventInput, groupsByReport = new Map(), groups = [], mapGroups = [], mapIds = new Set(), signature = '', selectionKey = '';
-  let expiryTimer, focusGeneration = 0;
+  let expiryTimer, focusGeneration = 0, eventsAt, showForecast = true, showCone = true;
 
   // If a two-dimensional canvas is unavailable, retain native Cesium
   // billboards and clustering as a lower-fidelity fallback.
@@ -85,9 +86,25 @@ export function createNaturalEventLayer(viewer, {
   }
 
   function addTrack(id, group) {
-    const paths = [];
+    const paths = [], samples = [];
+    const positions = ring => ring.slice(0, -1).map(([lon, lat]) => Cartesian3.fromDegrees(lon, lat));
+    const cone = showForecast && showCone ? forecastCone(group.forecast?.track, clock()) : null;
+    if (cone && !overlay) {
+      const tint = Color.fromCssColorString(FORECAST_COLOR);
+      for (const [index, [outer, ...holes]] of cone.polygons.entries()) {
+        focus.entities.add({ id: `cone:${index}:${id}`, properties: { naturalEventId: id },
+          polygon: { hierarchy: new PolygonHierarchy(positions(outer), holes.map(ring => new PolygonHierarchy(positions(ring)))),
+            material: tint.withAlpha(.19), arcType: ArcType.GEODESIC } });
+        for (const [ringIndex, ring] of [outer, ...holes].entries()) focus.entities.add({
+          id: `cone-outline:${index}:${ringIndex}:${id}`, properties: { naturalEventId: id },
+          polyline: { positions: ring.map(([lon, lat]) => Cartesian3.fromDegrees(lon, lat)),
+            clampToGround: true, width: 1.6, material: tint.withAlpha(.72) },
+        });
+      }
+    }
     for (const kind of ['observed', 'forecast']) {
       const isForecast = kind === 'forecast';
+      if (isForecast && !showForecast) continue;
       const track = (isForecast ? group.forecast : group.path)?.track;
       const points = trackPoints(track, kind, clock());
       const color = Color.fromCssColorString(isForecast ? FORECAST_COLOR : colorFor('cyclone'));
@@ -103,6 +120,12 @@ export function createNaturalEventLayer(viewer, {
       const subset = datedPointSubset(points, isForecast ? 16 : 48);
       for (const [i, point] of subset.entries()) {
         const endpoint = i === subset.length - 1;
+        const timeLabel = `${isForecast ? 'Forecast end' : 'Latest observed'} · ${new Date(point.at).toISOString().slice(5, 16).replace('T', ' ')} UTC`;
+        if (overlay) {
+          samples.push({ world: Cartesian3.fromDegrees(point.longitude, point.latitude), forecast: isForecast,
+            color: isForecast ? FORECAST_COLOR : windColor(point), endpoint, label: endpoint ? timeLabel : null });
+          continue;
+        }
         focus.entities.add({
           id: `trackpoint:${kind}:${i}:${id}`, name: `${isForecast ? 'Forecast' : 'Reported'} ${point.at}`,
           properties: { naturalEventId: id, trackKind: kind, sourceTimestamp: point.at },
@@ -111,7 +134,7 @@ export function createNaturalEventLayer(viewer, {
             color: Color.fromCssColorString(isForecast ? '#11192c' : windColor(point)),
             outlineColor: isForecast ? color : Color.fromCssColorString('#081323'), outlineWidth: isForecast ? 2 : 1.5 },
           label: endpoint ? {
-            text: `${isForecast ? 'Forecast end' : 'Latest path point'} · ${new Date(point.at).toISOString().slice(5, 16).replace('T', ' ')} UTC`,
+            text: timeLabel,
             font: '600 13px Inter, sans-serif', fillColor: color, backgroundColor: Color.fromCssColorString('#081323ed'),
             showBackground: true, pixelOffset: new Cartesian2(0, isForecast ? -16 : 32),
           } : undefined,
@@ -123,13 +146,13 @@ export function createNaturalEventLayer(viewer, {
         expiryTimer?.unref?.();
       }
     }
-    return paths;
+    return { paths, samples, polygons: cone?.polygons };
   }
 
   function select(id, force = false) {
     const group = groupsByReport.get(id);
     const event = group?.reports.find(report => report.id === id);
-    const key = JSON.stringify([id, enabled, group?.id, group?.position, event?.geometry, event?.boundaries,
+    const key = JSON.stringify([id, enabled, showForecast, showCone, group?.id, group?.position, event?.geometry, event?.boundaries,
       group?.path?.track, group?.forecast?.track]);
     if (!force && key === selectionKey) return;
     selectionKey = key;
@@ -139,32 +162,37 @@ export function createNaturalEventLayer(viewer, {
     for (const entity of source.entities.values) {
       entity.show = entity.id !== `natural:${group?.id}` && !entity.id.startsWith(`event-boundary:${id}:`);
     }
-    let paths = [];
+    let track = {};
     if (enabled && group && mapIds.has(group.id)) {
       fallbackMarker(focus, group, true);
       addBoundaries(focus, event, true);
-      if (event.category === 'cyclone') paths = addTrack(id, group);
+      if (event.category === 'cyclone') track = addTrack(id, group);
     }
     overlay?.update(mapGroups, group?.id, enabled);
-    overlay?.setTracks(id, paths);
+    overlay?.setTracks(id, track.paths || [], track.samples, track.polygons);
     viewer.scene.requestRender();
   }
 
   return {
-    update({ events = [], visible = false, category = 'all', selectedId = null }) {
+    update({ events = [], visible = false, category = 'all', selectedId = null, liveOnly = false, archive = false, at, forecast = true, cone = true }) {
       if (destroyed || viewer.isDestroyed()) return;
       const visibilityChanged = enabled !== visible;
       enabled = visible;
+      showForecast = forecast;
+      showCone = cone;
       source.show = visible;
       focus.show = visible;
-      if (eventInput !== events) {
+      if (eventInput !== events || eventsAt !== at) {
         eventInput = events;
-        const result = groupNaturalEvents(events.slice(0, 1200), clock());
+        eventsAt = at;
+        const result = groupNaturalEvents(events.slice(0, 1230), at ?? clock());
         groups = result.groups;
         groupsByReport = result.reportGroups;
       }
-      const next = groups.filter(group => category === 'all' || group.report.category === category);
-      const key = JSON.stringify(next.map(group => [group.id, group.report.title, group.report.category, group.position,
+      const archived = archive ? groupsByReport.get(selectedId) : null;
+      const next = groups.filter(group => (!liveOnly || isLiveEvent(group) || group === archived)
+        && (category === 'all' || group.report.category === category));
+      const key = JSON.stringify(next.map(group => [group.id, group.label, group.report.title, group.report.category, group.position,
         group.anchor?.at, !group.position && group.report.geometry, !group.position && group.report.boundaries]));
       if (key !== signature || visibilityChanged) {
         signature = key;
@@ -195,7 +223,7 @@ export function createNaturalEventLayer(viewer, {
       const group = groupsByReport.get(id), camera = viewer.camera;
       if (!enabled || !group || !mapIds.has(group.id) || !camera) return false;
       const event = group.reports.find(report => report.id === id);
-      const points = [...trackPoints(group.path?.track, 'observed', clock()), ...trackPoints(group.forecast?.track, 'forecast', clock())]
+      const points = [...trackPoints(group.path?.track, 'observed', clock()), ...(showForecast ? trackPoints(group.forecast?.track, 'forecast', clock()) : [])]
         .map(p => Cartesian3.fromDegrees(p.longitude, p.latitude));
       if (group.position) points.push(Cartesian3.fromDegrees(...group.position));
       for (const ring of ringsFor(event)) for (const [lon, lat] of ring) points.push(Cartesian3.fromDegrees(lon, lat));

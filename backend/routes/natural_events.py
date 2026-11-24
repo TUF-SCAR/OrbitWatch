@@ -4,6 +4,7 @@ from services.natural_events import current_events,stores
 from services.event_boundaries import selected_boundary
 from services.weather_cache import WeatherDeferred
 from core.config import enabled
+from services.natural_event_status import presentation_events
 
 router=APIRouter(prefix='/api/events',tags=['Live Earth natural events'],dependencies=[Depends(get_current_user)])
 
@@ -15,7 +16,8 @@ def events(response:Response):
     if value['state'] in {'preparing','unavailable'}:
         response.status_code=202 if value['state']=='preparing' else 503
     response.headers['Retry-After']=str(min(p['retry_after_seconds'] for p in value['providers'].values()))
-    return value
+    reports=presentation_events(value)
+    return {**{key:item for key,item in value.items() if key!='official_storms'}, 'events':reports}
 
 
 @router.get('/{event_id}')
@@ -24,7 +26,7 @@ def detail(response:Response,event_id:str=Path(min_length=3,max_length=180,patte
     # Deliberately cache-only: a click cannot fan out to providers or fetch URLs
     # supplied by untrusted reports. List already contains supported details.
     value=current_events(schedule=False)
-    event=next((e for e in value['events'] if e['id']==event_id),None)
+    event=next((e for e in presentation_events(value) if e['id']==event_id),None)
     if not event:raise HTTPException(404,'This report is not in the usable recent-event cache.')
     return {'event':event,'provider_status':value['providers'][event['provider']],'disclaimer':value['disclaimer']}
 

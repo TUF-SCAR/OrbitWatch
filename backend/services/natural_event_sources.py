@@ -9,9 +9,9 @@ from hashlib import sha256
 import json
 import time
 import httpx
-from services.natural_event_data import iso
+from services.natural_event_data import date,iso
 from services.weather_cache import WeatherDeferred
-from services.cyclone_tracks import IBTRACS_URL,NHC_URL,NHC_GIS,ibtracs_events,nhc_forecast,nhc_event
+from services.cyclone_tracks import IBTRACS_URL,NHC_URL,NHC_GIS,ibtracs_events,nhc_forecast,nhc_event,nhc_status,nhc_cone
 
 EONET='https://eonet.gsfc.nasa.gov/api/v3/events'
 GDACS='https://www.gdacs.org/gdacsapi/api/Events/geteventlist/search'
@@ -83,19 +83,39 @@ def acquire(provider,previous,store,now):
             part=get(NHC_URL);storms=part['data'].get('activeStorms')
             if not isinstance(storms,list) or len(storms)>30:raise ValueError('Invalid NHC storm index')
             forecasts=[];reports=[]
+            statuses=[status for storm in storms if isinstance(storm,dict) and (status:=nhc_status(storm,now))]
+            previous_forecasts={f['official_id']:f for f in (previous or {}).get('forecasts',[])}
             for storm in storms[:2]:
                 # Reviewed NOAA GIS forecast point layer IDs for official bins.
                 import re
+                if not isinstance(storm,dict):continue
                 match=re.fullmatch(r'(AT|EP|CP)([1-5])',str(storm.get('binNumber','')).upper())
                 if not match:coverage['notes'].append('Unsupported official bin');continue
                 layer={'AT':6,'EP':136,'CP':266}[match[1]]+26*(int(match[2])-1)
-                try:points=get(f'{NHC_GIS}/{layer}/query',{'f':'json','where':'1=1','outFields':'*','outSR':4326,'returnGeometry':'true','resultRecordCount':32})
-                except WeatherDeferred:coverage['truncated']=True;break
-                forecast=nhc_forecast(storm,points['data'],points['retrieved_at'],now)
-                if forecast:forecasts.append(forecast);reports.append(nhc_event(storm,forecast,points['retrieved_at']))
+                cached=previous_forecasts.get(str(storm.get('id','')).upper())
+                advisory=date((storm.get('forecastAdvisory') or {}).get('issuance'))
+                if cached and cached.get('cone') and advisory and advisory==date(cached.get('issued_at')) and date(cached.get('expires_at'))>now:
+                    forecasts.append(cached);reports.append(nhc_event(storm,cached,part['retrieved_at']));continue
+                try:
+                    points=get(f'{NHC_GIS}/{layer}/query',{'f':'json','where':'1=1','outFields':'*','outSR':4326,'returnGeometry':'true','resultRecordCount':32})
+                    forecast=nhc_forecast(storm,points['data'],points['retrieved_at'],now)
+                except (WeatherDeferred,httpx.HTTPError,ValueError,TypeError,AttributeError):
+                    coverage['truncated']=True
+                    if cached and advisory and advisory==date(cached.get('issued_at')) and date(cached.get('expires_at'))>now:
+                        forecasts.append(cached);reports.append(nhc_event(storm,cached,part['retrieved_at']))
+                    continue
+                if forecast:
+                    cone_url=f'{NHC_GIS}/{layer+2}'
+                    try:
+                        cone=get(f'{cone_url}/query',{'f':'geojson','where':'1=1','outFields':'*','outSR':4326,
+                            'returnGeometry':'true','resultRecordCount':4})
+                        forecast['cone']=nhc_cone(storm,forecast,cone['data'],cone_url)
+                    except (WeatherDeferred,httpx.HTTPError,ValueError,TypeError,AttributeError):
+                        coverage['notes'].append('Official cone unavailable within the provider budget')
+                    forecasts.append(forecast);reports.append(nhc_event(storm,forecast,points['retrieved_at']))
                 else:coverage['notes'].append('Forecast points unavailable, expired or could not be verified')
             coverage.update(active_storms=len(storms),forecast_storms=len(forecasts),truncated=coverage['truncated'] or len(storms)>2)
-            data={'_normalized_events':reports,'forecasts':forecasts}
+            data={'_normalized_events':reports,'forecasts':forecasts,'official_storms':statuses}
         else:raise ValueError('Unsupported provider')
     # Validators stay in parts. Synthetic aggregate headers are never reused for
     # network requests; restrictive freshness/cache hints still reach the owner.

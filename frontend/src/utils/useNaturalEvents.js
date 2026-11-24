@@ -6,6 +6,7 @@ export function useNaturalEvents(active){
   const [result,setResult]=useState({events:[],providers:{},state:'preparing'});
   const boundaryController=useRef(null);
   const [boundaryStatus,setBoundaryStatus]=useState(null);
+  const [expiryTick, setExpiryTick] = useState(0);
   useEffect(()=>{
     if(!active)return;
     const controller=new AbortController();let timer;
@@ -40,6 +41,14 @@ export function useNaturalEvents(active){
       setBoundaryStatus({id,state:'available',message:response.boundaries.length?'Source boundaries loaded. Their role is not a verified current danger area.':'No validated polygon boundaries supplied.'});
     }catch{if(!controller.signal.aborted)setBoundaryStatus({id,state:'unavailable',message:'Official geometry unavailable or provider cooldown active. No boundary was inferred.'});}
   }
-  const display = useMemo(() => groupNaturalEvents(result.events), [result.events]);
-  return {...result,display,loadBoundary,boundaryStatus};
+  const liveAt = useMemo(() => Math.max(Date.parse(result.generated_at) || 0, Date.now(), expiryTick), [result, expiryTick]);
+  useEffect(() => {
+    if (!active) return;
+    const next = Math.min(...result.events.map(e => Date.parse(e.live_status?.expires_at)).filter(at => at > liveAt));
+    if (!Number.isFinite(next)) return;
+    const timer = setTimeout(() => setExpiryTick(Date.now()), Math.max(1, next - Date.now() + 5));
+    return () => clearTimeout(timer);
+  }, [active, result.events, liveAt]);
+  const display = useMemo(() => groupNaturalEvents(result.events, liveAt), [result.events, liveAt]);
+  return {...result,display,liveAt,loadBoundary,boundaryStatus};
 }

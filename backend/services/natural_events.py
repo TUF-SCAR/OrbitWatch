@@ -29,7 +29,7 @@ LIMITATIONS={'eonet':'Up to 500 open curated events without an age cutoff, plus 
              'gdacs':'Two pages each: EQ/TC in 30 days; FL/VO/DR/WF in 180 days. Shared 4-request/hour budget; incomplete pagination is disclosed. Overall and episode alerts differ.',
              'usgs':'Official M2.5+ month feed; not all earthquakes or continuing hazards. Origin and review update times differ.',
              'ibtracs':'NOAA v4r01 ACTIVE global subset, storms active in archive last 7 days; batch updates can lag. Only original agency positions, no interpolated/spur positions; at most 32 storms/512 points each.',
-             'nhc':'NHC/CPHC official forecast points for Atlantic/Eastern and Central Pacific only. At most two active bins per refresh, 12-hour issue freshness. No inferred global forecast.'}
+             'nhc':'NHC/CPHC current storm centers, forecasts and matching GIS cones for Atlantic/Eastern and Central Pacific. At most two forecast bins per refresh within the shared request budget.'}
 
 
 class EventCache(WeatherCache):
@@ -106,7 +106,8 @@ def refresh(provider):
                 acquisition=data.get('_acquisition',{})
                 value={'events':events,'retrieved_at':retrieved,'validated_at':time.time(),'headers':headers,
                        'rejected_count':rejected,'source_url':URLS[provider],'schema_version':2,
-                       'parts':acquisition.get('parts',{}),'coverage':acquisition.get('coverage',{}),'forecasts':data.get('forecasts',[])}
+                       'parts':acquisition.get('parts',{}),'coverage':acquisition.get('coverage',{}),'forecasts':data.get('forecasts',[]),
+                       'official_storms':data.get('official_storms',[])}
             respect_headers(store,provider,value['headers']);store.put('feed','global',value);store.succeeded(provider)
             return value
         except Exception as error:
@@ -126,7 +127,7 @@ def revalidate(provider):
 
 
 def current_events(schedule=True,refresh_providers=None):
-    events=[];forecasts=[];providers={};usable=0;now=time.time()
+    events=[];forecasts=[];providers={};official_storms=[];usable=0;now=time.time()
     for provider,store in stores.items():
         cached=store.get('feed');age=max(0,now-cached['validated_at']) if cached else None
         ttl=freshness_seconds(provider,cached) if cached else 0
@@ -139,6 +140,7 @@ def current_events(schedule=True,refresh_providers=None):
         if valid:
             usable+=1
             forecasts.extend(cached.get('forecasts',[]))
+            if provider=='nhc':official_storms=cached.get('official_storms',[])
             for e in cached['events']:
                 # Legacy caches never retain the old arbitrary polygon marker.
                 g=e.get('geometry') or {};position=g.get('coordinates') if g.get('type')=='Point' else None
@@ -158,7 +160,7 @@ def current_events(schedule=True,refresh_providers=None):
     total=len(events);events,unmatched=attach_forecasts(events,forecasts)
     events=cross_references(fair_events(events))
     return {'state':'available' if usable==len(stores) else 'partial' if usable else 'preparing' if any(p['state']=='preparing' for p in providers.values()) else 'unavailable',
-            'events':events,'providers':providers,'generated_at':iso(utcnow()),
+            'events':events,'providers':providers,'generated_at':iso(utcnow()),'official_storms':official_storms,
             'coverage':{'normalized_reports':total,'displayed_reports':len(events),'display_cap':1200,'provider_cap':400,'allocation':'Round robin across provider/category groups','truncated':len(events)<total,'unmatched_forecast_ids':unmatched},
             'optional_sources':{'firms':'Not enabled. A NASA FIRMS MAP_KEY and separately reviewed hotspot budget are required.',
                 'imd':'Official cyclone_track endpoint requires authorization (HTTP 401); no key configured or bypass attempted.','gdacs_forecast':'No forecast path inferred from general event geometry.'},

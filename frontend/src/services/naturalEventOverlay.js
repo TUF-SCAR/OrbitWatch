@@ -1,6 +1,7 @@
-import { Cartesian2, Cartesian3, Cartographic, EllipsoidGeodesic, EllipsoidalOccluder, SceneMode, SceneTransforms } from 'cesium';
+import { BoundingSphere, Cartesian2, Cartesian3, Cartographic, EllipsoidGeodesic, EllipsoidalOccluder, SceneMode, SceneTransforms } from 'cesium';
 import { EVENT_CATEGORIES } from '../data/eventCategories.js';
 import { clusterIcon, eventIcon } from './naturalEventArt.js';
+import { globeSilhouette, pointInsideSilhouette } from './naturalEventHorizon.js';
 
 const MAX_MARKERS = 160;
 export const MAX_EVENT_ALTITUDE = 1.2e8;
@@ -17,6 +18,7 @@ export function clusterProjectedEvents(points, radius, selectedId) {
     let match, nearest = radius ** 2;
     for (let y = row - 1; y <= row + 1; y++) for (let x = col - 1; x <= col + 1; x++) {
       for (const marker of buckets.get(key(x, y)) || []) {
+        if ((point.opacity === 1) !== (marker.opacity === 1)) continue;
         const distance = (marker.x - point.x) ** 2 + (marker.y - point.y) ** 2;
         if (distance < nearest) { nearest = distance; match = marker; }
       }
@@ -99,6 +101,43 @@ function drawTracks(ctx, tracks) {
   ctx.setLineDash([]);
 }
 
+function clipGroundRing(vertices, silhouette) {
+  if (!silhouette || vertices.length < 3) return vertices;
+  const clipped = [];
+  let last = vertices.at(-1), previousDepth = silhouette.depth(last);
+  for (const vertex of vertices) {
+    const depth = silhouette.depth(vertex);
+    if ((depth >= 0) !== (previousDepth >= 0)) {
+      clipped.push(Cartesian3.lerp(last, vertex, previousDepth / (previousDepth - depth), new Cartesian3()));
+    }
+    if (depth >= 0) clipped.push(vertex);
+    last = vertex;
+    previousDepth = depth;
+  }
+  return clipped;
+}
+
+function drawCones(ctx, polygons) {
+  for (const { rings, outline } of polygons) {
+    ctx.beginPath();
+    for (const ring of rings) {
+      ctx.moveTo(ring[0].x, ring[0].y);
+      for (let i = 1; i < ring.length; i++) ctx.lineTo(ring[i].x, ring[i].y);
+      ctx.closePath();
+    }
+    ctx.fillStyle = '#ffd28e43';
+    ctx.fill('evenodd');
+    ctx.beginPath();
+    for (const part of outline) {
+      ctx.moveTo(part[0].x, part[0].y);
+      for (let i = 1; i < part.length; i++) ctx.lineTo(part[i].x, part[i].y);
+    }
+    ctx.lineWidth = 1.2;
+    ctx.strokeStyle = '#ffd28eb8';
+    ctx.stroke();
+  }
+}
+
 function isNearSegment(point, a, b) {
   const dx = b.x - a.x, dy = b.y - a.y;
   const along = Math.max(0, Math.min(1, ((point.x - a.x) * dx + (point.y - a.y) * dy) / (dx * dx + dy * dy || 1)));
@@ -116,9 +155,11 @@ export function createNaturalEventOverlay(viewer, { reduced, now }) {
   canvas.hidden = true;
   parent.append(canvas);
   const horizon = new EllipsoidalOccluder(scene.globe.ellipsoid);
+  const bounds = new BoundingSphere(Cartesian3.ZERO, 1);
   const projected = new Cartesian2(), images = new Map(), sizes = new Map();
   let entries = [], markers = [], hits = [], selected = null, visible = false, offRender, groupInput;
-  let worldTracks = [], screenTracks = [], trackReportId;
+  let worldTracks = [], screenTracks = [], worldSamples = [], screenSamples = [], trackReportId, silhouette;
+  let worldCones = [], screenCones = [];
   let dirty = true, lastFrame = '', lastPaint = 0, destroyed = false;
 
   function asset(uri) {
@@ -160,6 +201,8 @@ export function createNaturalEventOverlay(viewer, { reduced, now }) {
       hits = [];
       markers = [];
       screenTracks = [];
+      screenSamples = [];
+      screenCones = [];
       lastFrame = '';
       return;
     }
@@ -176,13 +219,35 @@ export function createNaturalEventOverlay(viewer, { reduced, now }) {
     if (dirty || lastFrame !== key) {
       lastFrame = key;
       horizon.cameraPosition = camera.positionWC;
+      silhouette = scene.mode === SceneMode.SCENE3D ? globeSilhouette(camera, scene.globe.ellipsoid, width, height) : null;
       screenTracks = worldTracks.map(({ kind, vertices }) => ({ kind, parts: projectTrack(vertices, width) }));
+      screenCones = worldCones.map(polygon => ({
+        rings: polygon.map(ring => clipGroundRing(ring, silhouette).flatMap(vertex => {
+          const point = SceneTransforms.worldToWindowCoordinates(scene, vertex, projected);
+          return point ? [{ x: point.x, y: point.y }] : [];
+        })).filter(ring => ring.length >= 3),
+        outline: polygon.flatMap(ring => projectTrack(ring, width)),
+      }));
+      screenSamples = worldSamples.flatMap(sample => {
+        if (scene.mode === SceneMode.SCENE3D && !horizon.isPointVisible(sample.world)) return [];
+        const point = SceneTransforms.worldToWindowCoordinates(scene, sample.world, projected);
+        return point ? [{ ...sample, x: point.x, y: point.y }] : [];
+      });
       const points = [];
       for (const entry of entries) {
-        if (scene.mode === SceneMode.SCENE3D && !horizon.isPointVisible(entry.world)) continue;
+        let opacity = 1;
+        if (silhouette) {
+          const depth = silhouette.depth(entry.world);
+          if (depth < 0) {
+            Cartesian3.clone(entry.world, bounds.center);
+            const fadeSpan = 15 * camera.getPixelSize(bounds, width, height) / scene.globe.ellipsoid.maximumRadius;
+            opacity = Math.max(0, 1 + depth / fadeSpan);
+            if (!opacity) continue;
+          }
+        } else if (scene.mode === SceneMode.SCENE3D && !horizon.isPointVisible(entry.world)) continue;
         const p = SceneTransforms.worldToWindowCoordinates(scene, entry.world, projected);
         if (!p || p.x < 0 || p.x > width || p.y < 0 || p.y > height) continue;
-        points.push({ ...entry, x: p.x, y: p.y });
+        points.push({ ...entry, x: p.x, y: p.y, opacity });
       }
       markers = clusterProjectedEvents(points, altitude > 8e6 ? 38 : altitude > 3e5 ? 31 : 13, selected);
       for (const marker of markers) marker.size = marker.selected ? 52 : marker.ids.length > 1 ? 40 : altitude > 8e6 ? 34 : 38;
@@ -196,11 +261,36 @@ export function createNaturalEventOverlay(viewer, { reduced, now }) {
     lastPaint = stamp;
     context.setTransform(ratio, 0, 0, ratio, 0, 0);
     context.clearRect(0, 0, width, height);
+    if (silhouette) {
+      if (silhouette.polygon.length < 3) { hits = []; return; }
+      context.save();
+      context.beginPath();
+      for (const [i, { x, y }] of silhouette.polygon.entries()) {
+        if (i === 0) context.moveTo(x, y);
+        else context.lineTo(x, y);
+      }
+      context.closePath();
+      context.clip();
+    }
+    if (screenCones.length) drawCones(context, screenCones);
     if (screenTracks.length) drawTracks(context, screenTracks);
     context.textAlign = 'left';
     context.textBaseline = 'middle';
     const obstacles = markers.map(({ x, y, size }) => ({ left:x-size*.39, right:x+size*.39, top:y-size*.39, bottom:y+size*.39 }));
+    const fitsMask = box => !silhouette || [[box.left, box.top], [box.right, box.top], [box.left, box.bottom], [box.right, box.bottom]]
+      .every(([x, y]) => pointInsideSilhouette(silhouette.polygon, x, y));
     hits = [];
+    for (const sample of screenSamples) {
+      const { x, y, forecast, endpoint, color } = sample;
+      context.beginPath();
+      context.arc(x, y, endpoint ? 4 : 2.3, 0, Math.PI * 2);
+      context.fillStyle = forecast ? '#11192c' : color;
+      context.fill();
+      context.strokeStyle = forecast ? color : '#081323';
+      context.lineWidth = 1.3;
+      context.stroke();
+      hits.push({ x, y, radius: 7, ids: [trackReportId] });
+    }
     for (const marker of markers) {
       const { x, y, size, ids, report } = marker;
       const color = styleFor(report.category).color;
@@ -213,10 +303,11 @@ export function createNaturalEventOverlay(viewer, { reduced, now }) {
         context.arc(x, y, 23 + wave * 4, start, start + Math.PI * (cyclone && animation ? 1.65 : 2));
         context.lineWidth = 2;
         context.strokeStyle = color;
-        context.globalAlpha = 0.88 - wave * 0.32;
+        context.globalAlpha = marker.opacity * (0.88 - wave * 0.32);
         context.stroke();
         context.globalAlpha = 1;
       }
+      context.globalAlpha = marker.opacity;
       const sprite = asset(ids.length > 1 ? clusterIcon(ids.length, report.category) : eventIcon(report.category));
       if (sprite.complete && sprite.naturalWidth) context.drawImage(sprite, x-size/2, y-size/2, size, size);
       else {
@@ -225,32 +316,42 @@ export function createNaturalEventOverlay(viewer, { reduced, now }) {
         context.arc(x, y, 6, 0, Math.PI * 2);
         context.fill();
       }
-      hits.push({ x, y, radius: Math.max(16, size * .43), ids, selected: marker.selected });
+      context.globalAlpha = 1;
+      if (marker.opacity > .18) hits.push({ x, y, radius: Math.max(16, size * .43), ids, selected: marker.selected });
     }
     let budget = width < 620 ? 8 : 18;
     for (const marker of [...markers].sort((a, b) => Number(Boolean(b.selected)) - Number(Boolean(a.selected)))) {
-      if (marker.ids.length !== 1 || (!marker.selected && (budget <= 0
+      if (marker.opacity < 1 || marker.ids.length !== 1 || (!marker.selected && (budget <= 0
         || (altitude > 9e6 && (priority[marker.report.category] ?? 9) > 1)))) continue;
       context.font = `600 ${marker.selected ? 14 : 12}px Inter, system-ui, sans-serif`;
-      const textKey = `${context.font}|${width}|${marker.report.title}`;
+      const title = marker.label || marker.report.title;
+      const textKey = `${context.font}|${width}|${title}`;
       let metrics = sizes.get(textKey);
       if (!metrics) {
-        let label = String(marker.report.title).slice(0, 76);
+        let label = String(title).slice(0, 76);
         const limit = Math.min(width * .66, marker.selected ? 290 : 210);
         while (label.length > 3 && context.measureText(label).width > limit - 17) label = label.slice(0, -1);
-        if (label !== marker.report.title) label = `${label.slice(0, -1)}…`;
+        if (label !== title) label = `${label.slice(0, -1)}…`;
         metrics = { label, width: Math.ceil(context.measureText(label).width) + 16 };
         if (sizes.size >= 280) sizes.clear();
         sizes.set(textKey, metrics);
       }
-      const choices = labelBox(marker, width, height, metrics.width);
-      const box = choices.find(candidate => !obstacles.some(other => overlap(candidate, other))) || (marker.selected ? choices[0] : null);
+      const choices = labelBox(marker, width, height, metrics.width).filter(fitsMask);
+      const box = choices.find(candidate => !obstacles.some(other => overlap(candidate, other)));
       if (!box) continue;
       obstacles.push(box);
       drawLabel(context, box, metrics.label, styleFor(marker.report.category).color, marker.selected);
       hits.push({ box, ids: marker.ids, selected: marker.selected });
       if (!marker.selected) budget--;
     }
+    context.font = '600 12px Inter, system-ui, sans-serif';
+    for (const sample of screenSamples) {
+      if (!sample.label) continue;
+      const box = labelBox({ ...sample, size: 12 }, width, height, context.measureText(sample.label).width + 16)
+        .find(candidate => fitsMask(candidate) && !obstacles.some(other => overlap(candidate, other)));
+      if (box) drawLabel(context, box, sample.label, sample.color, false);
+    }
+    if (silhouette) context.restore();
     if (animation && markers.some(marker => marker.selected)) scene.requestRender();
   }
 
@@ -258,7 +359,7 @@ export function createNaturalEventOverlay(viewer, { reduced, now }) {
     update(groups, selectedId, show) {
       if (groups !== groupInput) {
         entries = groups.filter(group => group.position).map(group => ({
-          ...group, world: Cartesian3.fromDegrees(group.position[0], group.position[1], 1200),
+          ...group, world: Cartesian3.fromDegrees(group.position[0], group.position[1]),
         })).sort((a, b) => (priority[a.report.category] ?? 9) - (priority[b.report.category] ?? 9)
           || (b.anchor?.at ?? 0) - (a.anchor?.at ?? 0) || a.id.localeCompare(b.id));
         groupInput = groups;
@@ -271,13 +372,18 @@ export function createNaturalEventOverlay(viewer, { reduced, now }) {
       if (show && !offRender) offRender = scene.postRender.addEventListener(frame);
       if (!show && offRender) { offRender(); offRender = undefined; markers = []; }
     },
-    setTracks(id, tracks) {
+    setTracks(id, tracks, samples = [], polygons = []) {
       trackReportId = id;
       worldTracks = tracks.map(({ kind, points }) => ({ kind, vertices: trackVertices(points, scene.globe.ellipsoid) }));
       screenTracks = [];
+      worldSamples = samples;
+      screenSamples = [];
+      worldCones = polygons.map(polygon => polygon.map(ring => trackVertices(ring.map(([longitude, latitude]) => ({ longitude, latitude })), scene.globe.ellipsoid)));
+      screenCones = [];
       dirty = true;
     },
     pick(point) {
+      if (!visible || silhouette && !pointInsideSilhouette(silhouette.polygon, point.x, point.y)) return undefined;
       const matching = hits.filter(hit => hit.box
         ? point.x >= hit.box.left && point.x <= hit.box.right && point.y >= hit.box.top && point.y <= hit.box.bottom
         : Math.hypot(point.x - hit.x, point.y - hit.y) <= hit.radius);
@@ -290,7 +396,8 @@ export function createNaturalEventOverlay(viewer, { reduced, now }) {
     diagnostics() {
       return { markers: markers.length, clusters: markers.filter(marker => marker.ids.length > 1).length,
         ratio: canvas.width / (scene.canvas.clientWidth || 1),
-        positions: markers.map(({ x, y, ids }) => ({ x, y, ids })) };
+        positions: markers.map(({ x, y, ids, opacity, size }) => ({ x, y, ids, opacity, size })),
+        horizon: silhouette?.polygon.length, cone: screenCones.some(polygon => polygon.rings.length) };
     },
     destroy() {
       destroyed = true;
@@ -298,7 +405,7 @@ export function createNaturalEventOverlay(viewer, { reduced, now }) {
       canvas.remove();
       images.clear();
       sizes.clear();
-      entries = markers = hits = worldTracks = screenTracks = [];
+      entries = markers = hits = worldTracks = screenTracks = worldSamples = screenSamples = worldCones = screenCones = [];
     },
   };
 }

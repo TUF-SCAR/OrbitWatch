@@ -179,3 +179,11 @@ sudo systemd-run --unit=orbitwatch-era5-campaign --collect \
   /home/ubuntu/OrbitWatch/.venv/bin/python -u historical_weather_campaign.py \
   --expected-target 91629c91746ef7a1 --hours 36
 ```
+
+### Campaign launch and latest verified checkpoint
+
+The backend deployment for `a6dd4088b162a3cd356852274864a3aa6f9094a0` passed. The transient `orbitwatch-era5-campaign` unit then started on EC2, verified the four 2024 objects through the production backend, and resumed the saved 2000 job. Its checkpoint showed the job as accepted and the guarded end-state projections at 195,523,393 bytes of object storage and 29,387,923 bytes of PostgreSQL. The unit can continue independently of SSH. [Backend deployment](https://github.com/TUF-SCAR/OrbitWatch/actions/runs/45645125900)
+
+On November 25 at 16:15 UTC, the production database still held four unique 2024 timestamps and four matching private objects. There were zero additional publications. PostgreSQL remained at 14,773,395 bytes and total project Storage at 2,766,025 bytes. Copernicus still listed all four 2000 dates as accepted, with 223 approved snapshots remaining. SSH timed out on both checks, so the worker’s process state after that interruption could not be confirmed. The public API readiness endpoint and frontend returned HTTP 200, and a read-only database check found a five-second notification heartbeat, no worker error and 1,183 archived satellite rows. An authenticated production browser session was unavailable for the follow-up.
+
+The five targeted Time Explorer frontend checks passed with `node --test tests/historicalWeather.test.js tests/historicalSatellites.test.js` from `frontend`. They covered exact date matching, the weather field contract and the independent satellite path.

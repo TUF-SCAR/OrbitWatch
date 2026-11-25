@@ -35,7 +35,9 @@ test('Time Explorer keeps a single Viewer and the Live map preference out of tim
  assert.match(app,/onReturnLive=\{\(\)=>changeMode\('live'\)\}/);
  const load=app.slice(app.indexOf('function loadSceneTime'),app.indexOf('function timePrepared'));
  assert.doesNotMatch(load,/setSelectedCelestialBody|setLiveTrackedIds|setMapStyle|setTimeout/);
- assert.match(load,/setTimeTrackedIds\(\[\]\)/);
- assert.match(load,/setTimeShownOrbitIds\(new Set\(\)\)/);
+ assert.match(load,/const available=archive&&atEarth\?/);
+ assert.match(load,/const nextTracked=available\?archiveTrackedIds\(timeTrackedIds,available.satellites\):\[\]/);
+ assert.match(load,/setTimeTrackedIds\(nextTracked\)/);
+ assert.match(load,/setTimeShownOrbitIds\(archive\?new Set\(.+\):new Set\(\)\)/);
  assert.match(globe,/timeSatelliteSelection\(trackedIds\)/);
 });

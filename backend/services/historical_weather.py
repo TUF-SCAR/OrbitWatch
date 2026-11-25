@@ -6,6 +6,7 @@ from sqlalchemy import text
 from core.database import database_engine
 from services.historical_weather_codec import DATASET, PROVIDER, GRID, SPECS, utc, decode, sample
 from services.historical_weather_storage import SnapshotStorage, WeatherStorageUnavailable
+from services.era5_source import SEASONAL_TARGET_COUNT
 
 
 def rows(timestamp=None):
@@ -23,7 +24,7 @@ def public_metadata(row):
 
 def coverage():
     records=rows()
-    return dict(provider=PROVIDER,dataset=DATASET,planned_count=328,stored_count=len(records),
+    return dict(provider=PROVIDER,dataset=DATASET,planned_count=SEASONAL_TARGET_COUNT,stored_count=len(records),
         available_years=sorted({row['timestamp'].year for row in records}),
         last_validated_import=max((row['validated_at'] for row in records),default=None),
         snapshots=[public_metadata(row) for row in records],
@@ -54,8 +55,11 @@ def location(timestamp,latitude,longitude):
     row=records[0]; header,arrays=load_object(row['object_key'],row['sha256'])
     if utc(header['timestamp'])!=date or header['fields']!=row['variables'] or header['grid']!=row['grid']: raise ValueError('Stored index mismatch')
     values={name:sample(a,latitude,longitude) for name,a in arrays.items()}
-    if values.get('u') is not None and values.get('v') is not None: values['wind_speed']=math.hypot(values['u'],values['v'])*3.6
+    if values.get('u') is not None and values.get('v') is not None:
+        u,v=values['u'],values['v']
+        values['wind_speed']=math.hypot(u,v)*3.6
+        values['wind_direction']=(math.degrees(math.atan2(-u,-v))+360)%360 if values['wind_speed'] else None
     return dict(timestamp=date.isoformat(),latitude=latitude,longitude=longitude,values=values,
-                units={**{key:spec[0] for key,spec in SPECS.items()},'wind_speed':'km/h'},
+                units={**{key:spec[0] for key,spec in SPECS.items()},'wind_speed':'km/h','wind_direction':'°'},
                 source='ERA5 reanalysis',grid=GRID,precipitation_period_seconds=3600,
                 provenance=row['provenance'],status=row['status'])

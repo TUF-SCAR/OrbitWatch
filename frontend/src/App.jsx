@@ -44,6 +44,7 @@ import SceneBoundary from "./components/SceneBoundary.jsx";
 import { fetchSatelliteCatalog, fetchSatelliteDataStatus, fetchSatellitePosition, fetchHistoricalCoverage } from "./services/orbitwatchApi.js";
 import { SPACE_OBJECTS } from "./data/spaceObjects.js";
 import { TIME_OBJECTS, timeSatelliteAllowed } from './data/timeExplorerCatalog.js';
+import { archiveTrackedIds, historyAt, historyIndex } from './services/timeHistory.js';
 import { useHistoricalSatellites } from './services/useHistoricalSatellites.js';
 import { navigationVisibility, PRODUCT_MODES, celestialDestinationAllowed } from "./utils/navigationVisibility.js";
 import {feedStatus} from './utils/feedStatus.js';
@@ -380,14 +381,18 @@ export default function App({ currentUser, onLogout, hudActive = true, onSceneRe
   function queueSceneTime(next) {
     if(validSceneTime(next))setRequestedTime(next);
   }
-  function loadSceneTime(next=requestedTime) {
+  function loadSceneTime(next=requestedTime,{archive=false,keepWeatherPanel=false}={}) {
     if(mode!=='time'||travelLockRef.current||!validSceneTime(next))return;
-    historicalWeather.reset();
+    const available=archive&&atEarth?historyAt(historyIndex(historyCoverage,historicalWeather.coverage),next):null;
+    const nextTracked=available?archiveTrackedIds(timeTrackedIds,available.satellites):[];
+    historicalWeather.reset(available?.weather);
     const id=timeRequestRef.current.id+1;
     timeRequestRef.current={id,timestamp:next.getTime()};setTimeLoadId(id);
     if(atEarth)releaseCamera();else setCameraFollowing(false);
-    setLayers([]);setSelectedId(null);setTelemetry(null);setTelemetryError(false);setOrbitInfo({});
-    setTimeTrackedIds([]);setTimeShownOrbitIds(new Set());setSelectedEventId(null);locationWeather.clear();
+    setLayers(keepWeatherPanel&&available?.weather?['weather']:[]);setSelectedId(null);setTelemetry(null);setTelemetryError(false);setOrbitInfo({});
+    setTimeTrackedIds(nextTracked);
+    setTimeShownOrbitIds(archive?new Set(nextTracked.filter(id=>!timeTrackedIds.length||timeShownOrbitIds.has(id))):new Set());
+    setSelectedEventId(null);locationWeather.clear();
     setCelestialMarker(null);setLimitMessage('');setDateNotice(prelaunchNotice(TIME_OBJECTS,next));
     setSelectedTime(next);setRequestedTime(next);setTimeIssue(phone&&sceneUnavailable?'The 3D scene is unavailable. Retry the scene to display this date.':'');setTimeBusy(!(phone&&sceneUnavailable));
   }
@@ -518,9 +523,9 @@ export default function App({ currentUser, onLogout, hudActive = true, onSceneRe
         <SystemMenu mode={mode} open={menu === "system"} activeBodyId={selectedCelestialBody} onSelectBody={(id)=>selectCelestialBody(id)} onClose={() => closeLayer("system")} />
         <MapSettings mode={mode} open={menu === "map"} mapStyle={activeMapStyle} onMapStyleChange={chooseMap} labelsEnabled={activeLabelsEnabled} onLabelsChange={mode==='time'?setTimeLabelsEnabled:setLabelsEnabled} onClose={() => closeLayer("map")} mapStatus={mapStatus} />
         {locationWeather.selection&&<LocationWeatherCard inactive={activeInspector!=='weather'} onActivate={()=>setActiveInspector('weather')} weather={locationWeather} onSaveLocation={currentUser?point=>{account.owner.startNew(point);locationWeather.clear();setProfileTab('skywatch');setSkywatchTab('locations');openLayer('profile');}:undefined}/>}
-        <HistoricalWeatherPanel open={historicalWeatherActive&&layers.includes('weather')} onClose={()=>closeLayer('weather')} weather={historicalWeather} time={selectedTime} onNearest={loadSceneTime} onViewCenter={()=>{const point=globeRef.current?.weatherViewCenter();if(point)selectHistoricalLocation(point);}}/>
+        <HistoricalWeatherPanel open={historicalWeatherActive&&layers.includes('weather')} onClose={()=>closeLayer('weather')} weather={historicalWeather} time={selectedTime} onNearest={date=>loadSceneTime(date,{archive:true,keepWeatherPanel:true})} onViewCenter={()=>{const point=globeRef.current?.weatherViewCenter();if(point)selectHistoricalLocation(point);}}/>
         <HistoricalWeatherInspector inactive={activeInspector!=='weather'} onActivate={()=>setActiveInspector('weather')} weather={historicalWeather} time={selectedTime}/>
-        {historicalWeatherActive&&historicalWeather.field&&!hidden&&!layers.includes('weather')&&<aside className="weather-legend" aria-label="Historical weather legend"><HistoricalWeatherLegend weather={historicalWeather} time={selectedTime}/><small>ERA5 reanalysis · {historicalWeather.windEnabled?'Wind Flow ON · ':''}Modern reference basemap.</small></aside>}
+        {historicalWeatherActive&&historicalWeather.field&&!hidden&&!layers.includes('weather')&&<aside className="weather-legend time-weather-legend" aria-label="Historical weather legend"><HistoricalWeatherLegend weather={historicalWeather} time={selectedTime}/><small>ERA5 reanalysis · {historicalWeather.windEnabled?'Wind Flow ON · ':''}Modern reference basemap.</small></aside>}
         {weatherActive && eventsEnabled && !layers.length && <NaturalEventSummary report={activeEvent} group={activeEventGroup} cluster={activeEvent ? null : eventCluster} focused={Boolean(eventFocus)} onDetails={() => { setWeatherTab("events"); openLayer("weather"); }} onFocus={() => focusEvent(activeEvent.id)} onReturn={returnFromEvent} onClose={dismissEvent} />}
         <WeatherPanel onFocusEvent={focusEvent} onReturnEvent={returnFromEvent} eventArchive={eventArchive} onEventArchive={value => { dismissEvent(); setEventArchive(value); }} eventForecast={eventForecast} onEventForecast={setEventForecast} eventCone={eventCone} onEventCone={setEventCone} eventCluster={eventCluster} onClearEventCluster={() => setEventCluster(null)} labelWeatherNote={labelWeatherNote} locationWeather={locationWeather} windEnabled={windEnabled} onWindEnabled={setWindEnabled} windField={selectedWindField} cameraAltitudeKm={viewTelemetry.cameraAltitudeKm} observedClouds={observedClouds} tab={weatherTab} onTab={setWeatherTab} events={naturalEvents} eventsEnabled={eventsEnabled} onEventsEnabled={value => { setEventsEnabled(value); if (!value) dismissEvent(); }} eventCategory={eventCategory} onEventCategory={value => { setEventCategory(value); dismissEvent(); }} selectedEventId={selectedEventId} onEventSelect={setSelectedEventId} open={weatherActive&&layers.includes('weather')} onClose={()=>closeLayer('weather')} weather={{...weather,field:selectedWeatherField,bundle:weather.field}} variable={weatherVariable} onVariable={setWeatherVariable} enabled={weatherEnabled} onEnabled={setWeatherEnabled} opacity={weatherOpacity} onOpacity={setWeatherOpacity} compatible={weatherCompatible} onCompatibleMap={()=>{setMapStyle('esri');setMapRetryNonce(v=>v+1);}} onRefresh={refreshWeather} refreshCooling={weatherCooling} onViewCenter={()=>{const point=globeRef.current?.weatherViewCenter();if(point)selectWeatherLocation(point);else locationWeather.clear();}}/>
         {weatherActive&&!eventFocus&&weatherEnabled&&weatherCompatible&&weatherVariable==='observedClouds'&&!hidden&&(!locationWeather.selection||phone)&&!layers.includes('weather')&&!layers.includes('explorer')&&<ObservedCloudLegend clouds={observedClouds} labelWeatherNote={labelWeatherNote}/>}
@@ -540,7 +545,7 @@ export default function App({ currentUser, onLogout, hudActive = true, onSceneRe
         {atEarth && mode === "live" && <CinematicStage active={hudActive} loaderAnchor="refresh" zIndex={42}><button type="button" className={`manual-refresh ${cooldown || refreshBusy ? "is-cooling" : ""}`} disabled={cooldown || refreshBusy} onClick={refresh} title="Refresh satellite positions · 20 second cooldown" aria-label="Refresh satellite positions" aria-busy={refreshBusy}><RefreshCcw size={20} /><span>{refreshBusy ? "SYNCING" : cooldown ? "COOLDOWN" : "SYNC"}</span></button></CinematicStage>}
       </div>
       {mode === "live" && !presentation && <CinematicStage active={hudActive} side="bottom" loaderAnchor="bottom" zIndex={32}><LiveDock bodyId={selectedCelestialBody} travel={travel} detailState={detailState} selectedObject={selectedObject} viewTelemetry={viewTelemetry} trackedCount={activeTrackedIds.length} allOrbitsVisible={allOrbitsVisible} onToggleAllOrbits={() => setShownOrbitIds(allOrbitsVisible ? new Set() : new Set(activeTrackedIds))} feedAge={feedAge} feedState={apiState} onOpenBody={() => { setInspectedBody(selectedCelestialBody); openLayer("body"); }} /></CinematicStage>}
-      {mode==='time'&&!presentation&&<div className="time-dock-owner"><TimeDock coverage={historyCoverage} historicalData={historicalData} onRetryHistory={()=>setHistoryRetry(v=>v+1)} selectedTime={selectedTime} draftTime={requestedTime} onTimeChange={queueSceneTime} onLoad={loadSceneTime} busy={timeBusy} bodyId={selectedCelestialBody} onReturnLive={()=>changeMode('live')} trackedCount={timeTrackedIds.length} maxTracked={TIME_OBJECT_LIMIT} imageryStatus={atEarth?mapStatus:null} preparationIssue={timeIssue} onRetryScene={()=>loadSceneTime(selectedTime)} onRetryImagery={()=>setMapRetryNonce(v=>v+1)} notice={dateNotice} onDismissNotice={()=>setDateNotice('')}/></div>}
+      {mode==='time'&&!presentation&&<div className="time-dock-owner"><TimeDock coverage={historyCoverage} weatherCoverage={historicalWeather.coverage} weatherError={historicalWeather.coverageError} historicalData={historicalData} onRetryHistory={()=>setHistoryRetry(v=>v+1)} selectedTime={selectedTime} draftTime={requestedTime} onTimeChange={queueSceneTime} onLoad={loadSceneTime} busy={timeBusy} bodyId={selectedCelestialBody} onReturnLive={()=>changeMode('live')} trackedCount={timeTrackedIds.length} maxTracked={TIME_OBJECT_LIMIT} imageryStatus={atEarth?mapStatus:null} preparationIssue={timeIssue} onRetryScene={()=>loadSceneTime(selectedTime)} onRetryImagery={()=>setMapRetryNonce(v=>v+1)} notice={dateNotice} onDismissNotice={()=>setDateNotice('')}/></div>}
       <AnimatePresence>{mode === "time" && timeBusy && <TimePreparation key="time-preparation" time={selectedTime} />}</AnimatePresence>
       {travel && <span className="travel-mark">ORBITWATCH</span>}
       {presentation && <button type="button" className="restore-interface" onClick={() => setPresentation(false)}>RESTORE INTERFACE · P / ESC</button>}

@@ -1,5 +1,5 @@
 """Validate CDS GRIB messages; never used by ordinary API requests."""
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from hashlib import sha256
 from pathlib import Path
 import numpy as np
@@ -11,10 +11,15 @@ PARAMS = {167:('temperature','K', 'heightAboveGround',2), 168:('dewpoint','K','h
 VARIABLES = ['2m_temperature','2m_dewpoint_temperature','total_cloud_cover','total_precipitation',
              'mean_sea_level_pressure','10m_u_component_of_wind','10m_v_component_of_wind']
 MAX_SOURCE = 64*1024*1024
+SEASONAL_TARGET_COUNT = 227
+SEASONAL_PHASES = (
+    (2024, 2000, 1970),
+    (1980, 1990, 2010, 2020),
+    (1975, 1985, 1995, 2005, 2015, 2025),
+)
 
 
 def request_for_year(year, now=None):
-    from datetime import timedelta
     # Final ERA5, not preliminary ERA5T. Three-month lag is deliberately conservative.
     now = now or datetime.now(timezone.utc)
     if year not in range(1945,2027): raise ValueError('Year outside planned archive')
@@ -24,6 +29,36 @@ def request_for_year(year, now=None):
     return dict(product_type=['reanalysis'], variable=VARIABLES, year=[str(year)],
                 month=[f'{d.month:02}' for d in dates], day=['15'], time=['12:00'],
                 grid=[1,1], data_format='grib', download_format='unarchived')
+
+
+def seasonal_progress(stored, manifests, now=None):
+    """Ordered coverage inventory. Planning never submits or resumes a CDS job."""
+    priorities = {year for phase in SEASONAL_PHASES for year in phase}
+    phases = (*SEASONAL_PHASES, tuple(year for year in range(1970, 2027) if year not in priorities))
+    recorded = {check_seasonal(item) for item in stored}
+    jobs = {}
+    for manifest in manifests:
+        if manifest.get('dataset') != DATASET:
+            continue
+        request = manifest.get('request', {})
+        for month in request.get('month', []):
+            stamp = check_seasonal(f"{request['year'][0]}-{month}-15T12:00:00Z")
+            jobs[stamp] = manifest.get('state', 'unknown')
+    output = []
+    for phase, years in enumerate(phases, 1):
+        for year in years:
+            try:
+                request = request_for_year(year, now)
+            except ValueError:
+                continue
+            seasons = []
+            for month in request['month']:
+                if year == 2026 and month == '10':
+                    continue  # This campaign's target ends at July 2026.
+                stamp = check_seasonal(f'{year}-{month}-15T12:00:00Z')
+                seasons.append({'timestamp': stamp.isoformat(), 'state': 'stored' if stamp in recorded else jobs.get(stamp, 'missing')})
+            output.append({'phase': min(phase, 3), 'year': year, 'seasons': seasons})
+    return output
 
 
 def canonical_grid(latitudes, longitudes, values):
@@ -97,15 +132,18 @@ def read_grib(path, manifest):
                 except (ValueError,ec.CodesInternalError):
                     results[valid]['failures'][name]='Source variable validation failed'
             finally: ec.codes_release(handle)
+    validated = {}
     for date,result in results.items():
         f=result['fields']
         if 'temperature' in f and 'dewpoint' in f:
             f['humidity']=relative_humidity(f['temperature']+273.15,f['dewpoint']+273.15)
-        if not f: raise ValueError('Snapshot has no valid variables')
+        if not f: continue
         result['provenance']=dict(dataset=DATASET, product='reanalysis', source_sha256=checksum,
             job_id=manifest['job_id'], source_url='https://cds.climate.copernicus.eu/datasets/'+DATASET,
             licence='CC-BY; Copernicus Climate Change Service / ECMWF',
             grid_method='CDS MIR 1-degree regridding or integer point decimation of regular 0.25-degree nodes; no temporal interpolation',
             humidity_method='ECMWF Tetens over liquid water; bounded 0–100%; es=611.21 exp(17.502*(T-273.16)/(T-32.19))',
             failures=result['failures'], source_grid_resolution=request.get('grid', [.25,.25]))
-    return results
+        validated[date] = result
+    if not validated: raise ValueError('Source contains no valid snapshots')
+    return validated

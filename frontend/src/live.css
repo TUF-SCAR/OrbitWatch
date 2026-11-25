@@ -482,6 +482,21 @@ input[type="checkbox"] { accent-color:#8de8fa; width:16px; height:16px; cursor:p
 .scene-picker__history button { width:100%; display:flex; justify-content:space-between; align-items:center; gap:8px; padding:8px; }
 .scene-picker__history strong { font-size:12px; font-weight:500; }
 .scene-picker__history span { color:#9daac0; font-size:10px; }
+.scene-picker__history { margin:0 0 16px; padding:10px; border:1px solid #a99acb38; border-radius:12px; background:#10182a; }
+.scene-picker__history button { min-height:44px; text-align:left; }
+.scene-picker__history button > span { text-align:right; }
+.scene-picker__history small { display:block; margin-top:4px; color:#aab7cb; font-size:11px; }
+.scene-picker__history .scene-picker__featured { border-color:#b8a7ff55; background:#262340; }
+.scene-picker__history-year { margin:10px 0 4px; }
+.scene-picker__availability { color:#cbd7f2; font-size:12px; margin-top:-8px; }
+.scene-picker__days [data-history] { position:relative; }
+.scene-picker__days [data-history]::after { content:''; position:absolute; width:4px; height:4px; border-radius:50%; bottom:4px; left:calc(50% - 2px); background:#a99aff; }
+.scene-picker__days [data-history='weather']::after { background:#7cdecf; }
+.scene-picker__days [data-history='both']::after { background:#f8cd85; }
+.historical-season-switch { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:5px; margin-block:10px; }
+.historical-season-switch button { min-height:44px; }
+.historical-season-switch button[aria-pressed='true'] { color:#eee8ff; background:#b8a7ff24; border-color:#b8a7ff65; }
+.historical-weather-panel .historical-weather-here { flex-shrink:0; width:100%; }
 .scene-picker footer { display:flex; justify-content:flex-end; gap:8px; margin-top:18px; }
 .scene-picker footer button { padding:0 14px; }
 .scene-picker .scene-picker__apply { background:#c1b0ff; color:#171127; font-weight:600; }

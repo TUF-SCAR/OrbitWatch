@@ -27,6 +27,6 @@ test('new timestamp synchronously fences old planes; historical UI has no curren
   const hook=fs.readFileSync(new URL('../src/utils/useHistoricalWeather.js',import.meta.url),'utf8');
   assert.match(hook,/Date\.parse\(stored\?\.timestamp\)===stamp/);assert.match(hook,/controller\.abort\(\)/);
   const panel=fs.readFileSync(new URL('../src/components/HistoricalWeatherPanel.jsx',import.meta.url),'utf8');
-  assert.match(panel,/VIEW NEAREST AVAILABLE WEATHER SNAPSHOT/);assert.match(panel,/Precipitation during the preceding hour/);
+  assert.match(panel,/View nearest stored snapshot/);assert.match(panel,/Precipitation during the preceding hour/);
   assert.match(panel,/names only/);assert.doesNotMatch(panel,/Open-Meteo|NATURAL EVENTS|GFS/);
 });

@@ -1,6 +1,6 @@
 import {useEffect,useMemo,useState} from 'react';
 import {fetchHistoricalWeatherCoverage,fetchHistoricalWeatherSnapshot,fetchHistoricalWeatherLocation} from '../services/orbitwatchApi.js';
-import {exactWeatherMetadata,nearestWeatherMetadata,historicalField,validateHistoricalSnapshot} from '../services/historicalWeather.js';
+import {exactWeatherMetadata,nearestWeatherMetadata,historicalField,validateHistoricalSnapshot,hasHistoricalVariable,HISTORICAL_FIELDS} from '../services/historicalWeather.js';
 
 export function useHistoricalWeather(active,time){
   const stamp=time.getTime();
@@ -39,7 +39,15 @@ export function useHistoricalWeather(active,time){
   },[active,selection,metadata,stamp]);
   const field=useMemo(()=>historicalField(snapshot,variable),[snapshot,variable]);
   const wind=useMemo(()=>historicalField(snapshot,'wind'),[snapshot]);
-  function reset(){setEnabled(false);setWindEnabled(false);setStored(null);setFailure(null);setSelection(null);setLocation(null);}
+  function reset(nextMetadata=null){
+    setEnabled(Boolean(nextMetadata));
+    if(!hasHistoricalVariable(nextMetadata,'wind'))setWindEnabled(false);
+    if(nextMetadata&&!hasHistoricalVariable(nextMetadata,variable)) {
+      const available=Object.keys(HISTORICAL_FIELDS).find(key=>hasHistoricalVariable(nextMetadata,key));
+      if(available)setVariable(available);
+    }
+    setStored(null);setFailure(null);setSelection(null);setLocation(null);
+  }
   return {coverage,coverageError,metadata,nearest,enabled,setEnabled,windEnabled,setWindEnabled,variable,setVariable,opacity,setOpacity,
     field,wind,snapshot,error:failure?.stamp===stamp?failure.message:'',
     selection,select:point=>{setLocation(null);setSelection(point?{stamp,point}:null);},

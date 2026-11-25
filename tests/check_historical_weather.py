@@ -17,7 +17,7 @@ ROOT=Path(__file__).resolve().parents[1];sys.path.insert(0,str(ROOT/'backend'))
 os.environ['DATABASE_URL']='sqlite://'
 os.environ['JWT_SECRET_KEY']='isolated-weather-test-key'
 from services.historical_weather_codec import *
-from services.era5_source import canonical_grid,request_for_year,read_grib,PARAMS,VARIABLES
+from services.era5_source import canonical_grid,request_for_year,read_grib,seasonal_progress,PARAMS,VARIABLES
 from services.historical_weather_storage import SnapshotStorage,WeatherStorageUnavailable
 
 STAMP=datetime(1945,1,15,12,tzinfo=timezone.utc)
@@ -60,6 +60,13 @@ class ScientificWeather(unittest.TestCase):
         self.assertAlmostEqual(relative_humidity(293.15,293.15),100)
         self.assertAlmostEqual(relative_humidity(293.15,283.15),52.50,delta=.05)
         self.assertAlmostEqual(math.hypot(3,4)*3.6,18)
+    def test_campaign_phase_order_and_pending_seasons(self):
+        now=datetime(2026,11,25,tzinfo=timezone.utc)
+        manifest={'dataset':DATASET,'request':{'year':['2024'],'month':['04','07']},'state':'queued'}
+        plan=seasonal_progress(['2024-01-15T12:00:00Z'],[manifest],now)
+        self.assertEqual([item['year'] for item in plan[:7]],[2024,2000,1970,1980,1990,2010,2020])
+        self.assertEqual([item['state'] for item in plan[0]['seasons']],['stored','queued','queued','missing'])
+        self.assertEqual(sum(len(item['seasons']) for item in plan),227)
     def test_roundtrip_masks_quantization_and_corruption(self):
         fields=fixture_fields();fields['temperature'][0]=np.nan;fields['temperature'][10]=20.006
         blob,h=encode(STAMP,fields,PROVENANCE);header,decoded=decode(blob,sha256(blob).hexdigest())
@@ -96,6 +103,8 @@ class ScientificWeather(unittest.TestCase):
             manifest=grib_fixture(path,'clouds');result=read_grib(path,manifest)[STAMP]
             self.assertNotIn('clouds',result['fields']);self.assertIn('temperature',result['fields'])
             self.assertIn('clouds',result['failures'])
+            manifest['request']['month']=['01','04']
+            self.assertEqual(list(read_grib(path,manifest)),[STAMP], 'missing season preserves independently validated January')
     def test_storage_integrity_and_limits(self):
         store=object.__new__(SnapshotStorage);blob,h=encode(STAMP,fixture_fields(),PROVENANCE)
         key=f'era5/v1/19450115T120000Z/{sha256(blob).hexdigest()}.owwx'
@@ -112,13 +121,15 @@ class ScientificWeather(unittest.TestCase):
     def test_cds_grouping_resume_and_no_duplicate_submission(self):
         from unittest.mock import Mock
         import historical_weather_import as importer
-        with tempfile.TemporaryDirectory() as temp,patch.object(importer,'ARCHIVE',Path(temp)),patch.object(importer,'cds_settings',return_value=('https://cds.climate.copernicus.eu/api','ISOLATED')),patch.object(importer,'refresh_owner',return_value=nullcontext(True)),patch.object(importer.budget,'attempt',side_effect=lambda *args:nullcontext()),patch('ecmwf.datastores.Client') as client:
+        engine=Mock()
+        engine.begin.return_value=nullcontext(Mock())
+        with tempfile.TemporaryDirectory() as temp,patch.object(importer,'ARCHIVE',Path(temp)),patch.object(importer,'cds_settings',return_value=('https://cds.climate.copernicus.eu/api','ISOLATED')),patch.object(importer,'refresh_owner',return_value=nullcontext(True)),patch.object(importer.budget,'attempt',side_effect=lambda *args:nullcontext()),patch.object(importer,'target',return_value=(engine,'ISOLATED')),patch.object(importer,'measurement',return_value={'database_bytes':14_000_000,'storage':{'bytes':0}}),patch.object(importer,'stored_timestamps',return_value=[STAMP]),patch.object(importer,'SnapshotStorage'),patch('ecmwf.datastores.Client') as client:
             remote=Mock(request_id='ISOLATED-JOB',status='accepted',results_ready=False)
             client.return_value.submit.return_value=remote;client.return_value.get_remote.return_value=remote
             a=importer.download(1945);b=importer.download(1945)
             self.assertEqual(a['job_id'],b['job_id']);self.assertEqual(client.return_value.submit.call_count,1)
             self.assertEqual(client.return_value.get_remote.call_count,1)
-            self.assertEqual(a['request']['month'],['01','04','07','10'])
+            self.assertEqual(a['request']['month'],['04','07','10'])
             manifest=next(Path(temp).glob('*.json'));value=json.loads(manifest.read_text(encoding='utf8'));value['state']='submission_uncertain';manifest.write_text(json.dumps(value),encoding='utf8')
             with self.assertRaises(ValueError):importer.download(1945)
             self.assertEqual(client.return_value.submit.call_count,1)
@@ -135,7 +146,7 @@ class HistoricalWeatherAPI(unittest.TestCase):
         self.assertEqual(self.client.get('/api/historical/weather/coverage').status_code,401)
         self.app.dependency_overrides[self.auth]=lambda:object()
         with patch('services.historical_weather.rows',return_value=[]),patch('services.historical_weather.SnapshotStorage') as storage:
-            c=self.client.get('/api/historical/weather/coverage');self.assertEqual(c.json()['stored_count'],0);self.assertEqual(c.json()['planned_count'],328)
+            c=self.client.get('/api/historical/weather/coverage');self.assertEqual(c.json()['stored_count'],0);self.assertEqual(c.json()['planned_count'],227)
             for endpoint in ['snapshot','location']:
                 suffix='&latitude=0&longitude=0' if endpoint=='location' else ''
                 self.assertEqual(self.client.get('/api/historical/weather/'+endpoint+'?timestamp=1945-01-16T12:00:00Z'+suffix).status_code,404)
@@ -149,6 +160,7 @@ class HistoricalWeatherAPI(unittest.TestCase):
         with patch.object(archive,'rows',return_value=[row]),patch.object(archive,'load_object',return_value=decode(blob)):
             r=self.client.get('/api/historical/weather/snapshot?timestamp=1945-01-15T12:00:00Z');self.assertEqual(r.status_code,200);self.assertEqual(r.json()['fields']['temperature']['values'][0],20)
             r=self.client.get('/api/historical/weather/location?timestamp=1945-01-15T12:00:00Z&latitude=90&longitude=180');self.assertEqual(r.json()['values']['wind_speed'],18)
+            self.assertAlmostEqual(r.json()['values']['wind_direction'],216.869898,places=5)
             self.assertEqual(r.json()['precipitation_period_seconds'],3600)
         with patch.object(archive,'rows',return_value=[row]),patch.object(archive,'load_object',side_effect=WeatherStorageUnavailable()):
             self.assertEqual(self.client.get('/api/historical/weather/snapshot?timestamp=1945-01-15T12:00:00Z').status_code,503)

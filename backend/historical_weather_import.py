@@ -1,6 +1,6 @@
 """Explicit bounded ERA5 operations. No startup/download side effects.
 
-status; migrate --expected-target FP; download --year YEAR (submit/poll once,
+status; plan; migrate --expected-target FP; download --year YEAR (submit/poll once,
 rerun to resume); inspect FILE; import FILE --expected-target FP.
 """
 import argparse
@@ -15,8 +15,9 @@ from sqlalchemy import create_engine, text, inspect
 from sqlalchemy.engine import make_url
 from core.config import required
 from services.historical_weather_codec import DATASET, PROVIDER, GRID, SPECS, encode, decode, MAX_BLOB
-from services.era5_source import request_for_year, read_grib, MAX_SOURCE
+from services.era5_source import request_for_year, read_grib, seasonal_progress, MAX_SOURCE, SEASONAL_TARGET_COUNT
 from services.historical_weather_storage import SnapshotStorage, BUCKET
+from services.historical_capacity import require_capacity
 from services.providers.budget import ROOT, refresh_owner, budget
 
 ARCHIVE=ROOT/'era5'
@@ -46,7 +47,7 @@ def measurement(connection):
 
 def capacity(measured,blob_bytes=MAX_BLOB):
     if measured['storage'].get('unknown_size_objects',0): raise ValueError('Storage usage cannot be established')
-    if measured['database_bytes']+1_000_000>=300_000_000: raise ValueError('Normal PostgreSQL reserve at risk')
+    require_capacity(measured, 1_000_000)
     if measured['storage']['bytes']+blob_bytes>=750_000_000: raise ValueError('Storage reserve at risk')
 
 
@@ -83,17 +84,53 @@ def cds_settings():
     return url,key
 
 
+def manifests():
+    return [(path, json.loads(path.read_text(encoding='utf8'))) for path in sorted(ARCHIVE.glob('*.json'))]
+
+
+def stored_timestamps(db):
+    return db.scalars(text('SELECT DISTINCT timestamp FROM historical_weather_snapshots ORDER BY timestamp')).all()
+
+
+def inventory(include_plan=False):
+    engine,fp=target()
+    try:
+        with engine.begin() as db:
+            db.execute(text('SET TRANSACTION READ ONLY'))
+            usage=measurement(db)
+            dates=stored_timestamps(db)
+            bucket=bool(db.scalar(text('SELECT 1 FROM storage.buckets WHERE id=:bucket AND NOT public'),{'bucket':BUCKET}))
+        result=dict(target_fingerprint=fp,usage=usage,private_weather_bucket=bucket,
+                    stored_timestamps=[date.isoformat() for date in dates])
+        try:cds_settings();result['cds_configured']=True
+        except ValueError:result['cds_configured']=False
+        result['storage_configured']=bool(os.getenv('SUPABASE_URL') and (os.getenv('SUPABASE_SERVICE_ROLE_KEY') or os.getenv('SUPABASE_SECRET_KEY')))
+        if include_plan:
+            result['planned_count']=SEASONAL_TARGET_COUNT
+            result['years']=seasonal_progress(dates,[manifest for _,manifest in manifests()])
+        return result
+    finally:engine.dispose()
+
+
 def download(year):
     """One grouped year/request; persistent job identity; never wait on CDS queue."""
     from ecmwf.datastores import Client
     import httpx
-    url,key=cds_settings()
     request=request_for_year(year)
+    engine,_=target()
+    try:
+        with engine.begin() as db:
+            db.execute(text('SET TRANSACTION READ ONLY'))
+            capacity(measurement(db), len(request['month'])*MAX_BLOB)
+            stored={f'{date.month:02}' for date in stored_timestamps(db) if date.year==year}
+    finally:engine.dispose()
+    request['month']=[month for month in request['month'] if month not in stored]
+    if not request['month']:return dict(state='already_stored',year=year)
     ARCHIVE.mkdir(parents=True,exist_ok=True)
     if sum(f.stat().st_size for f in ARCHIVE.glob('*.grib*'))+MAX_SOURCE>256*1024*1024 or shutil.disk_usage(ARCHIVE).free<MAX_SOURCE*3: raise ValueError('Local pilot quota/disk limit')
     with refresh_owner('era5-import.lock') as owned:
         if not owned: raise ValueError('Another ERA5 operation is running')
-        saved=[(path,json.loads(path.read_text(encoding='utf8'))) for path in sorted(ARCHIVE.glob('*.json'))]
+        saved=manifests()
         saved=[(path,m) for path,m in saved if m.get('dataset')==DATASET and m.get('request',{}).get('year')==[str(year)]]
         for path,m in saved:
             if m.get('state')=='downloaded':
@@ -115,6 +152,8 @@ def download(year):
             if not file.is_file() or sha256(file.read_bytes()).hexdigest()!=manifest.get('source_sha256'): raise ValueError('Saved download failed checksum')
             return manifest
         if manifest.get('state') in ('submission_uncertain','failed'): raise ValueError('Inspect saved job before any retry; automatic resubmission prohibited')
+        url,key=cds_settings()
+        SnapshotStorage()  # Validate configured Storage ownership before asking CDS for data.
         client=Client(url=url,key=key,timeout=30,maximum_tries=1)
         with budget.attempt('cds-era5',60,1):
             if not manifest.get('job_id'):
@@ -166,6 +205,9 @@ def prepare(path):
 def publish(path,expected,storage=None):
     prepared=prepare(path)  # Entire source validates BEFORE creating/uploading anything.
     if len(prepared)>4: raise ValueError('Import batch cap is four snapshots')
+    request=json.loads(Path(path).with_suffix('.json').read_text(encoding='utf8'))['request']
+    imported={f'{item[0].month:02}' for item in prepared}
+    missing=[f"{request['year'][0]}-{month}-15T12:00:00Z" for month in request['month'] if month not in imported]
     engine,fp=target(expected)
     try:
         with refresh_owner('era5-import.lock') as owned:
@@ -190,12 +232,12 @@ def publish(path,expected,storage=None):
                         dict(date=date,version=version,provider=PROVIDER,dataset=DATASET,variables=json.dumps(header['fields']),grid=json.dumps(GRID),key=key,checksum=checksum,size=len(blob),status=status,provenance=json.dumps(header['provenance'])))
                     inserted+=1
             with engine.connect() as db: after=measurement(db)
-            return dict(target_fingerprint=fp,inserted=inserted,before=before,after=after)
+            return dict(target_fingerprint=fp,inserted=inserted,before=before,after=after,unvalidated_timestamps=missing)
     finally:engine.dispose()
 
 
 def main():
-    parser=argparse.ArgumentParser(description=__doc__);parser.add_argument('command',choices=['status','migrate','download','inspect','import']);parser.add_argument('--year',type=int);parser.add_argument('--file',type=Path);parser.add_argument('--expected-target')
+    parser=argparse.ArgumentParser(description=__doc__);parser.add_argument('command',choices=['status','plan','migrate','download','inspect','import']);parser.add_argument('--year',type=int);parser.add_argument('--file',type=Path);parser.add_argument('--expected-target')
     args=parser.parse_args()
     try:
         if args.command=='download': result=download(args.year)
@@ -206,14 +248,7 @@ def main():
             if args.expected_target!=EXPECTED: raise ValueError('Explicit verified target required')
             result=publish(args.file,args.expected_target)
         elif args.command=='inspect': result=[dict(timestamp=x[0].isoformat(),bytes=len(x[1]),variables=x[2]['fields'],status=x[5]) for x in prepare(args.file)]
-        else:
-            engine,fp=target()
-            try:
-                with engine.connect() as db: result=dict(target_fingerprint=fp,usage=measurement(db))
-                try:cds_settings();result['cds_configured']=True
-                except ValueError:result['cds_configured']=False
-                result['storage_configured']=bool(os.getenv('SUPABASE_URL') and (os.getenv('SUPABASE_SERVICE_ROLE_KEY') or os.getenv('SUPABASE_SECRET_KEY')))
-            finally:engine.dispose()
+        else: result=inventory(include_plan=args.command=='plan')
         print(json.dumps(result,default=str,indent=2))
     except Exception as error:
         print(json.dumps(dict(state='failed',error_type=type(error).__name__,action='Check provider credentials, accepted dataset terms, saved manifest, scientific validation and capacity. No automatic retries.')))

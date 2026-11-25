@@ -72,3 +72,54 @@ The deployed historical and weather routes returned JSON 401 without a session. 
 | Browser with production orbital response replay | 390×844 touch and 1280×900 desktop. Chose the featured date, loaded the four default archived tracks, confirmed zero weather snapshot requests at the uncovered instant, and returned to Live. The phone also switched to Time Explorer with the Live Natural Events layer enabled and verified its canvas was hidden. |
 
 The 844×390 emulated phone exercised labeled weather fixtures. January → April made an exact new snapshot request, the fields and wind controls could be changed, and the inspector requested April values at the selected view center. The scale remained visible with clearance above the date dock. The isolated section is a UI and renderer test. See `.setup-cache/time-explorer-evidence` for the browser captures. Physical Android performance remains unmeasured.
+
+## Batch C.2 credential validation and seasonal pilot
+
+Both requested credentials were present in the local `backend/.env`. The existing database connection matched the importer’s production fingerprint. The project URL, absent from the local file, was derived from the verified Supabase pooler username and supplied only to the local validation and import process. Supabase Storage returned HTTP 200 to an authenticated read-only bucket listing. Copernicus authenticated the token and reported an accepted CC BY licence. The local environment file was read without edits.
+
+The Storage adapter now sends a modern Supabase backend secret in `apikey`. Legacy `service_role` JWTs retain both `apikey` and Bearer authentication. Public key formats and legacy JWTs without the service role are rejected locally. Supabase verifies the credential. Both header forms returned HTTP 200 for the modern key on the bucket-listing endpoint tested, so the change follows Supabase’s documented API-key format rather than addressing an observed gateway rejection. The focused regression failed against the original code on the modern Bearer header and public key acceptance and passed with the corrected adapter. [Supabase API-key documentation](https://supabase.com/docs/guides/getting-started/api-keys)
+
+### AWS and production baseline
+
+The deployed workflow targets the existing EC2 instance in `ap-southeast-2` through Systems Manager. The local AWS SDK credential chain returned no identity, the console required sign-in, and the existing SSH path timed out on port 22. The downloaded auto-deploy bundle contained setup instructions and workflow files. No encrypted secret transport was available. The production environment file was left untouched and the credential-provisioning step remains blocked. An authorized AWS session with access to the existing instance and a protected secret-delivery path is required.
+
+FastAPI liveness and database readiness both returned HTTP 200. The notification worker’s production heartbeat was 14 seconds old and had no recorded error. The production frontend returned HTTP 200. The deployed historical coverage endpoint returned HTTP 401 without a session. The genuine historical scene and authenticated production Live weather and events checks require an authorized session.
+
+| Production measurement | Before | After local validation and CDS submission |
+| --- | ---: | ---: |
+| PostgreSQL database | 14,404,755 bytes | 14,404,755 bytes |
+| Nominal headroom under 500 MB | 485,595,245 bytes | 485,595,245 bytes |
+| Historical orbital elements | 1,183 | 1,183 |
+| Historical weather index | Present, zero snapshots | Present, zero snapshots |
+| Historical weather bucket | Absent | Absent |
+| Supabase Storage | 0 objects, 0 bytes | 0 objects, 0 bytes |
+
+### CDS job and Time Explorer
+
+The local manifest directory and CDS account jobs were empty at preflight. The existing importer submitted and resumed one grouped ERA5 request for all four 2024 seasons. CDS completed it and returned a 3,651,984-byte GRIB file. The local manifest `backend/.runtime/era5/a5d2212b29e54b1fad536d0f.json` retains the exact job ID, download checksum and request. The persistent provider budget deferred one poll until the cooldown ended. No later year was requested. ecCodes 2.50.0 verified final ERA5 origin and preceding-hour precipitation. All four encoded snapshots contained temperature, dewpoint, cloud fraction, precipitation, humidity, sea-level pressure and both wind components, with zero missing grid nodes in every field. [ERA5 Single Levels dataset](https://cds.climate.copernicus.eu/datasets/reanalysis-era5-single-levels?tab=overview)
+
+| Source timestamp | Local snapshot size |
+| --- | ---: |
+| 2024-01-15 12:00 UTC | 691,333 bytes |
+| 2024-04-15 12:00 UTC | 693,806 bytes |
+| 2024-07-15 12:00 UTC | 688,273 bytes |
+| 2024-10-15 12:00 UTC | 692,613 bytes |
+
+Zero genuine ERA5 snapshots are published. Publication waits for validation of the source and confirmation that the production runtime can read the private objects. Coverage lists dates straight from the production index, so publishing metadata before runtime Storage access would expose dates whose map layers could fail to load. Production therefore has no new seasonal dates to verify on desktop or phone.
+
+### Batch C.2 tests
+
+Commands below use the repository’s Python environment and the local npm entry point. The browser-facing production weather integration remains pending.
+
+| Command | Result |
+| --- | --- |
+| `backend/.venv/Scripts/python.exe tests/check_historical_weather.py ScientificWeather.test_storage_authentication_headers` | Reproduced both failures on the original adapter. |
+| `backend/.venv/Scripts/python.exe -u tests/check_historical_weather.py -v` | All 13 passed, including modern and legacy Storage authentication, public-key rejection, importer job reuse, GRIB validation and FastAPI coverage, snapshot and location behavior. |
+| `backend/.venv/Scripts/python.exe -u tests/check_historical_weather_publish.py` | Passed with disposable PostgreSQL bound to loopback. Verified RLS, rejection of corrupt inputs, upload-before-publish and duplicate imports. Stopped the isolated database after the run. |
+| `node ../.orbitwatch-tools/npm/bin/npm-cli.js run lint` from `frontend` | Passed. |
+| `node ../.orbitwatch-tools/npm/bin/npm-cli.js test` from `frontend` | All 238 passed. |
+| `node ../.orbitwatch-tools/npm/bin/npm-cli.js run build` from `frontend` | Passed. Vite reported its bundle-size and plugin timing warnings. |
+| Loopback FastAPI replay of the validated 2024 GRIB | Coverage listed all four dates. Snapshot and point routes returned the genuine fields and computed wind values for every date. A timestamp outside the archive returned HTTP 404. Authentication was covered separately by the isolated API tests. |
+| Isolated Chrome replay at 1280×900 and 390×844 touch | Both passed. The calendar and archive exposed the four seasons, January switched to April, weather fields and wind flow controls rendered, and point inspection displayed the API’s April temperature. Both sessions returned to Live. Captures are in `.setup-cache/batch-c2-weather-evidence`. |
+
+The loopback and browser replays read the validated local objects and replayed previously verified orbital responses. Supabase Storage publication and production Time Explorer availability remain pending until EC2 can read the private bucket. The download is complete and can be reused without submitting the CDS job again.

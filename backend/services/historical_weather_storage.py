@@ -4,6 +4,7 @@ import re
 from hashlib import sha256
 from urllib.parse import urlsplit
 import httpx
+import jwt
 from services.historical_weather_codec import MAX_BLOB
 
 BUCKET='historical-weather'
@@ -16,19 +17,29 @@ class WeatherStorageUnavailable(RuntimeError): pass
 class SnapshotStorage:
     def __init__(self):
         self.url=os.getenv('SUPABASE_URL','').rstrip('/')
-        self.key=os.getenv('SUPABASE_SERVICE_ROLE_KEY','') or os.getenv('SUPABASE_SECRET_KEY','')
+        key=os.getenv('SUPABASE_SERVICE_ROLE_KEY','') or os.getenv('SUPABASE_SECRET_KEY','')
         parsed=urlsplit(self.url)
-        if not self.key or parsed.scheme!='https' or not parsed.hostname or not parsed.hostname.endswith('.supabase.co') or parsed.path or parsed.query or parsed.username:
+        if not key or parsed.scheme!='https' or not parsed.hostname or not parsed.hostname.endswith('.supabase.co') or parsed.path or parsed.query or parsed.username:
             raise WeatherStorageUnavailable('Backend Supabase Storage URL and service credential required')
         from sqlalchemy.engine import make_url
         from core.config import required
         database=make_url(required('DATABASE_URL'))
         project=(database.username or '').removeprefix('postgres.') if (database.username or '').startswith('postgres.') else (database.host or '').removeprefix('db.').removesuffix('.supabase.co')
         if parsed.hostname!=project+'.supabase.co': raise WeatherStorageUnavailable('Storage project must match the configured OrbitWatch database')
+        self.headers={'apikey':key}
+        if not key.startswith('sb_secret_'):
+            # This claim only filters out public keys. Supabase verifies the JWT.
+            try:
+                role=jwt.decode(key,options={'verify_signature':False}).get('role')
+            except jwt.InvalidTokenError:
+                role=None
+            if role!='service_role':
+                raise WeatherStorageUnavailable('Backend Supabase Storage service credential required')
+            self.headers['Authorization']='Bearer '+key
 
     def request(self, method, path, **kwargs):
         try:
-            with httpx.Client(timeout=20, follow_redirects=False, headers={'Authorization':'Bearer '+self.key,'apikey':self.key}) as client:
+            with httpx.Client(timeout=20, follow_redirects=False, headers=self.headers) as client:
                 with client.stream(method, self.url+'/storage/v1/'+path, **kwargs) as response:
                     if not response.is_success: raise WeatherStorageUnavailable('Private object storage unavailable')
                     data=bytearray()

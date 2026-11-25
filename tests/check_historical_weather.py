@@ -10,6 +10,8 @@ import unittest
 from contextlib import nullcontext
 from datetime import datetime,timezone
 from unittest.mock import patch
+import httpx
+import jwt
 import numpy as np
 
 ROOT=Path(__file__).resolve().parents[1];sys.path.insert(0,str(ROOT/'backend'))
@@ -113,6 +115,27 @@ class ScientificWeather(unittest.TestCase):
         with patch.object(store,'get',return_value=b'corrupt'):
             with self.assertRaises(ValueError):store.put_verified(key,blob)
         with self.assertRaises(ValueError):store.put_verified('../elsewhere',blob)
+
+    def test_storage_authentication_headers(self):
+        legacy=jwt.encode({'role':'service_role'},'isolated-signing-key-32-bytes-long',algorithm='HS256')
+        modern='sb_secret_isolated-test-value'
+        public=jwt.encode({'role':'anon'},'isolated-signing-key-32-bytes-long',algorithm='HS256')
+        settings={'SUPABASE_URL':'https://example.supabase.co',
+                  'DATABASE_URL':'postgresql://postgres.example@region.pooler.supabase.com/postgres'}
+        original_client=httpx.Client
+        for role_key,secret_key,expected_bearer in [('',modern,None),(legacy,'','Bearer '+legacy)]:
+            with self.subTest(modern=not role_key):
+                def respond(request):
+                    self.assertEqual(request.url.path,'/storage/v1/bucket')
+                    self.assertEqual(request.headers['apikey'],role_key or secret_key)
+                    self.assertEqual(request.headers.get('authorization'),expected_bearer)
+                    return httpx.Response(200,json=[])
+                with patch.dict(os.environ,settings|{'SUPABASE_SERVICE_ROLE_KEY':role_key,'SUPABASE_SECRET_KEY':secret_key}), \
+                        patch('services.historical_weather_storage.httpx.Client',side_effect=lambda **kw:original_client(transport=httpx.MockTransport(respond),**kw)):
+                    self.assertEqual(SnapshotStorage().request('GET','bucket'),b'[]')
+        for key in ('sb_publishable_isolated-test-value',public):
+            with patch.dict(os.environ,settings|{'SUPABASE_SERVICE_ROLE_KEY':key,'SUPABASE_SECRET_KEY':''}):
+                with self.assertRaises(WeatherStorageUnavailable): SnapshotStorage()
     def test_capacity_reserves(self):
         from historical_weather_import import capacity
         capacity({'database_bytes':14_000_000,'storage':{'bytes':0}})

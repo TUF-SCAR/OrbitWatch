@@ -69,6 +69,19 @@ class ScientificWeather(unittest.TestCase):
         self.assertEqual([item['year'] for item in plan[:7]],[2024,2000,1970,1980,1990,2010,2020])
         self.assertEqual([item['state'] for item in plan[0]['seasons']],['stored','queued','queued','missing'])
         self.assertEqual(sum(len(item['seasons']) for item in plan),227)
+
+    def test_production_campaign_scope_and_reserve(self):
+        from historical_weather_campaign import APPROVED, YEARS, approved_dates, estimate
+        self.assertEqual(len(APPROVED),227)
+        self.assertEqual(YEARS[:6],(2000,1970,1980,1990,2010,2020))
+        self.assertEqual(len(approved_dates(2026)),3)
+        self.assertNotIn('2026-10-15T12:00:00+00:00',APPROVED)
+        state={'sizes':{date:700_000 for date in approved_dates(2024)}}
+        usage={'database_bytes':15_000_000,'storage':{'bytes':2_800_000,'objects':4}}
+        estimate(state,usage)
+        self.assertEqual(state['projected_storage_bytes'],197_925_000)
+        with self.assertRaisesRegex(ValueError,'Storage reserve at risk'):
+            estimate(state,usage|{'storage':{'bytes':750_000_000,'objects':4}})
     def test_roundtrip_masks_quantization_and_corruption(self):
         fields=fixture_fields();fields['temperature'][0]=np.nan;fields['temperature'][10]=20.006
         blob,h=encode(STAMP,fields,PROVENANCE);header,decoded=decode(blob,sha256(blob).hexdigest())

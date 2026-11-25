@@ -11,6 +11,7 @@ import os
 from pathlib import Path
 import re
 import shutil
+import tempfile
 from sqlalchemy import create_engine, text, inspect
 from sqlalchemy.engine import make_url
 from core.config import required
@@ -88,6 +89,18 @@ def manifests():
     return [(path, json.loads(path.read_text(encoding='utf8'))) for path in sorted(ARCHIVE.glob('*.json'))]
 
 
+def write_manifest(path, manifest):
+    with tempfile.NamedTemporaryFile(mode='w', encoding='utf8', dir=path.parent, delete=False) as file:
+        temporary = Path(file.name)
+        json.dump(manifest, file, indent=2)
+        file.flush()
+        os.fsync(file.fileno())
+    try:
+        temporary.replace(path)
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
 def stored_timestamps(db):
     return db.scalars(text('SELECT DISTINCT timestamp FROM historical_weather_snapshots ORDER BY timestamp')).all()
 
@@ -112,11 +125,15 @@ def inventory(include_plan=False):
     finally:engine.dispose()
 
 
-def download(year):
+def download(year, *, months=None):
     """One grouped year/request; persistent job identity; never wait on CDS queue."""
     from ecmwf.datastores import Client
     import httpx
     request=request_for_year(year)
+    if months is not None:
+        if not months or not set(months) <= set(request['month']):
+            raise ValueError('Requested campaign months are not eligible final ERA5')
+        request['month'] = [month for month in request['month'] if month in months]
     engine,_=target()
     try:
         with engine.begin() as db:
@@ -132,17 +149,19 @@ def download(year):
         if not owned: raise ValueError('Another ERA5 operation is running')
         saved=manifests()
         saved=[(path,m) for path,m in saved if m.get('dataset')==DATASET and m.get('request',{}).get('year')==[str(year)]]
+        if months is not None and any(not set(m['request']['month']) <= set(months) for _,m in saved):
+            raise ValueError('Saved request exceeds approved campaign months')
         for path,m in saved:
             if m.get('state')=='downloaded':
                 source=path.with_suffix('.grib')
                 if not source.is_file() or source.stat().st_size>MAX_SOURCE or sha256(source.read_bytes()).hexdigest()!=m.get('source_sha256'):
                     raise ValueError('Saved download failed integrity; inspect it without resubmitting')
-        pending=[(path,m) for path,m in saved if m.get('state')!='downloaded']
+        pending=[(path,m) for path,m in saved if m.get('state') not in ('downloaded','published')]
         if pending:
             manifest_path,manifest=pending[0];request=manifest['request']
             file=manifest_path.with_suffix('.grib')
         else:
-            completed={month for _,m in saved for month in m['request']['month']}
+            completed={month for _,m in saved if m.get('state')=='downloaded' for month in m['request']['month']}
             request['month']=[month for month in request['month'] if month not in completed]
             if not request['month']:return dict(state='already_downloaded',year=year,manifest_count=len(saved))
             identity=sha256(json.dumps(request,sort_keys=True).encode()).hexdigest()[:24]
@@ -158,14 +177,14 @@ def download(year):
         with budget.attempt('cds-era5',60,1):
             if not manifest.get('job_id'):
                 # A lost HTTP response must not cause an automatic duplicate request.
-                manifest['state']='submission_uncertain';manifest_path.write_text(json.dumps(manifest,indent=2),encoding='utf8')
+                manifest['state']='submission_uncertain';write_manifest(manifest_path,manifest)
                 remote=client.submit(DATASET,request)
                 manifest.update(job_id=remote.request_id,state='queued')
-                manifest_path.write_text(json.dumps(manifest,indent=2),encoding='utf8')
+                write_manifest(manifest_path,manifest)
             else: remote=client.get_remote(manifest['job_id'])
             state=remote.status
             manifest['provider_state']=state
-            if state in ('failed','dismissed'): manifest['state']='failed'
+            if state in ('failed','dismissed','rejected'): manifest['state']='failed'
             elif remote.results_ready:
                 result=remote.get_results()
                 if not 0<result.content_length<=MAX_SOURCE: raise ValueError('Source size exceeds bound')
@@ -184,7 +203,7 @@ def download(year):
                 if size!=result.content_length: raise ValueError('Truncated source download')
                 partial.replace(file)
                 manifest.update(state='downloaded',source_sha256=sha256(file.read_bytes()).hexdigest(),source_bytes=size,downloaded_at=datetime.now(timezone.utc).isoformat())
-            manifest_path.write_text(json.dumps(manifest,indent=2),encoding='utf8')
+            write_manifest(manifest_path,manifest)
             return manifest
 
 
@@ -202,12 +221,14 @@ def prepare(path):
     return prepared
 
 
-def publish(path,expected,storage=None):
+def publish(path,expected,storage=None,*,complete_only=False,on_snapshot=None):
     prepared=prepare(path)  # Entire source validates BEFORE creating/uploading anything.
     if len(prepared)>4: raise ValueError('Import batch cap is four snapshots')
     request=json.loads(Path(path).with_suffix('.json').read_text(encoding='utf8'))['request']
     imported={f'{item[0].month:02}' for item in prepared}
     missing=[f"{request['year'][0]}-{month}-15T12:00:00Z" for month in request['month'] if month not in imported]
+    if complete_only and (missing or not prepared or any(item[-1] != 'complete' for item in prepared)):
+        raise ValueError('Campaign requires complete ERA5 source fields and timestamps')
     engine,fp=target(expected)
     try:
         with refresh_owner('era5-import.lock') as owned:
@@ -218,6 +239,13 @@ def publish(path,expected,storage=None):
             storage=storage or SnapshotStorage();storage.ensure_bucket()
             inserted=0
             for date,blob,header,key,checksum,status in prepared:
+                if complete_only:
+                    with engine.begin() as db:
+                        db.execute(text('SELECT pg_advisory_xact_lock(68270906)'))
+                        existing=db.execute(text('SELECT version,sha256 FROM historical_weather_snapshots WHERE timestamp=:date ORDER BY version DESC LIMIT 1'),{'date':date}).mappings().first()
+                        if existing and existing['sha256']!=checksum:
+                            raise ValueError('Stored campaign snapshot conflicts with source')
+                        capacity(measurement(db),0 if existing else len(blob))
                 # Upload first; checksum GET verification precedes metadata visibility.
                 storage.put_verified(key,blob)
                 with engine.begin() as db:
@@ -225,12 +253,19 @@ def publish(path,expected,storage=None):
                     capacity(measurement(db),0)
                     existing=db.execute(text('SELECT version,sha256 FROM historical_weather_snapshots WHERE timestamp=:date ORDER BY version DESC LIMIT 1'),{'date':date}).mappings().first()
                     if existing and existing['sha256']==checksum: continue
+                    if complete_only and existing:
+                        raise ValueError('Stored campaign snapshot conflicts with source')
                     version=existing['version']+1 if existing else 1
                     db.execute(text('''INSERT INTO historical_weather_snapshots
                         (timestamp,version,provider,dataset,product,variables,grid,object_key,sha256,compressed_bytes,status,validated_at,provenance)
                         VALUES (:date,:version,:provider,:dataset,'reanalysis',CAST(:variables AS jsonb),CAST(:grid AS jsonb),:key,:checksum,:size,:status,now(),CAST(:provenance AS jsonb))'''),
                         dict(date=date,version=version,provider=PROVIDER,dataset=DATASET,variables=json.dumps(header['fields']),grid=json.dumps(GRID),key=key,checksum=checksum,size=len(blob),status=status,provenance=json.dumps(header['provenance'])))
                     inserted+=1
+                if on_snapshot is not None:
+                    with engine.begin() as db:
+                        db.execute(text('SET TRANSACTION READ ONLY'))
+                        measured=measurement(db)
+                    on_snapshot(date, measured)
             with engine.connect() as db: after=measurement(db)
             return dict(target_fingerprint=fp,inserted=inserted,before=before,after=after,unvalidated_timestamps=missing)
     finally:engine.dispose()

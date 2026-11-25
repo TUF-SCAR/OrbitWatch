@@ -140,3 +140,42 @@ The checksum-verified 2024 source and manifest were transferred to EC2 and reuse
 An independent production inventory confirmed the four dates and private bucket. A process on EC2 called the deployed coverage, snapshot and location handlers against real production PostgreSQL and Storage. Each date returned complete fields, source attribution, precipitation duration and wind derived from archived components. A date outside the archive returned HTTP 404. The test process used an authentication override restricted to that process. The public API health endpoints and Cloudflare Pages both returned HTTP 200. An authenticated browser session on the public deployment remains unverified. The desktop and phone replays above used the same source archive.
 
 No additional CDS job was submitted. An automatic approval review rejected the proposed next four-date request for calendar year 2000, citing the scope and external side effects of expanding the pilot.
+
+## Full 1970–2026 ERA5 campaign
+
+The subsequent brief explicitly authorized 227 exact seasonal dates. The order starts with 2000, 1970, 1980, 1990, 2010 and 2020, followed by the other years. The campaign preserves all four 2024 objects and excludes October 2026. Preflight decoded the four private 2024 objects by checksum and checked the bucket settings and original source manifest. CDS accepted one four-date request for 2000 after the account job history had been checked. The importer recorded the job on EC2 before any further work.
+
+| Measured before the campaign | Used | Allowance or remaining capacity |
+| --- | ---: | ---: |
+| Supabase PostgreSQL | 14,773,395 bytes | 485,226,605 bytes remaining of 500 MB |
+| Supabase Storage, all project buckets | 2,766,025 bytes | 997,233,975 bytes remaining of 1 GB |
+| Private ERA5 Storage | Four objects, 2,766,025 bytes | Mean 691,506 bytes, range 688,273–693,806 bytes |
+| Historical satellite table and indexes | 950,272 bytes | 1,183 records |
+| EC2 staging disk | 3,651,984 bytes of existing ERA5 source | 23,870,750,720 bytes free on a 30,083,776,512-byte volume |
+
+At the pilot mean, the 227 objects would occupy about 157 MB. The campaign budgets about 196 MB with a 25% margin on the remaining snapshot mean and about 29.4 MB of total PostgreSQL usage with 64 KiB per remaining row for data and indexes. These are estimates. The importer checks measured capacity before publishing each complete snapshot, refreshes both figures after each publication, and reconciles the index and private objects after each year. The existing ceilings of 275 MB for PostgreSQL, including its write margin, and 750 MB for all project Storage preserve more than the required 200 MB independently. Unknown object sizes block writes. [Supabase Free allowances](https://supabase.com/docs/guides/platform/billing-on-supabase)
+
+The runner uses the existing importer and provider cooldown. It processes one job at a time and keeps the existing per-year job manifests and the verified index in `backend/.runtime/era5-campaign/progress.json`. Completed years are skipped. An unclear submission or failed scientific validation is recorded for review. A ready year must contain every requested date and every validated field before publication. The source for a newly imported year is removed only after the production backend can read the complete objects and the published state is saved. The original 2024 source is retained.
+
+`backend/.venv/Scripts/python.exe -u tests/check_historical_weather.py -v` passed all 14 targeted checks. `backend/.venv/Scripts/python.exe -u tests/check_historical_weather_publish.py` passed against a disposable loopback PostgreSQL instance, including strict source completeness, verified upload, post-publication measurement and duplicate prevention. The isolated database was stopped after testing.
+
+On the verified EC2 host, inspect the one-shot run and checkpoint with these commands.
+
+```sh
+sudo systemctl status orbitwatch-era5-campaign
+sudo journalctl -u orbitwatch-era5-campaign -n 25 --no-pager
+cat /home/ubuntu/OrbitWatch/backend/.runtime/era5-campaign/progress.json
+```
+
+If the run has ended and its checkpoint shows pending work, start a new bounded run using the same deployed code and state. An active unit or an active campaign lock prevents a second worker. Resolve any `stop_reason` or year flagged for review before retrying it.
+
+```sh
+sudo systemd-run --unit=orbitwatch-era5-campaign --collect \
+  --uid=ubuntu --working-directory=/home/ubuntu/OrbitWatch/backend \
+  --property=Nice=10 --property=CPUQuota=40% \
+  --property=MemoryHigh=384M --property=MemoryMax=600M \
+  --property=RuntimeMaxSec=37h \
+  --setenv=OPENBLAS_NUM_THREADS=1 --setenv=OMP_NUM_THREADS=1 \
+  /home/ubuntu/OrbitWatch/.venv/bin/python -u historical_weather_campaign.py \
+  --expected-target 91629c91746ef7a1 --hours 36
+```

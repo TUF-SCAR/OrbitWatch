@@ -46,14 +46,22 @@ def main():
                     if key not in objects:raise WeatherStorageUnavailable()
                     return objects[key]
                 with patch.object(store,'get',side_effect=get),patch.object(store,'request',side_effect=request):
-                    result=publish(path,'ISOLATED',store);assert result['inserted']==1
-                    result=publish(path,'ISOLATED',store);assert result['inserted']==0
+                    observed=[]
+                    record=lambda stamp, measured:observed.append((stamp, measured['database_bytes']))
+                    result=publish(path,'ISOLATED',store,complete_only=True,on_snapshot=record);assert result['inserted']==1
+                    result=publish(path,'ISOLATED',store,complete_only=True,on_snapshot=record);assert result['inserted']==0
                     assert len(objects)==1
+                    assert len(observed)==1 and observed[0][1]>0
                 with engine.connect() as db:
                     row=db.execute(text('SELECT * FROM historical_weather_snapshots')).mappings().one()
                     assert row['status']=='complete' and len(row['variables'])==8
                     assert row['compressed_bytes']==len(objects[row['object_key']])
                     assert db.scalar(text('SELECT count(*) FROM users'))==0
+                with patch('historical_weather_import.prepare',return_value=[(row['timestamp'],b'',{},'',row['sha256'],'partial')]), \
+                        patch.object(store,'put_verified') as upload:
+                    try:publish(path,'ISOLATED',store,complete_only=True);raise AssertionError('Partial campaign source accepted')
+                    except ValueError as error:assert 'requires complete' in str(error)
+                    upload.assert_not_called()
             manifest['source_sha256']='b'*64;path.with_suffix('.json').write_text(json.dumps(manifest),encoding='utf8')
             with patch('historical_weather_import.target') as target:
                 try:publish(path,'ISOLATED',store);raise AssertionError('Corrupt source published')

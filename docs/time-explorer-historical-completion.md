@@ -122,4 +122,21 @@ Commands below use the repository’s Python environment and the local npm entry
 | Loopback FastAPI replay of the validated 2024 GRIB | Coverage listed all four dates. Snapshot and point routes returned the genuine fields and computed wind values for every date. A timestamp outside the archive returned HTTP 404. Authentication was covered separately by the isolated API tests. |
 | Isolated Chrome replay at 1280×900 and 390×844 touch | Both passed. The calendar and archive exposed the four seasons, January switched to April, weather fields and wind flow controls rendered, and point inspection displayed the API’s April temperature. Both sessions returned to Live. Captures are in `.setup-cache/batch-c2-weather-evidence`. |
 
-The loopback and browser replays read the validated local objects and replayed previously verified orbital responses. Supabase Storage publication and production Time Explorer availability remain pending until EC2 can read the private bucket. The download is complete and can be reused without submitting the CDS job again.
+The loopback and browser replays read the validated local objects and replayed previously verified orbital responses. At this point, publication was pending until EC2 could read the private bucket.
+
+## Batch C.2 production activation
+
+After SSH access was restored, the existing key connected with strict host verification. The host matched the deployed commit and expected Supabase database. The two credentials and verified URL were sent only over encrypted SSH stdin. The update kept a restricted backup and atomically merged the three settings into the existing `0600` environment file. Parsing before and after confirmed the other settings were preserved. The first restart exceeded the initial command timeout and the previous file was restored. The second attempt waited for a new API process within systemd’s shutdown and startup limits and passed liveness, readiness and runtime CDS and Storage authentication. The notification worker stayed running with a healthy heartbeat and valid push configuration.
+
+The checksum-verified 2024 source and manifest were transferred to EC2 and reused by the existing guarded importer. It published all four dates listed above and verified the private objects before exposing the metadata. There were no missing fields or unvalidated timestamps. The production account and orbital archive row counts stayed at 13 and 1,183.
+
+| Production measurement | Before publication | After publication |
+| --- | ---: | ---: |
+| PostgreSQL database | 14,658,707 bytes | 14,773,395 bytes |
+| Nominal headroom under 500 MB | 485,341,293 bytes | 485,226,605 bytes |
+| Private historical Storage | Bucket absent | 4 objects, 2,766,025 bytes |
+| Published ERA5 snapshots | 0 | 4 |
+
+An independent production inventory confirmed the four dates and private bucket. A process on EC2 called the deployed coverage, snapshot and location handlers against real production PostgreSQL and Storage. Each date returned complete fields, source attribution, precipitation duration and wind derived from archived components. A date outside the archive returned HTTP 404. The test process used an authentication override restricted to that process. The public API health endpoints and Cloudflare Pages both returned HTTP 200. An authenticated browser session on the public deployment remains unverified. The desktop and phone replays above used the same source archive.
+
+No additional CDS job was submitted. An automatic approval review rejected the proposed next four-date request for calendar year 2000, citing the scope and external side effects of expanding the pilot.

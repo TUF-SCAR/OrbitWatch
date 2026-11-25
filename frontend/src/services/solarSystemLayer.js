@@ -2,7 +2,7 @@ import { ArcType, BoundingSphere, CallbackPositionProperty, CallbackProperty, Ca
 import { StableOrbitCollection } from "./stableOrbitCollection.js";
 import { ALL_CELESTIAL_IDS, CELESTIAL_BODIES } from "../data/celestialBodies.js";
 import { AU_METERS, bodyPositionFixed, inertialToFixedMatrix, sampleBodyOrbitFixed } from "../data/solarSystemEphemeris.js";
-import { MAX_SOLAR_RANGE, SOLAR_OVERVIEW_IDS, distanceFade, representationWeights, surfaceSymbolicHandoff, rangeToScale, scaleToRange, solarSystemLod, solarSystemScales } from "./solarSystemLod.js";
+import { MAX_SOLAR_RANGE, SOLAR_MINOR_IDS, SOLAR_OVERVIEW_IDS, distanceFade, minorOverviewVisibility, representationWeights, surfaceSymbolicHandoff, rangeToScale, scaleToRange, solarSystemLod, solarSystemScales } from "./solarSystemLod.js";
 import { createCelestialSymbols } from "./celestialSymbols.js";
 import { solarOrbitStyle } from "./orbitVisuals.js";
 import { createOrbitStroke, OrbitStrokeMaterialProperty } from "./orbitStroke.js";
@@ -13,6 +13,7 @@ import { layoutCelestialLabels } from "./celestialLabelLayout.js";
 import { MOTION } from "../utils/motionTokens.js";
 import { createSolarSurface } from "./solarSurface.js";
 import { prefersReducedMotion } from "../utils/motionPreferences.js";
+import { createOortCloudView } from "./oortCloudView.js";
 
 export function pickSolarSystemObject(scene, position, wide) {
   if (!wide) return scene.pick(position);
@@ -44,12 +45,13 @@ export function createSolarSystemLayer(viewer, options = {}) {
     { eventType: CameraEventType.WHEEL, modifier: KeyboardEventModifier.CTRL }];
   const earthZoomEvents = [CameraEventType.RIGHT_DRAG, CameraEventType.PINCH];
   const wideZoomEvents = [CameraEventType.RIGHT_DRAG];
-  const originalFar = viewer.camera.frustum?.far;
+  const originalFar = viewer.camera.frustum?.far, originalNear = viewer.camera.frustum?.near;
   const alive = () => !destroyed && !viewer.isDestroyed();
   const delay = (ms) => new Promise((resolve) => { const timer = window.setTimeout(() => { timers.delete(timer); resolve(false); }, ms); timers.set(timer, resolve); });
   const canonicalPosition = createCanonicalPositions(options.ephemeris?.position||bodyPositionFixed,
     {frameMatrix:inertialToFixedMatrix,getRevision:()=>options.ephemeris?.revision()??0});
   let sceneTime = viewer.clock.currentTime, labelSlots = new Map(), scaleVisible = false, publishedScale = null, visualTime = null;
+  let distantOverview = false, projectedLabels;
   const positionOf = (id, time = sceneTime) => canonicalPosition(id, time);
   const bodyLocalTransform=(id,time,basis)=>Matrix4.fromRotationTranslation(Matrix3.multiply(inertialToFixedMatrix(time),basis,new Matrix3()),positionOf(id,time),new Matrix4());
   const scaleMinimum = () => scales.localStart;
@@ -57,6 +59,8 @@ export function createSolarSystemLayer(viewer, options = {}) {
   const usesWideZoom = (range) => (options.isLive?.() ?? true) && !options.isFollowing?.() && range >= scaleMinimum();
   const symbols = createCelestialSymbols(viewer.scene, positionOf);
   const populations = createProceduralPopulationLayer(viewer.scene, options);
+  const oort = createOortCloudView(viewer, () => positionOf("sun"), options);
+  const canExploreOort = () => !travelling && !options.isFollowing?.() && (options.canExploreOort?.() ?? true) && cameraRange() >= MAX_SOLAR_RANGE * .999;
   const ringPose = new Matrix4(), ringRotation = new Matrix3();
   const rings = createPlanetaryRingLayer(viewer.scene, { ...options, getCamera:()=>viewer.camera,
     getPose(id,time) {
@@ -100,7 +104,7 @@ export function createSolarSystemLayer(viewer, options = {}) {
     labelSlots.clear();
     for (const item of placeholders.values()) { item.alpha = 0; item.labelAlpha = 0; }
     // Keep major paths reusable; retain only this destination's local paths.
-    const wanted = new Set([...SOLAR_OVERVIEW_IDS, selectedId, ...scales.family]);
+    const wanted = new Set([...SOLAR_OVERVIEW_IDS, ...SOLAR_MINOR_IDS, selectedId, ...scales.family]);
     for (const [key, item] of orbits) if (!wanted.has(key)) { viewer.entities.remove(item.entity); orbitGroups.get(item.center).remove(item.line); orbits.delete(key); }
     for (const [center, group] of orbitGroups) if (!group.length) { viewer.scene.primitives.remove(group); orbitGroups.delete(center); }
     ensureOrbit(selectedId);
@@ -141,6 +145,7 @@ export function createSolarSystemLayer(viewer, options = {}) {
     // vertices in parent-centred collections. Updating a group's matrix moves
     // all its paths without rebuilding geometry on ticks or camera gestures.
     item.tint = Color.fromCssColorString(CELESTIAL_BODIES[id].color).withAlpha(0.24);
+    if (SOLAR_MINOR_IDS.includes(id)) Color.lerp(item.tint, new Color(.69, .78, .91, .24), .36, item.tint);
     item.material = new OrbitStrokeMaterialProperty({ color: item.tint });
     item.entity = viewer.entities.add({ id: `celestial-orbit-${id}`, show: false, polyline: { show: false, positions, arcType: ArcType.NONE, width: 1, material: item.material } });
     let group = orbitGroups.get(center);
@@ -160,7 +165,7 @@ export function createSolarSystemLayer(viewer, options = {}) {
     const reduced = prefersReducedMotion(), live = options.isLive?.() ?? true;
     // Leave Earth pinch and the right-drag, rotate and tilt mappings in
     // Cesium. Wide views use center-relative range for both wheel and pinch.
-    if (!localView) {
+    if (!localView && !oort.active) {
       const wide = usesWideZoom(range);
       controller.maximumZoomDistance = wide ? MAX_SOLAR_RANGE : originalBounds[1];
       controller.zoomEventTypes = wide ? wideZoomEvents
@@ -176,24 +181,30 @@ export function createSolarSystemLayer(viewer, options = {}) {
       fading = true;
       return next;
     };
-    if (originalFar) viewer.camera.frustum.far = range < scales.localStart && lod.solar === 0 ? originalFar
+    if (originalFar && !oort.active) viewer.camera.frustum.far = range < scales.localStart && lod.solar === 0 ? originalFar
       : Math.max(originalFar, range * 2 + (lod.solar > 0 ? Math.max(35 * AU_METERS, scales.solarEnd * 3) : scales.localEnd * 3));
+    distantOverview = range >= 33 * AU_METERS;
+    if (originalNear && !oort.active) viewer.camera.frustum.near = distantOverview ? Math.max(originalNear, range * .0001) : originalNear;
     if (lod.solar > 0) ensureOrbit(scales.parent);
     if (lod.overview > 0) for (const key of SOLAR_OVERVIEW_IDS) ensureOrbit(key);
+    const innerWeight = 1 - oort.blend;
+    const minorReveal = live ? minorOverviewVisibility(range, reduced) * innerWeight : 0;
+    if (minorReveal > 0) for (const key of SOLAR_MINOR_IDS) ensureOrbit(key);
     const origin = positionOf(selectedId);
     for (const [id, item] of placeholders) {
       const family = scales.family.includes(id), active = id === selectedId, highlighted = id === markerId;
       const distance = id === selectedId && localView ? localView.range : Cartesian3.distance(viewer.camera.positionWC, positionOf(id));
       const major = SOLAR_OVERVIEW_IDS.includes(id);
+      const minor = SOLAR_MINOR_IDS.includes(id);
       // Nearby bodies emerge before the whole overview. Names follow markers;
       // additional paths follow names, instead of a simultaneous label burst.
       const separation = Cartesian3.distance(origin, positionOf(id));
       const proximity = 1 - distanceFade(separation, range * 1.1, range * 2.2);
-      const contextAlpha = major ? Math.max(lod.overview, proximity * lod.solar) : 0;
+      const contextAlpha = major ? Math.max(lod.overview, proximity * lod.solar) : minor ? minorReveal : 0;
       const relevant = active || family && scales.parent !== "sun";
       const localAlpha = active ? 1 : relevant ? 1 - lod.solar : 0;
-      const targetAlpha = live || relevant && selectedId !== "earth" ? Math.max(localAlpha, contextAlpha) : 0;
-      item.alpha = active ? 1 : easeAlpha(item.alpha, targetAlpha, MOTION.marker);
+      const targetAlpha = (live || relevant && selectedId !== "earth" ? Math.max(localAlpha, contextAlpha) : 0) * (id === "sun" ? 1 : innerWeight);
+      item.alpha = active && !oort.active ? 1 : easeAlpha(item.alpha, targetAlpha, MOTION.marker);
       const weights = representationWeights(distance, item.radius, item.symbolic, reduced);
       const earthOwned = id === "earth" && (selectedId === "earth" || scales.parent === "earth");
       if (earthOwned) {
@@ -208,12 +219,14 @@ export function createSolarSystemLayer(viewer, options = {}) {
       item.entity.ellipsoid.show.setValue(!ready && !earthOwned && weights.physical > 0.001);
       item.entity.ellipsoid.material.color.setValue(Color.fromCssColorString(CELESTIAL_BODIES[id].color).withAlpha(item.alpha * weights.physical));
       item.point.show = item.entity.show && weights.symbolic > 0.001;
-      item.point.pixelSize = highlighted || active ? 9 : 6;
-      item.point.color = Color.fromCssColorString(CELESTIAL_BODIES[id].color).withAlpha(item.alpha * weights.symbolic);
+      item.point.pixelSize = highlighted || active ? 9 : minor ? 5 : 6;
+      const color = Color.fromCssColorString(CELESTIAL_BODIES[id].color);
+      if (minor && !active) Color.lerp(color, Color.WHITE, .28, color);
+      item.point.color = color.withAlpha(item.alpha * weights.symbolic);
       item.point.outlineColor = highlighted ? Color.WHITE.withAlpha(item.alpha * weights.symbolic) : Color.BLACK.withAlpha(item.alpha * weights.symbolic * 0.7);
       item.point.outlineWidth = highlighted ? 2 : 1;
       const delayedContext = Math.max(0, (Math.min(contextAlpha, item.alpha) - 0.22) / 0.78);
-      const labelTarget = active && id !== "earth" ? item.alpha : relevant ? Math.max(lod.local * (1 - lod.solar), delayedContext) : delayedContext;
+      const labelTarget = (active && id !== "earth" ? item.alpha : relevant ? Math.max(lod.local * (1 - lod.solar), delayedContext) : delayedContext) * innerWeight;
       item.labelAlpha = easeAlpha(item.labelAlpha, labelTarget, MOTION.label);
       item.labelWanted = item.entity.show && item.labelAlpha > 0.01;
       item.label.fillColor = Color.WHITE.withAlpha(item.labelAlpha);
@@ -226,7 +239,8 @@ export function createSolarSystemLayer(viewer, options = {}) {
       const moon = CELESTIAL_BODIES[id].type === "Moon";
       const selectedSolar = id === scales.parent || id === selectedId && !moon;
       const style = solarOrbitStyle({ moon, selected: moon ? id === selectedId : selectedSolar, ...lod });
-      const target = moon || selectedSolar || SOLAR_OVERVIEW_IDS.includes(id) ? style.alpha : 0;
+      const namedMinor = SOLAR_MINOR_IDS.includes(id);
+      const target = Math.max((moon || selectedSolar || SOLAR_OVERVIEW_IDS.includes(id) ? style.alpha : 0) * innerWeight, namedMinor ? minorReveal * (selectedSolar ? .30 : .22) : 0);
       item.alpha = easeAlpha(item.alpha || 0, target, MOTION.lod);
       item.entity.show = item.alpha > 0 && (live || moon && id === selectedId);
       item.tint.alpha = item.alpha;
@@ -237,7 +251,7 @@ export function createSolarSystemLayer(viewer, options = {}) {
       color.x = item.tint.red; color.y = item.tint.green; color.z = item.tint.blue; color.w = item.alpha;
     }
     scaleVisible = live && (scaleVisible ? range > scales.localStart * 1.5 : range > scales.localStart * 2);
-    populations.update(sceneTime, { range, solar:lod.solar, selectedId, live, elapsed, reduced });
+    populations.update(sceneTime, { range, solar:lod.solar * innerWeight, selectedId, live, elapsed, reduced });
     const ringOwners = new Map([...details.keys()].map(id=>[id,placeholders.get(id).alpha]));
     ringOwners.set(scales.parent,placeholders.get(scales.parent).alpha);
     ringOwners.set(selectedId,placeholders.get(selectedId).alpha);
@@ -249,9 +263,10 @@ export function createSolarSystemLayer(viewer, options = {}) {
     const populationContext = populations.context();
     if (force || now - lastScale > 150) {
       lastScale = now;
-      const value = rangeToScale(range, scaleMinimum());
-      if (!publishedScale || publishedScale.visible !== scaleVisible || publishedScale.stage !== lod.stage || publishedScale.populationContext !== populationContext || Math.abs(publishedScale.value - value) > 0.0005) {
-        publishedScale = { visible: scaleVisible, value, range, stage: lod.stage, populationContext };
+      const zoom = oort.active ? oort.scale() : { value: rangeToScale(range, scaleMinimum()), range };
+      const oortAvailable = !oort.active && canExploreOort();
+      if (!publishedScale || publishedScale.visible !== scaleVisible || publishedScale.stage !== lod.stage || publishedScale.populationContext !== populationContext || publishedScale.oortActive !== oort.active || publishedScale.oortAvailable !== oortAvailable || publishedScale.oortTransition !== oort.transitioning || Math.abs(publishedScale.value - zoom.value) > 0.0005) {
+        publishedScale = { visible: scaleVisible || oort.active, ...zoom, stage: lod.stage, populationContext, oortActive: oort.active, oortAvailable, oortTransition: oort.transitioning };
         options.onScaleChange?.(publishedScale);
       }
     }
@@ -280,7 +295,33 @@ export function createSolarSystemLayer(viewer, options = {}) {
     rings.render(time);
     const now = performance.now();
     if (force || now - lastLayout > 100) { lastLayout = now; layoutLabels(); }
-    for (const [id, item] of placeholders) item.label.show = Boolean(item.labelWanted) && (!viewer.scene.camera || labelSlots.has(id));
+    const container = viewer.scene.canvas.parentElement;
+    const useProjected = distantOverview && Boolean(container && viewer.scene.camera);
+    if (useProjected && !projectedLabels) {
+      projectedLabels = document.createElement("div");
+      projectedLabels.className = "solar-overview-labels";
+      projectedLabels.setAttribute("aria-hidden", "true");
+      container.append(projectedLabels);
+    }
+    if (projectedLabels) projectedLabels.hidden = !useProjected;
+    for (const [id, item] of placeholders) {
+      const visible = Boolean(item.labelWanted) && (!viewer.scene.camera || labelSlots.has(id));
+      item.label.show = visible && !useProjected;
+      const screen = visible && useProjected && SceneTransforms.worldToWindowCoordinates(viewer.scene, positionOf(id, time));
+      if (!screen) {
+        if (item.overviewName) item.overviewName.hidden = true;
+        continue;
+      }
+      const [dx, dy] = labelSlots.get(id);
+      if (!item.overviewName) {
+        item.overviewName = document.createElement("span");
+        item.overviewName.textContent = CELESTIAL_BODIES[id].name;
+        projectedLabels.append(item.overviewName);
+      }
+      item.overviewName.style.transform = `translate3d(${Math.round(screen.x + dx)}px,${Math.round(screen.y + dy)}px,0) translate(-50%,-50%)`;
+      item.overviewName.style.opacity = item.labelAlpha;
+      item.overviewName.hidden = false;
+    }
   }
   function loadDetail(id, token) {
     if (id === "earth") return Promise.resolve(true);
@@ -347,7 +388,8 @@ export function createSolarSystemLayer(viewer, options = {}) {
   function updatePositions(force = false, renderTime) {
     if (!alive()) return;
     sceneTime = renderTime || viewer.clock.currentTime;
-    const transform = localBody && !travelling ? bodyLocalTransform(localBody, sceneTime, localView.basis) : null;
+    oort.update();
+    const transform = localBody && !travelling && !oort.active ? bodyLocalTransform(localBody, sceneTime, localView.basis) : null;
     if (transform) Matrix4.setTranslation(transform, positionOf(localBody), transform);
     const rotation = transform ? Matrix4.getMatrix3(transform, new Matrix3()) : null;
     for (const id of details.keys()) {
@@ -361,7 +403,7 @@ export function createSolarSystemLayer(viewer, options = {}) {
         model.modelMatrix = Matrix4.fromRotationTranslation(orientation, pos, new Matrix4());
       }
     }
-    if (localBody && !travelling) {
+    if (transform) {
       const target = Matrix4.multiplyByPoint(transform, localView.pan, new Cartesian3());
       Matrix4.setTranslation(transform, target, transform);
       viewer.camera.lookAtTransform(transform, new HeadingPitchRange(localView.heading, localView.pitch, localView.range));
@@ -379,13 +421,15 @@ export function createSolarSystemLayer(viewer, options = {}) {
   window.addEventListener("pointerup", endDrag);
   window.addEventListener("pointercancel", endDrag);
   window.addEventListener("blur", endDrag);
-  localHandler.setInputAction(() => { if (localBody && !travelling) drag = "orbit"; }, ScreenSpaceEventType.LEFT_DOWN);
+  localHandler.setInputAction(() => { if ((localBody || oort.active) && !travelling) drag = "orbit"; }, ScreenSpaceEventType.LEFT_DOWN);
   localHandler.setInputAction(() => { if (localBody && !travelling) drag = "pan"; }, ScreenSpaceEventType.RIGHT_DOWN);
   localHandler.setInputAction(() => { drag = null; }, ScreenSpaceEventType.LEFT_UP);
   localHandler.setInputAction(() => { drag = null; }, ScreenSpaceEventType.RIGHT_UP);
   localHandler.setInputAction((movement) => {
-    if (!localView || !drag || travelling) return;
+    if (!drag || travelling) return;
     const dx = movement.endPosition.x - movement.startPosition.x, dy = movement.endPosition.y - movement.startPosition.y;
+    if (oort.active) { oort.rotate(dx, dy); return; }
+    if (!localView) return;
     const radius = placeholders.get(localBody).radius;
     if (drag === "orbit") { localView.heading += dx * 0.004; localView.pitch = Math.max(-1.45, Math.min(1.45, localView.pitch - dy * 0.004)); }
     else {
@@ -446,6 +490,10 @@ export function createSolarSystemLayer(viewer, options = {}) {
   function zoomByRatio(ratio) {
     if (!alive()) return false;
     if (travelling) return true;
+    if (oort.active) {
+      if (ratio > 0) { oort.zoom(ratio); updatePositions(true); }
+      return true;
+    }
     const range = cameraRange();
     if (!localView && (!controller.enableInputs || !usesWideZoom(range))) return false;
     if (!(ratio > 0) || ratio === 1) return true;
@@ -456,12 +504,24 @@ export function createSolarSystemLayer(viewer, options = {}) {
   }
   function setScale(value) {
     if (!alive() || travelling || !(options.isLive?.() ?? true) || !Number.isFinite(value)) return false;
+    if (oort.active) {
+      oort.setScale(value);
+      updatePositions(true);
+      return true;
+    }
     return applyRange(scaleToRange(value, scaleMinimum()));
   }
+  function toggleOort() {
+    if (!alive() || travelling || oort.transitioning) return false;
+    const changed = oort.active ? oort.leave() : canExploreOort() && oort.enter();
+    if (changed) updatePositions(true);
+    return changed;
+  }
+  function leaveOort() { if (oort.leave(true)) updatePositions(true); }
   // The local camera remains the sole owner of its transform. Idle motion only
   // adjusts the same heading/range/pan used by drag and zoom controls.
   function idleOrbit(seconds, speed, settling) {
-    if (!localView || travelling || drag) return false;
+    if (!localView || travelling || drag || oort.active) return false;
     if (settling) {
       const blend = 1-Math.exp(-seconds*2.5);
       const range = placeholders.get(localBody).radius * framingScale(localBody);
@@ -476,6 +536,7 @@ export function createSolarSystemLayer(viewer, options = {}) {
   }
   async function focus(id = "earth") {
     if (!alive() || travelling || !placeholders.has(id)) return { cancelled: true };
+    leaveOort();
     const reduced = prefersReducedMotion();
     const previous = { id: selectedId, localBody, localView, position: Cartesian3.clone(viewer.camera.positionWC), direction: Cartesian3.clone(viewer.camera.directionWC), up: Cartesian3.clone(viewer.camera.upWC) };
     travelling = true;
@@ -573,13 +634,16 @@ export function createSolarSystemLayer(viewer, options = {}) {
     offTick();
     offRender?.();
     if (alive()) symbols.destroy();
+    projectedLabels?.remove();
     if (alive()) populations.destroy();
+    if (alive()) oort.destroy();
     if (frameSource && !dataSources.isDestroyed()) dataSources.remove(frameSource, true);
     if (alive()) {
       [controller.minimumZoomDistance, controller.maximumZoomDistance] = originalBounds;
       controller.zoomEventTypes = originalZoomEvents;
     }
     if (originalFar && alive()) viewer.camera.frustum.far = originalFar;
+    if (originalNear && alive()) viewer.camera.frustum.near = originalNear;
     options.setEarthRepresentation?.(true);
     localHandler.destroy();
     window.removeEventListener("pointerup", endDrag);
@@ -599,12 +663,12 @@ export function createSolarSystemLayer(viewer, options = {}) {
     destroyed = true;
     placeholders.clear(); pending.clear();
   }
-  return { focus, setSelected, updatePositions, setScale, zoomByRatio, canonicalPosition, idleOrbit,
+  return { focus, setSelected, updatePositions, setScale, zoomByRatio, canonicalPosition, idleOrbit, toggleOort, leaveOort,
     scientificReference:()=>options.ephemeris?.describe?.(selectedId,sceneTime),
-    idleTarget: () => ({id:selectedId, local:!!localView, ready:!travelling && !drag && (selectedId==='earth'||!!localView)}),
+    idleTarget: () => ({id:selectedId, local:!!localView, ready:!travelling && !drag && !oort.active && (selectedId==='earth'||!!localView)}),
     cameraDiagnostics: () => localView ? {heading:localView.heading,pitch:localView.pitch,range:localView.range} : null,
     selectMarker: (id) => { markerId = placeholders.has(id) ? id : null; updateLod(true); viewer.scene.requestRender(); },
     isWide: () => lod.solar > 0,
     isSystemScale: () => lod.local > 0,
-    follow: (id) => { if (!travelling && id === selectedId) { bindLocal(id); return true; } return false; }, destroy };
+    follow: (id) => { if (!travelling && !oort.active && id === selectedId) { bindLocal(id); return true; } return false; }, destroy };
 }

@@ -5,7 +5,7 @@ import { setTimeout as schedule, clearTimeout as cancel } from "node:timers";
 import { Cartesian3, DataSourceCollection, EntityCollection, Event, JulianDate, LabelCollection, PointPrimitiveCollection, Material, Matrix3, Matrix4, Model, SceneTransforms, ScreenSpaceEventHandler, ScreenSpaceEventType, Transforms } from "cesium";
 import { AU_METERS, bodyPositionFixed, bodyPositionInertial } from "../src/data/solarSystemEphemeris.js";
 import { ALL_CELESTIAL_IDS } from "../src/data/celestialBodies.js";
-import { MAX_SOLAR_RANGE, SOLAR_OVERVIEW_IDS, solarSystemScales, rangeToScale } from "../src/services/solarSystemLod.js";
+import { MAX_SOLAR_RANGE, SOLAR_MINOR_IDS, SOLAR_OVERVIEW_IDS, solarSystemScales, rangeToScale } from "../src/services/solarSystemLod.js";
 import { createSolarSystemLayer, pickSolarSystemObject } from "../src/services/solarSystemLayer.js";
 import {createLiveEphemeris} from '../src/services/liveEphemeris.js';
 import {modeEphemeris} from '../src/services/liveScience.js';
@@ -40,7 +40,7 @@ function harness(context) {
     return model;
   });
   const camera = {
-    frustum: { far: 1e10 },
+    frustum: { near: 1, far: 1e10 },
     positionWC: new Cartesian3(0, 0, 30000000), directionWC: new Cartesian3(0, 0, -1), upWC: Cartesian3.clone(Cartesian3.UNIT_Y),
     right: Cartesian3.clone(Cartesian3.UNIT_X), up: Cartesian3.clone(Cartesian3.UNIT_Y), transform: Matrix4.clone(Matrix4.IDENTITY), offset: null,
     lookAtTransform(transform, offset) { this.transform = Matrix4.clone(transform); if (offset) { this.offset = { ...offset }; this.positionWC = Matrix4.multiplyByPoint(transform, new Cartesian3(offset.range * Math.cos(offset.pitch) * Math.sin(offset.heading), offset.range * Math.cos(offset.pitch) * Math.cos(offset.heading), -offset.range * Math.sin(offset.pitch)), new Cartesian3()); } },
@@ -56,6 +56,41 @@ function harness(context) {
   const symbol = (id, Type = PointPrimitiveCollection) => { const collection = [...primitives].find(item => item instanceof Type); return Array.from({ length: collection.length }, (_, i) => collection.get(i)).find(item => item.id.id === `celestial-${id}`); };
   return { viewer, actions, primitives, models, listeners, timers, start, dispose, symbol, failModels: () => { failModel = true; }, failFlights: () => { failFlight = true; } };
 }
+
+test("Oort entry is gated by the normal cap and returns the previous camera and render resources", context => {
+  const fixture = harness(context);
+  const { viewer } = fixture;
+  let hud;
+  const layer = createSolarSystemLayer(viewer, { onScaleChange: value => { hud = value; }, getQuality: () => "performance" });
+  context.after(() => { layer.destroy(); fixture.dispose(); });
+  assert.equal(layer.toggleOort(), false);
+  layer.setScale(1);
+  assert.equal(hud.oortAvailable, true);
+  const normal = Cartesian3.clone(viewer.camera.positionWC);
+  const near = viewer.camera.frustum.near;
+  const namedLines = [...fixture.primitives].filter(p => p instanceof StableOrbitCollection).flatMap(p => p.lines);
+  for (const id of SOLAR_MINOR_IDS) {
+    assert.ok(fixture.symbol(id).show, id);
+    assert.ok(namedLines.some(line => line.id.id === `celestial-orbit-${id}` && line.show), id);
+  }
+  assert.equal(fixture.symbol("io").show, false, "system overview preserves local moon visibility rules");
+  assert.equal(layer.toggleOort(), true);
+  assert.ok(hud.oortActive && !hud.oortTransition);
+  assert.equal(layer.idleTarget().ready, false);
+  const field = [...fixture.primitives].find(p => p.orbitwatchPopulation?.kind === "oort");
+  assert.equal(field.orbitwatchPopulation.count, 2400);
+  assert.equal(field.allowPicking, false);
+  assert.ok(viewer.camera.frustum.near > near);
+  layer.zoomByRatio(.5);
+  layer.updatePositions(true);
+  assert.equal(Math.round(hud.range / AU_METERS), 82500);
+  assert.equal(layer.toggleOort(), true);
+  assert.equal(hud.oortActive, false);
+  assert.ok(hud.oortAvailable);
+  assert.ok(Cartesian3.equals(viewer.camera.positionWC, normal));
+  assert.equal(viewer.camera.frustum.near, near);
+  assert.ok(!fixture.primitives.has(field));
+});
 
 test('actual Live entities/models/camera consume refreshed shared JPL centers and Time reuses its previous resolver',async context=>{
   const fixture=harness(context),{viewer}=fixture;
@@ -291,7 +326,8 @@ test("continuous zoom reuses bounded solar paths and markers without loading dis
         assert.equal(orbit(id).polyline.positions.getValue(viewer.clock.currentTime).length, 97);
       }
     }
-    assert.equal(viewer.entities.getById("celestial-ceres").show, false);
+    assert.ok(viewer.entities.getById("celestial-ceres").show && orbit("ceres").show);
+    assert.ok(Cartesian3.distance(viewer.entities.getById("celestial-ceres").position.getValue(viewer.clock.currentTime), bodyPositionFixed("ceres", viewer.clock.currentTime)) < .001);
     assert.equal(fixture.models.length, initialModels, "overview/selection never loads more GLBs");
     const entities = [...viewer.entities.values];
     layer.selectMarker("saturn");

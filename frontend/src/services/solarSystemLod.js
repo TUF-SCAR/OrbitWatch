@@ -3,6 +3,11 @@ import { AU_METERS, bodyOrbitalReference } from "../data/solarSystemEphemeris.js
 
 export const SOLAR_OVERVIEW_IDS = ["sun", "mercury", "venus", "earth", "mars", "jupiter", "saturn", "uranus", "neptune"];
 export const MAX_SOLAR_RANGE = 240 * AU_METERS;
+export const SOLAR_MINOR_IDS = ALL_CELESTIAL_IDS.filter(id => ["Dwarf Planet", "Asteroid"].includes(CELESTIAL_BODIES[id].type));
+
+export function minorOverviewVisibility(range, reduced = false) {
+  return distanceFade(range / AU_METERS, 33, 175, reduced);
+}
 
 export function solarSystemScales(id) {
   const body = CELESTIAL_BODIES[id];

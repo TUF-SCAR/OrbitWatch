@@ -90,6 +90,7 @@
  .phone-celestial-card button { flex:none; padding:0 6px; font-size:var(--ui-type-12); }
  .phone-celestial-card .phone-celestial-card__travel { display:flex; gap:3px; align-items:center; color:var(--accent); }
  .live-interface:has(.system-scale) .phone-celestial-card { bottom:calc(var(--phone-navigation-bottom) + 126px); }
+ .live-interface:has(.system-scale__oort) .phone-celestial-card { bottom:calc(var(--phone-navigation-bottom) + 184px); }
  .orbitwatch-shell .weather-legend { overflow:visible; max-height:none; }
  .weather-legend .weather-scale { display:block; --weather-scale-height:12px; }
  .weather-legend .weather-scale__heading { font-size:10px; }
@@ -106,7 +107,7 @@
  .phone-inspector { right:auto; }
  .phone-inspector.is-right { right:calc(62px + env(safe-area-inset-right)); }
  .system-scale { left:50%; width:min(260px, 36vw); translate:-50% 0; }
- .phone-celestial-card, .live-interface:has(.system-scale) .phone-celestial-card {
+ .phone-celestial-card, .live-interface:has(.system-scale) .phone-celestial-card, .live-interface:has(.system-scale__oort) .phone-celestial-card {
   bottom:var(--phone-navigation-bottom);
   max-width:calc(32vw - 8px - env(safe-area-inset-left));
  }

@@ -55,8 +55,8 @@ const COLORS = { "main-belt":"#a99681", trojans:"#9b8a73", kuiper:"#87a6ba", sca
 const MAX_ALPHA = { "main-belt":.42, trojans:.30, kuiper:.40, scattered:.20 };
 const EXTENT = { "main-belt":4, trojans:6, kuiper:50, scattered:150 };
 
-export function populationPrimitive(data) {
-  const color = Color.fromCssColorString(COLORS[data.kind]);
+export function populationPrimitive(data, cssColor = COLORS[data.kind]) {
+  const color = Color.fromCssColorString(cssColor);
   const material = new Material({ fabric: { type:"OrbitWatchPopulationV1", uniforms: { tint:{ type:"vec4", x:color.red, y:color.green, z:color.blue, w:0 }, density:0 }, source:SOURCE }, translucent:true });
   const geometry = new Geometry({ attributes: {
     position:new GeometryAttribute({ componentDatatype:ComponentDatatype.DOUBLE, componentsPerAttribute:3, values:data.positions }),

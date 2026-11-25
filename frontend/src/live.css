@@ -364,6 +364,12 @@ input[type="checkbox"] { accent-color:#8de8fa; width:16px; height:16px; cursor:p
 .system-scale input:focus-visible { outline:2px solid var(--accent); outline-offset:5px; }
 .system-scale__ends { font-size: var(--ui-type-8); }
 .system-scale__population { margin-top:8px; color:#92a8b5; font-size: var(--ui-type-8); letter-spacing:.02em; }
+.system-scale p.system-scale__population { margin-bottom:0; font-size:var(--ui-type-11); line-height:1.4; }
+.is-oort .live-telemetry-dock,.is-oort .phone-readouts { display:none; }
+.system-scale__oort { width:100%; min-height:44px; margin-top:8px; color:var(--accent); }
+.system-scale__oort:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+.solar-overview-labels { position:absolute; inset:0; overflow:hidden; pointer-events:none; }
+.solar-overview-labels span { position:absolute; left:0; top:0; white-space:nowrap; color:#f1f5fa; font:600 14px/1.2 Inter,sans-serif; text-shadow:0 1px 2px #000,0 0 4px #000; }
 @media(max-width:720px) { .system-scale { width:230px; margin-left:-115px; bottom:calc(var(--ui-bottom-safe,112px) + 8px); } }
 @media(prefers-reduced-motion:reduce) { .system-menu__track,.spatial-surface,.live-interface { transition:none; } .cinematic-stage.is-ready .cinematic-stage__content > * { animation:none; } }
 

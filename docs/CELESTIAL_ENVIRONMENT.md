@@ -15,7 +15,9 @@ Versioned FNV-1a/Mulberry32 streams use `orbitwatch-solar-v1:<kind>`. Quality pr
 
 Main-belt semimajor axes span 2.2–3.3 AU, eccentricities .025–.205 and inclinations 1–24 degrees. Elliptical radial excursions are intentional. Kuiper samples contain a cold low-inclination core and a thicker illustrative component, constrained to perihelion >=30 and aphelion <=50 AU. Cool gray-blue tint distinguishes icy context from the warm, rocky belt. These parameter weights are visual sampling choices, not empirical abundance fits.
 
-The sparse **inner scattered disk subset** has perihelia 30–38 AU, semimajor axes 52–90 AU and inclinations 10–45 degrees, reaching at most 150 AU. It fits the existing 240 AU navigation ceiling. No Oort Cloud or compressed distances are added.
+The sparse **inner scattered disk subset** has perihelia 30–38 AU, semimajor axes 52–90 AU and inclinations 10–45 degrees, reaching at most 150 AU. It fits the existing 240 AU navigation ceiling.
+
+The separate Oort Cloud exploration view opens from the Live Mode scale control at 240 AU. Its seeded samples occupy a roughly spherical volume from 5,000 to 100,000 AU. The radial weighting, brightness and point count serve the display. The particles represent an inferred population with unobserved individual positions. They have no orbital states or selection targets. The view maps those distances to a Sun-centered render scale compressed by 128 and labels the explorer range in conceptual AU. The return action restores the prior Solar System camera and frees the particle buffers. [NASA Oort Cloud facts](https://science.nasa.gov/solar-system/oort-cloud/facts/)
 
 Main/Kuiper/scattered distributions are static snapshots in heliocentric ecliptic axes. Their population extent remains meaningful as real destinations advance with scene time; no individual orbital motion is claimed. Trojans use a shared matrix to follow Jupiter's current longitude. Every matrix uses the same ICRF/fixed fallback as named bodies, preserving the inertial local view.
 

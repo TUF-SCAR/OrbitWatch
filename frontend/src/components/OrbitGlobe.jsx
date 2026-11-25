@@ -516,6 +516,11 @@ export default function OrbitGlobe({
       if (changed) viewerRef.current?.camera.cancelFlight();
       return changed;
     },
+    toggleOortCloud() {
+      lastInteractionRef.current = performance.now();
+      return solarSystemLayerRef.current?.toggleOort();
+    },
+    leaveOortCloud() { solarSystemLayerRef.current?.leaveOort(); },
     selectCelestialMarker(id) { solarSystemLayerRef.current?.selectMarker(id); },
     async searchPlaces(query, signal) {
       const viewer = viewerRef.current;
@@ -784,6 +789,7 @@ export default function OrbitGlobe({
         {
           ephemeris:modeEphemeris(()=>modeRef.current),
           isLive: () => true,
+          canExploreOort: () => modeRef.current === "live",
           isFollowing: () => Boolean(followStateRef.current),
           zoomEarth: (ratio) => zoomEarth(viewer, ratio),
           onDetailReady: (id) => callbacksRef.current.onDetailReady?.(id),

@@ -112,6 +112,9 @@ def run(postgres=False,serve=False):
                 'retrieved_at':now.isoformat(),'updated_at':now.isoformat(),'data_state':'available','geometry':{'type':'Point','coordinates':[-74,40.7]},
                 'position':[-74,40.7],'measurements':[{'label':'Magnitude (mw)','value':4.5}],'source_url':'https://earthquake.usgs.gov/earthquakes/eventpage/isolated1'}
             assert event_candidate(event,loc,120,now)
+            assert not event_candidate({**event,'closed_at':now.isoformat()},loc,120,now)
+            assert not event_candidate({**event,'classification':'forecast'},loc,120,now)
+            assert not event_candidate({**event,'live_status':{'state':'ended_confirmed'}},loc,120,now)
             assert not event_candidate(event,SimpleNamespace(**{**vars(loc),'latitude':0,'longitude':0}),120,now)
             assert not event_candidate({**event,'reported_at':(now-timedelta(days=3)).isoformat()},loc,120,now)
             assert event_candidate({**event,'geometry':{'type':'Polygon','coordinates':[[[-74,40.7],[-74,40.8],[-74.1,40.8],[-74,40.7]]]}},loc,120,now)

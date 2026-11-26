@@ -1,4 +1,4 @@
-import {useEffect,useRef,useState} from 'react';
+import {useCallback,useEffect,useRef,useState} from 'react';
 import {createPortal} from 'react-dom';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
@@ -21,7 +21,7 @@ export default function MobileLocationPicker({account}){
  const zoneRevision=useRef(0);
  const radius=state.preferences?.event_radius_km;
  const disabled=state.busy||state.phase!=='ready';
- function choosePoint(p){
+ const choosePoint=useCallback(p=>{
   zoneRevision.current++;
   const next={lat:Math.max(-90,Math.min(90,p.lat)),lng:((p.lng+180)%360+360)%360-180};
   const original=draft.id&&next.lat===Number(draft.latitude)&&Math.abs(next.lng-Number(draft.longitude))<1e-9;
@@ -29,7 +29,7 @@ export default function MobileLocationPicker({account}){
   setCoordinates({latitude:next.lat.toFixed(6),longitude:next.lng.toFixed(6)});
   setZoneState(original?'saved':'loading');setConfirmedZone(Boolean(original&&draft.timezone));setError('');
   if(original){setForm(value=>({...value,timezone:draft.timezone}));setZoneLabel(zoneLabel(draft.timezone));}
- }
+ },[draft.id,draft.latitude,draft.longitude,draft.timezone]);
  function useLocation(){
   if(!navigator.geolocation){setError('Device location is unavailable. Choose a point on the map.');return;}
   const revision=zoneRevision.current;
@@ -83,7 +83,7 @@ export default function MobileLocationPicker({account}){
    if(layers.current.coverage)layers.current.coverage.setLatLng(point).setRadius(radius*1000);
    else layers.current.coverage=L.circle(point,{radius:radius*1000,color:'#087e9a',weight:2,fillColor:'#31bdcf',fillOpacity:0.07,interactive:false}).addTo(map);
   }
- },[point,radius]);
+ },[point,radius,choosePoint]);
  const change=patch=>setForm(v=>({...v,...patch}));
  function save(event){
   event.preventDefault();if(!point){setError('Tap the map or use Set pin here to choose the observing point.');return;}

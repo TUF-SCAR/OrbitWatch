@@ -23,7 +23,8 @@ def assessment(kind,target,geometry,weather):
     essential=all(isinstance(v,(int,float)) and math.isfinite(v) for v in (altitude,sun)) and (kind!='satellite' or isinstance(sunlit,bool))
     hard=bool(essential and altitude>=10 and sun<=(0 if target=='moon' else -6) and (kind!='satellite' or sunlit))
     available=weather.get('state')=='available'
-    poor=available and (weather['cloud_cover_percent']>=80 or weather['precipitation_probability_percent']>=70 or weather['precipitation_mm']>=.2)
+    poor=available and (weather['cloud_cover_percent']>=80 or weather['precipitation_probability_percent']>=70
+                        or weather['precipitation_mm']>=.2 or weather.get('surface_visibility_m',math.inf)<1000)
     parts=[{'label':'Elevation','points':round(25*max(0,min(1,(altitude-10)/50)),1) if essential else None,'maximum':25,'detail':f'{altitude:.1f}° above the geometric horizon' if essential else 'Unavailable'},
            {'label':'Sky darkness','points':round(20*max(0,min(1,((0 if target=='moon' else -6)-sun+3)/12)),1) if essential else None,'maximum':20,'detail':f'Sun altitude {sun:.1f}°' if essential else 'Unavailable'},
            {'label':'Illumination','points':10 if essential and (kind!='satellite' or sunlit) else 0 if essential else None,'maximum':10,'detail':('Satellite sunlit' if sunlit else 'Satellite eclipsed') if kind=='satellite' and essential else 'Apparent topocentric astronomical calculation' if essential else 'Unavailable'},

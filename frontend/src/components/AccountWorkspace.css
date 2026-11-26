@@ -93,7 +93,6 @@
 .notification-delivery button { padding:9px 12px; color:#d9eff8; background:#1c3e4d99; border:1px solid #74bfd466; cursor:pointer; font-size:12px; max-width:100%; }
 .notification-delivery button:disabled { opacity:.6; cursor:default; }
 .notification-delivery-details > summary { min-height:44px; align-content:center; cursor:pointer; }
-.notification-workspace .hud-panel__body { min-height:0; }
 @media (min-width:1001px) and (min-height:601px) {
   .mobile-location-picker[open] {
     box-sizing:border-box; width:min(1040px,calc(100vw - 48px)); height:min(720px,calc(100dvh - 48px));
@@ -137,6 +136,7 @@
 .profile-panel.account-workspace > .account-tabs { margin:0; padding:0 0 12px; gap:8px; }
 .account-workspace > .account-tabs > button { flex-direction:row; min-height:48px; font-size:14px; padding:8px; gap:8px; }
 .account-workspace .hud-panel__body { flex:1 1 0; padding-right:8px; }
+.notification-workspace .hud-panel__body { flex-basis:auto; min-height:0; }
 .account-workspace__content { font-size:16px; line-height:1.6; }
 .account-workspace :is(p,.account-muted,.profile-setting p,.account-feature-intro p,.sky-empty,.viewing-details,.viewing-target-picker) { font-size:16px; line-height:1.65; }
 .account-workspace :is(label,select,input,.profile-panel__details > div,.sky-satellite-list strong,.inbox-card p) { font-size:16px; }

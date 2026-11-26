@@ -87,10 +87,10 @@ def Registration(
             detail="Email already exists",
         )
 
-    if len(password) < 8 or not password.strip():
+    if len(password) < 15 or not password.strip():
         raise HTTPException(
             status_code=400,
-            detail="Invalid password length",
+            detail="Use at least 15 characters for your password",
         )
 
     hashed_password = hash_password(password=password)

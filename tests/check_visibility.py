@@ -84,6 +84,11 @@ def run(serve=False):
         dataset={'retrieved_epoch':now.timestamp(),'retrieved_at':now.isoformat(),'provider':'fixture','attribution':'isolated forecast fixture',
                  'rows':[{'valid_epoch':now.timestamp()+3600,'cloud_cover_percent':20,'precipitation_probability_percent':5,'precipitation_mm':0}]}
         assert match_forecast(dataset,now+timedelta(hours=1),now)['state']=='available'
+        from services.notification_policy import weather_allowed
+        assert 'surface_visibility_m' not in match_forecast(dataset,now+timedelta(hours=1),now)
+        low_visibility={**dataset,'rows':[{**dataset['rows'][0],'surface_visibility_m':400,'relative_humidity_percent':95}]}
+        allowed, assessment=weather_allowed(low_visibility,now+timedelta(hours=1),now)
+        assert not allowed and assessment['surface_visibility_m']==400 and assessment['relative_humidity_percent']==95
         assert match_forecast(dataset,now+timedelta(hours=2),now)['state']=='unavailable'
         assert match_forecast(dataset,now+timedelta(hours=1),now+timedelta(hours=2))['state']=='unavailable'
         missing=prediction('satellite','25544',None,loc,start,24,None);assert missing['state']=='unavailable'

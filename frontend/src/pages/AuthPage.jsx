@@ -148,19 +148,13 @@ export default function AuthPage({
     const normalizedUsernameOrEmail =
       usernameOrEmail.trim();
     const normalizedEmail = email.trim();
-    const normalizedPassword = password.trim();
-    const normalizedConfirmPassword =
-      confirmPassword.trim();
-
     setUsername(normalizedUsername);
     setUsernameOrEmail(normalizedUsernameOrEmail);
     setEmail(normalizedEmail);
-    setPassword(normalizedPassword);
-    setConfirmPassword(normalizedConfirmPassword);
 
     if (
       registrationOpen &&
-      normalizedPassword !== normalizedConfirmPassword
+      password !== confirmPassword
     ) {
       setFormMessage("The two passwords do not match.");
       return;
@@ -175,12 +169,12 @@ export default function AuthPage({
         ? await registerAccount({
             username: normalizedUsername,
             email: normalizedEmail,
-            password: normalizedPassword,
+            password,
             signal: controller.signal,
           })
         : await loginAccount({
             usernameOrEmail: normalizedUsernameOrEmail,
-            password: normalizedPassword,
+            password,
             signal: controller.signal,
           });
 
@@ -316,10 +310,9 @@ export default function AuthPage({
                     autoComplete={registrationOpen ? "new-password" : "current-password"}
                     icon={LockKeyhole}
                     label="PASSWORD"
-                    minLength={8}
+                    minLength={registrationOpen ? 15 : undefined}
                     onChange={(event) => setPassword(event.target.value)}
-                    onBlur={(event) => setPassword(event.target.value.trim())}
-                    placeholder="Minimum 8 characters"
+                    placeholder={registrationOpen ? "Minimum 15 characters" : "Your password"}
                     required
                     trailing={
                       <button
@@ -339,9 +332,8 @@ export default function AuthPage({
                       autoComplete="new-password"
                       icon={LockKeyhole}
                       label="CONFIRM PASSWORD"
-                      minLength={8}
+                      minLength={15}
                       onChange={(event) => setConfirmPassword(event.target.value)}
-                      onBlur={(event) => setConfirmPassword(event.target.value.trim())}
                       placeholder="Repeat your password"
                       required
                       type={passwordVisible ? "text" : "password"}

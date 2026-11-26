@@ -35,8 +35,10 @@ def shared_prediction(engine,kind,target,record,location,now,hours):
             db.execute(delete(VisibilityPlan).where(VisibilityPlan.expires_at<now))
             if db.scalar(select(func.count()).select_from(VisibilityPlan))>=1024:return preparing
             values={'key':key,'expires_at':now+timedelta(seconds=90),'result':{'_claim':token}}
-            changed=db.execute(insert(VisibilityPlan).values(**values).on_conflict_do_update(index_elements=['key'],set_=values,where=VisibilityPlan.expires_at<=now))
-            db.commit();claimed=changed.rowcount==1
+            won=db.scalar(insert(VisibilityPlan).values(**values).on_conflict_do_update(
+                index_elements=['key'],set_=values,where=VisibilityPlan.expires_at<=now,
+            ).returning(VisibilityPlan.key))
+            db.commit();claimed=won is not None
             if not claimed:return preparing
     except SQLAlchemyError: pass # Additive migration missing: preview can still work.
     # Durable compare-and-swap claim prevents identical geometry CPU fanout.

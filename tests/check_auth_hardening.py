@@ -46,9 +46,9 @@ class Authentication(unittest.TestCase):
         self.client = TestClient(app)
         self.addCleanup(self.client.close)
 
-    def register(self, username='OrbitUser', email='Name+tag@EXAMPLE.INVALID'):
+    def register(self, username='OrbitUser', email='Name+tag@EXAMPLE.INVALID', password='Local-Fixture-Only-2026'):
         return self.client.post('/api/auth/register', json={
-            'username': username, 'email': email, 'password': 'Local-Fixture-Only-2026',
+            'username': username, 'email': email, 'password': password,
         })
 
     def login(self, identifier, password='Local-Fixture-Only-2026'):
@@ -82,6 +82,18 @@ class Authentication(unittest.TestCase):
         self.assertEqual(self.register('Third', 'Name@example.invalid').status_code, 201)
         self.assertEqual(self.login('Café').status_code, 200)
         self.assertEqual(self.login('Name+tag@example.invalid', 'incorrect password').status_code, 401)
+
+    def test_new_password_minimum_preserves_legacy_and_exact_passwords(self):
+        self.assertEqual(self.register(password='too-short').status_code, 400)
+        password = '  Local password phrase  '
+        self.assertEqual(self.register(password=password).status_code, 201)
+        self.assertEqual(self.login('OrbitUser', password).status_code, 200)
+        self.assertEqual(self.login('OrbitUser', password.strip()).status_code, 401)
+        from services.auth import hash_password
+        with Session(self.engine) as db:
+            db.add(User(username='Legacy', email='legacy@example.invalid', password_hash=hash_password('old-pass')))
+            db.commit()
+        self.assertEqual(self.login('Legacy', 'old-pass').status_code, 200)
 
     def test_expired_wrong_signature_and_missing_sessions_are_rejected(self):
         self.assertEqual(self.register().status_code, 201)

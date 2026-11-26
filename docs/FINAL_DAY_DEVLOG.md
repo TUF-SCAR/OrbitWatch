@@ -1406,3 +1406,5 @@ For a physical-device check, sign in on the deployed site and open the bell, the
 ## V6 Batch F.1 — Scientific accuracy
 
 The Time Explorer Moon now shares the analytical position model with Live and the rendered orbit track. The largest tested Horizons XYZ error fell from 93,973 km to 1,106 km. The satellite API validates identity, checksum and epoch and applies the seven-day Live age band. Time Explorer preserves its independent 24-hour policy and identifies older archive windows. Schematic celestial placements disclose their limitations in the inspector. The existing API scheduler owner now refreshes due Natural Events feeds under their shared budgets. The [scientific accuracy audit](scientific-accuracy-audit.md) records the reference values, data retention limits, test results and production readings.
+
+The AWS and Cloudflare checks passed for `6d575e5`. All five Natural Events caches revalidated during read-only inspection. ERA5 stayed active at PID 124832 with 16/227 published, and both Supabase quotas remained above the required free-capacity reserve. [Backend deployment](https://github.com/TUF-SCAR/OrbitWatch/actions/runs/45816421551)

@@ -499,9 +499,6 @@ input[type="checkbox"] { accent-color:#8de8fa; width:16px; height:16px; cursor:p
 .scene-picker__days [data-history]::after { content:''; position:absolute; width:4px; height:4px; border-radius:50%; bottom:4px; left:calc(50% - 2px); background:#a99aff; }
 .scene-picker__days [data-history='weather']::after { background:#7cdecf; }
 .scene-picker__days [data-history='both']::after { background:#f8cd85; }
-.historical-season-switch { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:5px; margin-block:10px; }
-.historical-season-switch button { min-height:44px; }
-.historical-season-switch button[aria-pressed='true'] { color:#eee8ff; background:#b8a7ff24; border-color:#b8a7ff65; }
 .historical-weather-panel .historical-weather-here { flex-shrink:0; width:100%; }
 .scene-picker footer { display:flex; justify-content:flex-end; gap:8px; margin-top:18px; }
 .scene-picker footer button { padding:0 14px; }

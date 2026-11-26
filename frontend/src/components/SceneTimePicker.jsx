@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { ChevronLeft, ChevronRight, X } from 'lucide-react';
 import { MONTHS, dateFields, daysInMonth, fieldsDate, shiftMonth, validSceneTime } from '../utils/sceneCalendar.js';
 import { dayHistory, historyAt, historyChoices, historyDemo, historyIndex, historyLabel } from '../services/timeHistory.js';
+import { nearestWeatherMetadata } from '../services/historicalWeather.js';
 
 export default function SceneTimePicker({time,onApply,onClose,coverage,weatherCoverage,weatherError,children}) {
   const dialog=useRef(null),yearInput=useRef(null);
@@ -24,7 +25,8 @@ export default function SceneTimePicker({time,onApply,onClose,coverage,weatherCo
   const years=[...new Set(choices.map(item=>new Date(item.stamp).getUTCFullYear()))];
   const visibleYear=archiveYear??(years.includes(year)?year:years[0]);
   const availability=date&&historyAt(archive,date);
-  const exactStatus=availability&&(availability.weather||availability.satellites.length||weatherCoverage&&coverage&&coverage.state!=='unavailable')
+  const nearestWeather=availability&&!availability.weather&&nearestWeatherMetadata(weatherCoverage,date);
+  const exactStatus=nearestWeather?'Nearest ERA5 snapshot available':availability&&(availability.weather||availability.satellites.length||weatherCoverage&&coverage&&coverage.state!=='unavailable')
     ? historyLabel(availability.weather,availability.satellites.length) : 'Archive coverage unavailable or loading';
   function setField(key,value) {
     setArchiveTime(null);
@@ -59,7 +61,7 @@ export default function SceneTimePicker({time,onApply,onClose,coverage,weatherCo
       <header><div><span className="scene-picker__eyebrow">TIME EXPLORER</span><h2 id="scene-picker-title">Choose your moment</h2></div><button type="button" aria-label="Close date picker" onClick={onClose}><X size={19}/></button></header>
       <button type="button" className="scene-picker__history-toggle" aria-expanded={showHistory} onClick={()=>setShowHistory(value=>!value)}>Available history <span>{showHistory?'−':'+'}</span></button>
       {showHistory&&<section className="scene-picker__history" aria-label="Available history">
-        <p>{weatherError?'Weather coverage unavailable.':weatherCoverage?`${archive.weather.size} stored weather snapshots.`:'Checking weather coverage…'} {coverage?.state==='unavailable'?'Satellite coverage unavailable.':''}</p>
+        <p>{weatherCoverage?`${archive.weather.size} stored weather snapshots.`:weatherError?'Weather coverage unavailable.':'Checking weather coverage…'} {coverage?.state==='unavailable'?'Satellite coverage unavailable.':''}</p>
         {weatherCoverage?.snapshots?.some(item=>item.provenance?.isolated_fixture)&&<p role="note">Isolated weather test fixtures</p>}
         {demo&&<button type="button" className="scene-picker__featured" aria-pressed={archiveTime===demo.stamp} onClick={()=>chooseArchive(demo.stamp)}>
           <strong>Featured satellite scene<small>2 June 2024 · 16:00 UTC</small></strong><span>{demo.satellites.length}/15 available</span>

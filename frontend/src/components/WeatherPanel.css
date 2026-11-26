@@ -157,6 +157,56 @@
 .weather-legend .weather-scale { --weather-scale-height:26px; }
 .weather-legend small { font-size:10px; line-height:1.45; margin-top:5px; }
 .historical-weather-legend>strong { display:none; }
+.historical-weather-toast {
+  position:absolute;
+  z-index:39;
+  inset-block-start:var(--ui-panel-top);
+  inset-inline-start:max(var(--ui-content-left),env(safe-area-inset-left));
+  inline-size:min(290px, calc(var(--observation-rail-width) + var(--observation-edge) - var(--ui-content-left)));
+  box-sizing:border-box;
+  display:grid;
+  grid-template-columns:minmax(0,1fr) auto;
+  align-items:center;
+  gap:4px;
+  padding:9px 7px 9px 12px;
+  border:1px solid #79aec154;
+  border-radius:10px;
+  background:linear-gradient(145deg,#142733f5,#0a141ff5);
+  box-shadow:0 6px 20px #0005;
+  color:#e7f6ff;
+  font:500 13px/1.4 var(--ui-font-primary,sans-serif);
+  pointer-events:none;
+}
+.historical-weather-toast p { margin:3px 0 0; color:#bbd4df; }
+.historical-weather-toast button {
+  inline-size:44px;
+  block-size:44px;
+  display:grid;
+  place-items:center;
+  border:0;
+  border-radius:7px;
+  color:inherit;
+  background:transparent;
+  cursor:pointer;
+  pointer-events:auto;
+}
+.historical-weather-toast button:hover,.historical-weather-toast button:focus-visible { background:#8ac5de22; }
+.orbitwatch-shell:has(.phone-tools>button[aria-expanded="true"]) .historical-weather-toast,
+body:has(.scene-picker[open]) .historical-weather-toast { display:none; }
+@media (max-width:650px) and (orientation:portrait) {
+  .historical-weather-toast {
+    inset-block-start:calc(120px + env(safe-area-inset-top));
+    inset-inline-start:max(8px,env(safe-area-inset-left));
+    inline-size:min(286px,calc(100vw - 24px - env(safe-area-inset-left) - env(safe-area-inset-right)));
+  }
+}
+@media (max-width:1000px) and (max-height:600px) and (orientation:landscape) and (pointer:coarse) {
+  .historical-weather-toast {
+    inset-block-start:calc(116px + env(safe-area-inset-top));
+    inset-inline-start:max(8px,env(safe-area-inset-left));
+    inline-size:min(218px,var(--observation-rail-width));
+  }
+}
 .weather-hover { position:absolute; top:0; left:0; z-index:29; pointer-events:none; user-select:none; max-width:calc(100% - 16px); box-sizing:border-box; padding:10px 14px; border:1px solid #ffffff18; border-radius:10px; background:#20272df5; color:#fff; font:600 17px/1.15 Inter,system-ui,sans-serif; font-variant-numeric:tabular-nums; white-space:nowrap; box-shadow:0 3px 12px #0004; }
 .weather-hover[hidden] { display:none; }
 .weather-hover[data-variable=precipitation] { white-space:normal; font-size:15px; line-height:1.5; text-align:center; padding:8px 13px; color:var(--precipitation-foreground,#f5f7fa); }

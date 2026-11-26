@@ -1,55 +1,83 @@
 import {useEffect,useMemo,useState} from 'react';
 import {fetchHistoricalWeatherCoverage,fetchHistoricalWeatherSnapshot,fetchHistoricalWeatherLocation} from '../services/orbitwatchApi.js';
-import {exactWeatherMetadata,nearestWeatherMetadata,historicalField,validateHistoricalSnapshot,hasHistoricalVariable,HISTORICAL_FIELDS} from '../services/historicalWeather.js';
+import {nearestWeatherMetadata,historicalField,validateHistoricalSnapshot} from '../services/historicalWeather.js';
+
+const COVERAGE_REFRESH_MS=120_000;
 
 export function useHistoricalWeather(active,time){
-  const stamp=time.getTime();
+  const sceneStamp=time.getTime();
   const [coverage,setCoverage]=useState(null),[coverageError,setCoverageError]=useState('');
-  const [enabled,setEnabled]=useState(false),[windEnabled,setWindEnabled]=useState(false);
+  const [enabled,setEnabled]=useState(true),[windEnabled,setWindEnabled]=useState(false);
   const [variable,setVariable]=useState('temperature'),[opacity,setOpacity]=useState(.55);
   const [stored,setStored]=useState(null),[failure,setFailure]=useState(null);
   const [selectionState,setSelection]=useState(null),[location,setLocation]=useState(null);
-  const metadata=exactWeatherMetadata(coverage,time),nearest=nearestWeatherMetadata(coverage,time);
+  const metadata=useMemo(()=>nearestWeatherMetadata(coverage,sceneStamp),[coverage,sceneStamp]);
+  const sourceStamp=metadata?Date.parse(metadata.timestamp):null;
+  const sourceHash=metadata?.sha256;
+  const sourceKey=metadata?`${sourceStamp}:${sourceHash}`:null;
+  const cacheHit=sourceKey!==null&&stored?.key===sourceKey;
+  const isNearest=sourceStamp!==null&&sourceStamp!==sceneStamp;
+
   useEffect(()=>{
     if(!active)return;
     const controller=new AbortController();
-    fetchHistoricalWeatherCoverage(controller.signal).then(value=>{if(!controller.signal.aborted){setCoverage(value);setCoverageError('');}})
-      .catch(()=>{if(!controller.signal.aborted)setCoverageError('Archive index unavailable. Try reopening Time Explorer.');});
-    return()=>controller.abort();
+    let timer;
+    async function refresh(){
+      try {
+        const value=await fetchHistoricalWeatherCoverage(controller.signal);
+        if(!controller.signal.aborted){setCoverage(value);setCoverageError('');}
+      }catch{
+        if(!controller.signal.aborted)setCoverageError('Archive index could not be refreshed. OrbitWatch will retry.');
+      }finally{
+        if(!controller.signal.aborted)timer=setTimeout(refresh,COVERAGE_REFRESH_MS);
+      }
+    }
+    refresh();
+    return()=>{controller.abort();clearTimeout(timer);};
   },[active]);
+
   useEffect(()=>{
-    if(!active||!enabled||!metadata)return;
+    if(!active||!enabled||!sourceKey||cacheHit)return;
     const controller=new AbortController();
-    fetchHistoricalWeatherSnapshot(new Date(stamp),controller.signal).then(value=>{
-      validateHistoricalSnapshot(value,new Date(stamp));
-      if(!controller.signal.aborted){setStored(value);setFailure(null);}
-    }).catch(()=>{if(!controller.signal.aborted)setFailure({stamp,message:'Stored snapshot could not be verified or loaded. Toggle weather to retry.'});});
+    const sourceTime=new Date(sourceStamp);
+    fetchHistoricalWeatherSnapshot(sourceTime,controller.signal).then(value=>{
+      if(controller.signal.aborted)return;
+      validateHistoricalSnapshot(value,sourceTime,sourceHash);
+      setStored({key:sourceKey,value});setFailure(null);
+    }).catch(()=>{
+      if(!controller.signal.aborted)setFailure({key:sourceKey,message:'Stored snapshot could not be verified or loaded. Toggle weather to retry.'});
+    });
     return()=>controller.abort();
-  },[active,enabled,metadata,stamp]);
-  // Synchronous fence: old planes never reach Cesium even before effects clean up.
-  const snapshot=active&&enabled&&Date.parse(stored?.timestamp)===stamp?stored:null;
-  const selection=active&&selectionState?.stamp===stamp?selectionState.point:null;
+  },[active,enabled,sourceKey,sourceStamp,sourceHash,cacheHit]);
+
+  // Fence render data synchronously, including before cancellation effects run.
+  const snapshot=active&&enabled&&cacheHit?stored.value:null;
+  const selection=snapshot&&selectionState?.stamp===sceneStamp?selectionState.point:null;
   useEffect(()=>{
-    if(!active||!selection||!metadata)return;
+    if(!selection)return;
     const controller=new AbortController();
-    fetchHistoricalWeatherLocation(new Date(stamp),selection,controller.signal).then(value=>{
-      if(!controller.signal.aborted&&Date.parse(value.timestamp)===stamp)setLocation({stamp,point:selection,data:value});
-    }).catch(()=>{if(!controller.signal.aborted)setLocation({stamp,point:selection,error:true});});
+    fetchHistoricalWeatherLocation(new Date(sourceStamp),selection,controller.signal).then(value=>{
+      if(controller.signal.aborted)return;
+      if(value.source!=='ERA5 reanalysis'||Date.parse(value.timestamp)!==sourceStamp
+        ||value.latitude!==selection.latitude||value.longitude!==selection.longitude)throw Error('Mismatched historical location');
+      setLocation({key:sourceKey,point:selection,data:value});
+    }).catch(()=>{
+      if(!controller.signal.aborted)setLocation({key:sourceKey,point:selection,error:true});
+    });
     return()=>controller.abort();
-  },[active,selection,metadata,stamp]);
+  },[selection,sourceKey,sourceStamp]);
+
   const field=useMemo(()=>historicalField(snapshot,variable),[snapshot,variable]);
   const wind=useMemo(()=>historicalField(snapshot,'wind'),[snapshot]);
-  function reset(nextMetadata=null){
-    setEnabled(Boolean(nextMetadata));
-    if(!hasHistoricalVariable(nextMetadata,'wind'))setWindEnabled(false);
-    if(nextMetadata&&!hasHistoricalVariable(nextMetadata,variable)) {
-      const available=Object.keys(HISTORICAL_FIELDS).find(key=>hasHistoricalVariable(nextMetadata,key));
-      if(available)setVariable(available);
-    }
-    setStored(null);setFailure(null);setSelection(null);setLocation(null);
+  function select(point){
+    setLocation(null);
+    setSelection(point?{stamp:sceneStamp,point:{...point}}:null);
   }
-  return {coverage,coverageError,metadata,nearest,enabled,setEnabled,windEnabled,setWindEnabled,variable,setVariable,opacity,setOpacity,
-    field,wind,snapshot,error:failure?.stamp===stamp?failure.message:'',
-    selection,select:point=>{setLocation(null);setSelection(point?{stamp,point}:null);},
-    location:selection&&location?.stamp===stamp&&location?.point===selection?location:null,reset};
+  function changeEnabled(value){
+    if(!value){select(null);setFailure(null);}
+    setEnabled(value);
+  }
+  return {coverage,coverageError,metadata,isNearest,sourceStamp,enabled,setEnabled:changeEnabled,windEnabled,setWindEnabled,variable,setVariable,opacity,setOpacity,
+    field,wind,snapshot,error:failure?.key===sourceKey?failure.message:'',
+    selection,select,location:selection&&location?.key===sourceKey&&location.point===selection?location:null};
 }

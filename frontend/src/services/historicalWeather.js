@@ -7,21 +7,23 @@ export const HISTORICAL_FIELDS={
   wind:{label:'10 m wind',units:'km/h',range:[-150,150],preview:'wind'},
 };
 const componentSpec={...HISTORICAL_FIELDS,u:{units:'m/s',range:[-150,150]},v:{units:'m/s',range:[-150,150]},dewpoint:{units:'°C',range:[-153.15,66.85]}};
-export function exactWeatherMetadata(coverage,time){
-  const stamp=new Date(time).getTime();
-  return coverage?.snapshots?.find(item=>Date.parse(item.timestamp)===stamp)||null;
-}
 export function nearestWeatherMetadata(coverage,time){
   const stamp=new Date(time).getTime();
-  return [...(coverage?.snapshots||[])].filter(item=>Number.isFinite(Date.parse(item.timestamp))&&Date.parse(item.timestamp)<=Date.now())
+  if(!Number.isFinite(stamp))return null;
+  const now=Date.now();
+  return (coverage?.snapshots||[]).filter(item=>item?.provider==='Copernicus CDS / ECMWF'
+      &&item.dataset==='reanalysis-era5-single-levels'&&item.product==='reanalysis'
+      &&['complete','partial'].includes(item.status)&&/^[a-f0-9]{64}$/.test(item.sha256)
+      &&Number.isFinite(Date.parse(item.validated_at))&&Date.parse(item.timestamp)<=now)
     .sort((a,b)=>Math.abs(Date.parse(a.timestamp)-stamp)-Math.abs(Date.parse(b.timestamp)-stamp)||Date.parse(a.timestamp)-Date.parse(b.timestamp))[0]||null;
 }
 export function hasHistoricalVariable(metadata,key){
   return key==='wind'?Boolean(metadata?.variables?.u&&metadata?.variables?.v):Boolean(metadata?.variables?.[key]);
 }
-export function validateHistoricalSnapshot(snapshot,time){
+export function validateHistoricalSnapshot(snapshot,time,checksum){
   const g=snapshot?.grid;
   if(snapshot?.source!=='ERA5 reanalysis'||snapshot.metadata?.dataset!=='reanalysis-era5-single-levels'||snapshot.metadata?.product!=='reanalysis'||Date.parse(snapshot.timestamp)!==new Date(time).getTime()||Date.parse(snapshot.metadata.timestamp)!==Date.parse(snapshot.timestamp)||!g||g.width!==360||g.height!==181||g.step!==1||g.north!==90||g.west!==-180||snapshot.precipitation_period_seconds!==3600)throw Error('Mismatched historical snapshot');
+  if(checksum&&snapshot.metadata.sha256!==checksum)throw Error('Snapshot differs from the published archive index');
   if(!snapshot.fields||!Object.keys(snapshot.fields).length||Object.keys(snapshot.fields).length>8)throw Error('Invalid historical planes');
   for(const [name,field] of Object.entries(snapshot.fields)){
     const spec=componentSpec[name];

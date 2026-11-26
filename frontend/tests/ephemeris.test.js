@@ -14,14 +14,14 @@ test("offline object catalog preserves backend IDs and search metadata", () => {
   }
 });
 
-test("all catalog destinations have finite metre coordinates and closed orbits", () => {
+test("all catalog destinations have finite metre coordinates and bounded orbit geometry", () => {
   for (const date of ["1945-01-01T00:00:00Z", "2000-01-01T12:00:00Z", "2026-09-17T00:00:00Z", "2030-01-01T00:00:00Z"]) {
     const time = JulianDate.fromIso8601(date);
     for (const id of ALL_CELESTIAL_IDS) {
       const position = bodyPositionFixed(id, time);
       assert.ok(position && [position.x, position.y, position.z].every(Number.isFinite), `${id}: ${date}`);
       const reference = bodyOrbitalReference(id);
-      if (CELESTIAL_BODIES[id].type === "Moon") {
+      if (CELESTIAL_BODIES[id].type === "Moon" && id !== "moon") {
         const parent = bodyPositionFixed(CELESTIAL_BODIES[id].parent, time);
         const distanceKm = Cartesian3.distance(position, parent) / 1000;
         assert.ok(distanceKm >= reference.semimajorKm * (1 - reference.eccentricity) - 1, id);
@@ -30,7 +30,11 @@ test("all catalog destinations have finite metre coordinates and closed orbits",
       if (id === "sun") continue;
       const points = sampleBodyOrbitFixed(id, time, 96);
       assert.equal(points.length, 97, id);
-      assert.ok(Cartesian3.distance(points[0], points.at(-1)) < 1, `${id}: orbit closure`);
+      if (id === "moon") {
+        assert.ok(Cartesian3.distance(points[0], position) < 1, "lunar track starts at the scene position");
+      } else {
+        assert.ok(Cartesian3.distance(points[0], points.at(-1)) < 1, `${id}: orbit closure`);
+      }
     }
     assert.equal(Cartesian3.magnitude(bodyPositionFixed("earth", time)), 0);
     const sunDistance = Cartesian3.magnitude(bodyPositionFixed("sun", time)) / AU_METERS;
@@ -48,6 +52,23 @@ test("astronomical orbit geometry has a bounded vertex count", () => {
     assert.ok(geometry.attributes.position.values.length < 5000, id);
     assert.ok(geometry.indices.length < 2000, id);
     assert.ok(CELESTIAL_BODIES[id].radiusKm > 0);
+  }
+});
+
+test("historical lunar vectors agree with geometric Earth-centered JPL Horizons", () => {
+  // Horizons target 301, center 500@399, ICRF axes, geometric XYZ in km.
+  // TIME_TYPE=UT means UT1 before 1962 and UTC thereafter.
+  const cases = [
+    ["1957-10-05T12:00:00Z", 367705.9725865774, -167968.2238486971, -36099.00539245419],
+    ["1970-01-15T12:00:00Z", 310204.658134679, 201116.3324277934, 117574.8370437181],
+    ["2000-01-01T12:00:00Z", -291567.0760779644, -266759.5825881826, -76121.82661145244],
+    ["2024-10-15T12:00:00Z", 357580.6064693, -30100.43300817102, -20568.57350898693],
+    ["2026-11-26T12:00:00Z", -2145.606098289807, 319144.0522111846, 165888.6411397274],
+  ];
+  for (const [stamp, ...km] of cases) {
+    const time = JulianDate.fromIso8601(stamp);
+    const expected = new Cartesian3(...km.map(value => value * 1000));
+    assert.ok(Cartesian3.distance(bodyPositionInertial("moon", time), expected) < 1_500_000, stamp);
   }
 });
 

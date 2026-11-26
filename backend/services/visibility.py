@@ -17,10 +17,11 @@ from skyfield.api import EarthSatellite, load, load_file, wgs84
 from skyfield import almanac
 from services.visibility_forecast import match_forecast
 from services.viewing_score import assessment,equipment
+from services.satellite_tracker import LIVE_ELEMENT_MAX_AGE_DAYS
 
 TS=load.timescale(builtin=True)
 SATELLITE_MIN_ALT=10.0
-MAX_ELEMENT_AGE_DAYS=7
+MAX_ELEMENT_AGE_DAYS=LIVE_ELEMENT_MAX_AGE_DAYS
 MAX_WINDOWS=8
 CACHE=OrderedDict()
 LOCK=threading.Lock()

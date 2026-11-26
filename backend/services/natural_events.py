@@ -3,12 +3,14 @@
 No startup fetches, arbitrary URL proxy, event-by-event fanout or Supabase writes.
 """
 from concurrent.futures import ThreadPoolExecutor
+import asyncio
 from datetime import datetime, timezone, timedelta
 from email.utils import parsedate_to_datetime
 import json
 import os
 from pathlib import Path
 import re
+import sqlite3
 import threading
 import time
 import httpx
@@ -19,7 +21,6 @@ from services.natural_event_data import normalize, cross_references, iso, date
 from services.natural_event_sources import acquire
 from services.event_policy import fair_events,material_updates
 from services.cyclone_tracks import IBTRACS_URL,NHC_URL,attach_forecasts
-from services.weather_cache import WeatherDeferred
 
 POLICIES={'eonet':(900,4,96),'gdacs':(900,4,96),'usgs':(300,12,288),'ibtracs':(43200,2,2),'nhc':(900,4,96)}
 URLS={'eonet':'https://eonet.gsfc.nasa.gov/api/v3/events',
@@ -124,6 +125,28 @@ def revalidate(provider):
         if executor is None:executor=ThreadPoolExecutor(max_workers=3,thread_name_prefix='natural-events')
         future=executor.submit(refresh,provider);pending[provider]=future
         future.add_done_callback(lambda job:job.exception())
+
+
+def queue_due_refreshes():
+    """Use the same leases and budgets as on-demand reads without assembling reports."""
+    if not enabled('ORBITWATCH_EVENT_PROVIDER_REQUESTS', True):
+        return
+    now = time.time()
+    for provider, store in stores.items():
+        cached = store.get('feed')
+        if not cached or now - cached['validated_at'] >= POLICIES[provider][0]:
+            revalidate(provider)
+
+
+async def run_natural_event_refresh_worker():
+    # Only the existing host scheduler owner runs this loop. The per-provider
+    # gates still decide whether an HTTP request can be made.
+    while True:
+        await asyncio.sleep(60)
+        try:
+            await asyncio.to_thread(queue_due_refreshes)
+        except (OSError, sqlite3.Error):
+            continue  # A temporarily unavailable local cache can recover next tick.
 
 
 def current_events(schedule=True,refresh_providers=None):

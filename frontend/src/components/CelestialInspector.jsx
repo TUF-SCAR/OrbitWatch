@@ -6,7 +6,7 @@ import { CELESTIAL_BODIES } from "../data/celestialBodies.js";
 import { bodyRepresentation, bodyTextureSource, BODY_SOURCES } from "../data/celestialFacts.js";
 import { bodyScienceSource, bodyAdditionalSources, CELESTIAL_NOTES } from "../data/celestialNotes.js";
 import { AU_METERS, bodyOrbitalReference, bodyPositionFixed } from "../data/solarSystemEphemeris.js";
-import {liveEphemeris} from '../services/liveScience.js';
+import {describeHistoricalBody,liveEphemeris} from '../services/liveScience.js';
 import {smallBodyStore} from '../services/solarSystemData.js';
 const number = (value, digits = 2) => value.toLocaleString(undefined, { maximumFractionDigits: digits });
 function PositionReadout({ bodyId, sceneTime }) {
@@ -18,14 +18,15 @@ function PositionReadout({ bodyId, sceneTime }) {
   const position = positionOf(bodyId, time);
   const parentId = CELESTIAL_BODIES[bodyId].parent;
   const parent = parentId && positionOf(parentId, time);
-  const science=sceneTime?null:liveEphemeris.describe(bodyId,time);
+  const science=sceneTime?describeHistoricalBody(bodyId,time):liveEphemeris.describe(bodyId,time);
   const distance = (point) => {
     const meters = Cartesian3.distance(position, point);
     return meters > AU_METERS / 10 ? `${number(meters / AU_METERS, 4)} AU` : `${number(meters / 1000, 0)} km`;
   };
+  if(science.schematic)return <><h3>Schematic placement</h3><p>{science.source}. {science.limitation}</p></>;
   return <><h3>Calculated position</h3><p>At {JulianDate.toDate(time).toISOString().replace("T", " ").slice(0, 19)} UTC. Distances are center to center.</p>
     <dl className="celestial-measurements"><div><dt>From Earth</dt><dd>{distance(Cartesian3.ZERO)}</dd></div>{parent && <div><dt>From {CELESTIAL_BODIES[parentId].name}</dt><dd>{distance(parent)}</dd></div>}</dl>
-    {science?<><p>{science.source}. {science.limitation}</p>{science.record&&<p>Osculation epoch JD {science.record.epoch_tdb} TDB · {science.record.state}. Retrieved {new Date(science.record.retrieved_at*1000).toISOString()}. This date is not the orbital epoch.</p>}</>:<p>Approximate educational ephemeris. Moon planes and small-body elements are simplified; encounters, terrain and body rotation are not precision simulations.</p>}</>;
+    <p>{science.source}. {science.limitation}</p>{science.record&&<p>Osculation epoch JD {science.record.epoch_tdb} TDB · {science.record.state}. Retrieved {new Date(science.record.retrieved_at*1000).toISOString()}. This date is not the orbital epoch.</p>}</>;
 }
 export default function CelestialInspector({ bodyId, sceneTime, onClose, detailState }) {
   useSyncExternalStore(smallBodyStore.subscribe,smallBodyStore.snapshot,smallBodyStore.snapshot);

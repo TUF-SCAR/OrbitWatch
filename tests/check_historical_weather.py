@@ -177,8 +177,10 @@ class HistoricalWeatherAPI(unittest.TestCase):
         from fastapi import FastAPI
         from fastapi.testclient import TestClient
         from routes.historical_weather import router
+        from core.database import get_database_session
         from core.security import get_current_user
         self.auth=get_current_user;self.app=FastAPI();self.app.include_router(router);self.client=TestClient(self.app)
+        self.app.dependency_overrides[get_database_session]=lambda:None
     def test_auth_and_exact_gating(self):
         self.assertEqual(self.client.get('/api/historical/weather/coverage').status_code,401)
         self.app.dependency_overrides[self.auth]=lambda:object()

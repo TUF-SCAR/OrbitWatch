@@ -3,6 +3,7 @@ import {
   JulianDate,
   Matrix3,
   Matrix4,
+  Simon1994PlanetaryPositions,
   Transforms,
 } from "cesium";
 import { CELESTIAL_BODIES } from "./celestialBodies.js";
@@ -204,6 +205,7 @@ function eclipticToEquatorial(vector, result = new Cartesian3()) {
 }
 
 export function bodyPositionInertial(id, time, result = new Cartesian3()) {
+  if (id === "moon") return Simon1994PlanetaryPositions.computeMoonPositionInEarthInertialFrame(time, result);
   const ecliptic = geocentricEcliptic(id, time);
   if (!ecliptic) return undefined;
   return eclipticToEquatorial(ecliptic, result);
@@ -268,6 +270,16 @@ export function sampleBodyOrbitFixed(id, time, steps = 128) {
 
   const earth = planetHeliocentric("earth", time);
   const matrix = inertialToFixedMatrix(time);
+  if (id === "moon") {
+    // Follow the analytical trajectory for one mean sidereal month. Holding
+    // the display frame fixed preserves the inertial shape and the current point.
+    const epoch = new JulianDate();
+    return Array.from({ length: steps + 1 }, (_, index) => {
+      JulianDate.addSeconds(time, index * MOON_ELEMENTS.moon.periodDays * 86400 / steps, epoch);
+      const position = bodyPositionInertial(id, epoch);
+      return Matrix3.multiplyByVector(matrix, position, position);
+    });
+  }
 
   const parentHelio = body.type === "Moon"
     ? (body.parent === "earth" ? earth : heliocentric(body.parent, time))

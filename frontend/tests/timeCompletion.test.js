@@ -32,6 +32,7 @@ test('archive gaps, lifetime uncertainty, verified decay, failed SGP4 and qualif
   coverage.objects[0].valid_windows=[{start:'2024-01-01T00:00Z',end:'2024-01-02T00:00Z'}];
   assert.equal(historicalAvailability(20580,time,coverage).state,'available');
   assert.equal(historicalAvailability(20580,time,coverage,{timestamp:time.toISOString(),objects:[],errors:[{norad_id:20580,message:'Invalid propagated state'}]}).state,'unavailable');
+  assert.equal(historicalAvailability(20580,new Date('2024-01-03T12:00Z'),coverage).state,'stale');
 });
 
 test('calendar rejects local DST gaps and preserves known repeated-hour instants when displayed in UTC',()=>{

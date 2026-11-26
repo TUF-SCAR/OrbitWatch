@@ -1,4 +1,4 @@
-import {Cartesian3,JulianDate,Matrix3,Simon1994PlanetaryPositions} from 'cesium';
+import {Cartesian3,JulianDate,Matrix3} from 'cesium';
 import {AU_METERS,PLANET_ELEMENTS,bodyPositionFixed,bodyPositionInertial,inertialToFixedMatrix,sampleBodyOrbitFixed} from '../data/solarSystemEphemeris.js';
 import {CELESTIAL_BODIES} from '../data/celestialBodies.js';
 const RAD=Math.PI/180,OBLIQUITY=84381.448/3600*RAD;
@@ -39,7 +39,7 @@ export function createLiveEphemeris(getRecords=()=>[]){
   let baseTime=null,earth=null,moon=null;
   function earthAt(time){
     if(!baseTime||!JulianDate.equals(baseTime,time)){
-      baseTime=JulianDate.clone(time,baseTime);moon=Simon1994PlanetaryPositions.computeMoonPositionInEarthInertialFrame(time);
+      baseTime=JulianDate.clone(time,baseTime);moon=bodyPositionInertial('moon',time);
       earth=Cartesian3.subtract(planetVector('earth',time),Cartesian3.multiplyByScalar(moon,MOON_MASS_FRACTION,new Cartesian3()),new Cartesian3());
     }
     return earth;
@@ -72,7 +72,7 @@ export function createLiveEphemeris(getRecords=()=>[]){
     const record=recordFor(id),planet=PLANET_ELEMENTS[id];
     if(!usableLiveRecord(record,time)&&!planet){
       // Preserve the approved illustrative paths, translating to the same parent
-      // center as Live models. Lunar path remains an approximate catalog ellipse.
+      // center as Live models. Earth's lunar path uses the shared analytical track.
       const center=CELESTIAL_BODIES[id]?.type==='Moon'?CELESTIAL_BODIES[id].parent:'sun';
       const delta=Cartesian3.subtract(position(center,time),bodyPositionFixed(center,time),new Cartesian3());
       return sampleBodyOrbitFixed(id,time,steps).map(point=>Cartesian3.add(point,delta,point));
@@ -88,8 +88,8 @@ export function createLiveEphemeris(getRecords=()=>[]){
     const record=recordFor(id);
     if(usableLiveRecord(record,time))return {record,source:`${record.source} · solution ${record.solution_id}`,limitation:'Osculating two-body approximation; not a precision trajectory. Phase/encounters are not guaranteed outside the stated epoch window.'};
     if(id==='moon')return {source:'Simon et al. 1994 analytical lunar theory (Cesium)',limitation:'Geometric Earth-centered analytical position; not an apparent telescope direction.'};
-    if(PLANET_ELEMENTS[id])return {source:'JPL approximate planetary elements · 1800–2050',limitation:'Geometric low-precision fit; outer-planet errors can reach millions of kilometres.'};
-    return {source:record?'Catalog approximation · JPL epoch outside usable window':'Catalog approximation · no usable shared JPL record',limitation:CELESTIAL_BODIES[id]?.type==='Moon'?'Schematic moon elements: orbital phase and parent reference plane are not a fitted ephemeris.':'Unverified catalog epoch/phase; retained for continuity, not precision positioning.'};
+    if(id==='sun'||PLANET_ELEMENTS[id])return {source:'JPL approximate planetary elements · 1800–2050',limitation:'Geometric low-precision fit; outer-planet errors can reach millions of kilometres.'};
+    return {schematic:true,source:record?'Catalog approximation · JPL epoch outside usable window':'Catalog approximation · no usable shared JPL record',limitation:CELESTIAL_BODIES[id]?.type==='Moon'?'Schematic moon elements: orbital phase and parent reference plane are not a fitted ephemeris.':'Unverified catalog epoch/phase; retained for continuity, not precision positioning.'};
   }
   return {position,inertial,orbit,describe};
 }

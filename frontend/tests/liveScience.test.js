@@ -59,7 +59,8 @@ test('authoritative geometric ICRF/TDB comparisons use documented method toleran
       if(id==='io'){assert.match(description.limitation,/Schematic/);continue;}
       if(['ceres','eros','pluto'].includes(id)&&!description.record)continue; // historical dates are NOT supported by Live records
       assert.ok(errorKm<toleranceKm[id],`${id} ${jd}: ${errorKm} km exceeds method envelope`);
-      if(id==='moon'||description.record)assert.ok(errorKm<Cartesian3.distance(old,expected)/1000);
+      if(id==='moon')assert.equal(Cartesian3.distance(actual,old),0);
+      if(description.record)assert.ok(errorKm<Cartesian3.distance(old,expected)/1000);
     }
   }
   t.diagnostic(JSON.stringify(results));

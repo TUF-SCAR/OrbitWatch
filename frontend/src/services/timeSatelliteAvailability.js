@@ -8,10 +8,12 @@ export function historicalAvailability(id,time,coverage,historicalData,lifetime=
   if(lifetime?.decay_date&&day>=lifetime.decay_date)return {state:'decayed',label:'No longer in orbit',reason:`Verified decay/reentry date: ${lifetime.decay_date}.`,disabled:true};
   const matching=Date.parse(historicalData?.timestamp)===instant;
   const failed=matching&&historicalData?.errors?.find(row=>row.norad_id===id);
-  if(failed)return {state:'unavailable',label:'Historical orbital data unavailable',reason:failed.message||'Archived elements could not produce a valid position.'};
   if(matching&&historicalData?.objects?.some(row=>row.norad_id===id))return {state:'available',label:'Historical orbital data available',reason:'Stored elements propagated with SGP4; epoch age at most 24 hours.'};
   const row=coverage?.objects?.find(item=>item.norad_id===id);
-  if(row?.valid_windows?.some(window=>Date.parse(window.start)<=instant&&instant<=Date.parse(window.end)))return {state:'available',label:'Historical orbital data available',reason:'Stored element validity window covers this instant. Position is validated when enabled.'};
+  const covered=row?.valid_windows?.some(window=>Date.parse(window.start)<=instant&&instant<=Date.parse(window.end));
+  if(!covered&&row?.valid_windows?.some(window=>Date.parse(window.end)<instant))return {state:'stale',label:'Archived elements too old',reason:'A prior archive window exists, but no known epoch covers this instant under the 24-hour policy.'};
+  if(failed)return {state:'unavailable',label:'Historical orbital data unavailable',reason:failed.message||'Archived elements could not produce a valid position.'};
+  if(covered)return {state:'available',label:'Historical orbital data available',reason:'Stored element validity window covers this instant. Position is validated when enabled.'};
   if(!lifetime?.launch_date||day===lifetime.launch_date)return {state:'unknown',label:'Historical status unknown',reason:day===lifetime?.launch_date?'Launch is known only to calendar-day precision; no qualifying archive at this instant.':'Verified lifetime metadata is insufficient; archive bounds are not lifetime bounds.'};
   return {state:'unavailable',label:'Historical orbital data unavailable',reason:coverage?.state==='unavailable'?'Archive coverage service is unavailable. No Live elements are substituted.':'No stored epoch at/before this instant within 24 hours. Launch is documented; decay is not inferred from archive gaps.'};
 }

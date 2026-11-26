@@ -10,6 +10,7 @@ from services.satellite_catalog import (
     is_supported_norad_id,
 )
 from services.satellite_tracker import (
+    LiveElementsUnavailable,
     get_satellite_position,
     get_satellite_trajectory,
     get_satellite_trajectories,
@@ -48,7 +49,7 @@ def convert_satellite_error(error: Exception):
     if isinstance(error, LookupError):
         raise HTTPException(
             status_code=503,
-            detail="Orbital data is temporarily unavailable",
+            detail=str(error) if isinstance(error, LiveElementsUnavailable) else "Orbital data is temporarily unavailable",
         )
 
     raise HTTPException(

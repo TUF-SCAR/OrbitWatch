@@ -23,6 +23,7 @@ os.environ.update(DATABASE_URL=url,JWT_SECRET_KEY=secrets.token_hex(32),ORBITWAT
 
 from core.database import database_engine
 from models.user import User
+from models.auth_state import AuthAttempt, RevokedSession
 from models.satellite_orbital_data import SatelliteOrbitalData, SatelliteOrbitalDataHistory
 from models.historical_elements import HistoricalElements
 from services.historical_catalog import HISTORICAL_IDS, HISTORICAL_DEFAULT_IDS, check_historical_ids
@@ -39,7 +40,7 @@ def run():
     assert HISTORICAL_DEFAULT_IDS==(25544,20580,48274,39084)
     try:check_historical_ids([58990]);raise AssertionError('Live-only satellite accepted')
     except ValueError:pass
-    for table in (User.__table__,SatelliteOrbitalData.__table__,SatelliteOrbitalDataHistory.__table__):
+    for table in (User.__table__,AuthAttempt.__table__,RevokedSession.__table__,SatelliteOrbitalData.__table__,SatelliteOrbitalDataHistory.__table__):
         table.create(database_engine,checkfirst=True)
     sql=(ROOT/'backend/migrations/001_historical_elements.sql').read_text()
     for _ in range(2):

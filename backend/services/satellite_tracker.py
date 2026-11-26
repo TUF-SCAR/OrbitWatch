@@ -4,6 +4,7 @@ from datetime import datetime, timedelta, timezone
 from skyfield.api import EarthSatellite, load, wgs84
 from skyfield.sgp4lib import TEME
 from skyfield.framelib import itrs
+from sgp4.io import verify_checksum
 from core.availability import DatabaseUnavailable
 
 from repositories.satellite_orbital_data import (
@@ -15,6 +16,17 @@ timescale = load.timescale()
 
 satellite_cache = dict()
 satellite_cache_lifetime = 3600
+LIVE_ELEMENT_MAX_AGE_DAYS = 7
+
+
+class LiveElementsUnavailable(LookupError):
+    pass
+
+
+def require_live_epoch(satellite: EarthSatellite, instant: datetime) -> None:
+    age = instant - satellite.epoch.utc_datetime()
+    if not -timedelta(days=1) <= age <= timedelta(days=LIVE_ELEMENT_MAX_AGE_DAYS):
+        raise LiveElementsUnavailable("Current orbital element epoch is outside the Live propagation window")
 
 
 def clear_satellite_cache(norad_ids: list[int] | None = None) -> None:
@@ -30,12 +42,17 @@ def clear_satellite_cache(norad_ids: list[int] | None = None) -> None:
 
 
 def create_satellite_propagator(record: dict) -> EarthSatellite:
-    satellite = EarthSatellite(
-        name=record["object_name"],
-        line1=record["tle_line1"],
-        line2=record["tle_line2"],
-        ts=timescale,
-    )
+    line1, line2 = record["tle_line1"], record["tle_line2"]
+    try:
+        verify_checksum(line1, line2)
+        satellite = EarthSatellite(name=record["object_name"], line1=line1, line2=line2, ts=timescale)
+        if satellite.model.satnum != record["norad_id"] or line1[2:7] != line2[2:7]:
+            raise ValueError("TLE identity mismatch")
+        stored_epoch = record.get("epoch")
+        if stored_epoch is not None and abs((stored_epoch - satellite.epoch.utc_datetime()).total_seconds()) > 2:
+            raise ValueError("TLE epoch mismatch")
+    except (ValueError, TypeError, OverflowError, AttributeError) as error:
+        raise LiveElementsUnavailable("Current orbital elements failed validation") from error
 
     satellite_cache[record["norad_id"]] = {
         "propagator": satellite,
@@ -49,12 +66,14 @@ def create_satellite_propagator(record: dict) -> EarthSatellite:
 
 
 def get_satellite_propagator(norad_id: int) -> EarthSatellite:
+    now = datetime.now(timezone.utc)
     cache_data = satellite_cache.get(norad_id)
 
     if cache_data:
         age = time.monotonic() - cache_data["cached_at"]
 
         if age < satellite_cache_lifetime:
+            require_live_epoch(cache_data["propagator"], now)
             print(f"Found {norad_id} space object from RAM cache")
             return cache_data["propagator"]
 
@@ -66,6 +85,7 @@ def get_satellite_propagator(norad_id: int) -> EarthSatellite:
         raise LookupError(f"No orbital data available for NORAD ID {norad_id}")
 
     satellite = create_satellite_propagator(record)
+    require_live_epoch(satellite, now)
 
     if record.get("history"):
         print(f"Loaded {norad_id} space object from orbital history")
@@ -102,7 +122,10 @@ def prefetch_satellite_propagators(norad_ids: list[int]) -> None:
         if norad_id not in missing_ids:
             continue
 
-        create_satellite_propagator(record)
+        try:
+            create_satellite_propagator(record)
+        except LiveElementsUnavailable:
+            continue
         missing_ids.remove(norad_id)
 
         print(f"Prefetched {norad_id} space object from database")
@@ -232,7 +255,7 @@ def get_satellite_trajectories(
             errors.append(
                 {
                     "norad_id": norad_id,
-                    "message": "Orbital data unavailable for this object or interval",
+                    "message": str(error) if isinstance(error, LiveElementsUnavailable) else "Orbital data unavailable for this object or interval",
                 }
             )
 

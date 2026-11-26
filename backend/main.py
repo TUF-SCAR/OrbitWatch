@@ -27,7 +27,7 @@ from routes.account import router as account_router, AccountFeatureUnavailable
 from routes.alerts import router as alerts_router
 from routes.visibility import router as visibility_router
 from routes.notification_delivery import router as notification_delivery_router
-from services.natural_events import shutdown as shutdown_events
+from services.natural_events import run_natural_event_refresh_worker, shutdown as shutdown_events
 from workers.satellite_refresh import run_satellite_refresh_worker
 from workers.infrared_refresh import run_infrared_refresh_worker
 from services.providers.budget import refresh_owner
@@ -43,12 +43,19 @@ async def lifespan(app: FastAPI):
     with (refresh_owner('scheduler-owner.lock') if enabled("ORBITWATCH_INGESTION_ENABLED") else nullcontext(False)) as owner:
         refresh_task = None
         cloud_task = None
+        event_task = None
         if owner and enabled("ORBITWATCH_INGESTION_ENABLED"):
             refresh_task = asyncio.create_task(run_satellite_refresh_worker())
             cloud_task = asyncio.create_task(run_infrared_refresh_worker())
+            if enabled("ORBITWATCH_EVENT_PROVIDER_REQUESTS", True):
+                event_task = asyncio.create_task(run_natural_event_refresh_worker())
         try:
             yield
         finally:
+            if event_task:
+                event_task.cancel()
+                try: await event_task
+                except asyncio.CancelledError: pass
             shutdown_events()
             small_bodies.shutdown()
             if cloud_task:

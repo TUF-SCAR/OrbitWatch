@@ -94,7 +94,7 @@ def run(serve=False):
         missing=prediction('satellite','25544',None,loc,start,24,None);assert missing['state']=='unavailable'
         assert forecast(40,-74) is None  # Providers explicitly disabled; no current-weather substitution.
         DatabaseBase.metadata.create_all(database_engine)
-        client=TestClient(app,raise_server_exceptions=False)
+        client=TestClient(app)
         auth={}; location_ids={}; checks=0
         for n in (1,2):
             r=client.post('/api/auth/register',json={'username':f'visibility_fixture{n}','email':f'visibility{n}@example.invalid','password':'Disposable-visibility-2026'})
@@ -119,6 +119,11 @@ def run(serve=False):
         assert client.get(path+'celestial?target_id=mars',headers=auth[1]).status_code==404;checks+=1
         sat_response=client.get(path+'satellites',headers=auth[1]).json()
         assert sat_response['items'][0]['state']=='unavailable' and 'missing' in sat_response['items'][0]['reason']
+        catalog=client.get(path+'targets/satellites',headers=auth[1])
+        assert catalog.status_code==200
+        assert len(catalog.json()['items'])==4 and catalog.json()['next_offset']==4
+        assert all(item['state']=='insufficient_data' for item in catalog.json()['items'])
+        checks+=1
         assert client.get('/api/account/notifications',headers=auth[1]).json()['items']==[]
         # Every target in a batch shares one forecast dataset retrieval.
         with patch('routes.visibility.forecast',return_value=None) as fetch:

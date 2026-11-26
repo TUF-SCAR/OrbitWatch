@@ -36,7 +36,9 @@ def run(postgres=False,serve=False):
             if not postgres:
                 @event.listens_for(engine,'connect')
                 def foreign_keys(connection,record):connection.execute('PRAGMA foreign_keys=ON')
-            DatabaseBase.metadata.create_all(engine,tables=[User.__table__,SatelliteOrbitalData.__table__,SatelliteOrbitalDataHistory.__table__])
+            from models.auth_state import AuthAttempt, RevokedSession
+            DatabaseBase.metadata.create_all(engine,tables=[User.__table__,AuthAttempt.__table__,RevokedSession.__table__,
+                                                           SatelliteOrbitalData.__table__,SatelliteOrbitalDataHistory.__table__])
             client=TestClient(app,raise_server_exceptions=False);auth={};ids={};checks=0
             def req(method,path,status=200,who=1,**kw):
                 nonlocal checks

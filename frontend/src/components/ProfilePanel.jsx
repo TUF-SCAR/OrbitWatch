@@ -1,5 +1,6 @@
 import { Bell, CalendarDays, Clock3, LogOut, Mail, Orbit, Settings2, ShieldCheck, UserRound, X } from "lucide-react";
 import WorkspaceDialog from './WorkspaceDialog.jsx';
+import ResponsivePanel from './ResponsivePanel.jsx';
 import AccountNotificationSettings from './AccountNotificationSettings.jsx';
 import AccountTabs from './AccountTabs.jsx';
 import MySkywatch from './MySkywatch.jsx';
@@ -14,6 +15,12 @@ function dateText(value) {
 
 export default function ProfilePanel({ open, user, onClose, onLogout, settings, onSettingsChange, account,tab='profile',onTab,skywatchTab='satellite',onSkywatchTab,liveCatalog,onOpenNotification }) {
   if (!user || !open) return null;
+  if(tab==='notifications')return <ResponsivePanel onDismiss={onClose} className="notification-workspace account-workspace hud-panel" aria-label="Notifications">
+    <header className="hud-panel__header"><h2>Notifications</h2><button className="icon-button" type="button" aria-label="Close notifications" onClick={onClose}><X size={18}/></button></header>
+    <div className="hud-panel__body">
+      {account&&<NotificationCentre account={account} onOpen={onOpenNotification} onSchedule={()=>onTab('preferences')}/>}
+    </div>
+  </ResponsivePanel>;
   return <WorkspaceDialog onClose={onClose} className="profile-panel account-workspace hud-panel" aria-label="Profile and settings">
     <header className="profile-panel__header hud-panel__header" data-depth="4">
       <div><small className="eyebrow">ORBITWATCH IDENTITY</small><h2>Profile & settings</h2></div>
@@ -37,6 +44,7 @@ export default function ProfilePanel({ open, user, onClose, onLogout, settings, 
       </section>
       <section className="profile-panel__section profile-settings" aria-labelledby="profile-settings-title" data-depth="4">
         <h3 id="profile-settings-title">Display settings</h3>
+        <p className="account-muted">Display settings are saved on this browser.</p>
         <div className="profile-setting">
           <label htmlFor="profile-quality">Render quality</label>
           <p id="profile-quality-help">Choose the detail level for the globe and celestial scene.</p>
@@ -51,7 +59,6 @@ export default function ProfilePanel({ open, user, onClose, onLogout, settings, 
       </section>
       </>}
       {account&&tab==='skywatch'&&<MySkywatch account={account} tab={skywatchTab} onTab={onSkywatchTab} catalog={liveCatalog}/>}
-      {account&&tab==='notifications'&&<NotificationCentre account={account} onOpen={onOpenNotification} onSchedule={()=>onTab('preferences')}/>}
       {account&&tab==='preferences'&&<AccountNotificationSettings account={account} section="preferences"/>}
       </div>
     </div>

@@ -41,6 +41,7 @@ def run(scratch):
         from sqlalchemy.exc import IntegrityError
         from core.database import database_engine as engine, DatabaseBase, database_availability, database_session_maker
         from models.user import User
+        from models.auth_state import AuthAttempt, RevokedSession
         from models.satellite_orbital_data import SatelliteOrbitalData, SatelliteOrbitalDataHistory
         from models.account import ObservationLocation, NotificationPreferences
         from services.auth import hash_password
@@ -51,7 +52,8 @@ def run(scratch):
             @event.listens_for(engine, "connect")
             def foreign_keys(connection, record):
                 connection.execute("PRAGMA foreign_keys=ON")
-        DatabaseBase.metadata.create_all(engine, tables=[User.__table__, SatelliteOrbitalData.__table__, SatelliteOrbitalDataHistory.__table__])
+        DatabaseBase.metadata.create_all(engine, tables=[User.__table__, AuthAttempt.__table__, RevokedSession.__table__,
+                                                        SatelliteOrbitalData.__table__, SatelliteOrbitalDataHistory.__table__])
         checks = 0
         with patch.object(DatabaseBase.metadata, "create_all", side_effect=AssertionError("No startup DDL")), TestClient(app, raise_server_exceptions=False) as client:
             def request(method, path, status=200, account=0, **kw):

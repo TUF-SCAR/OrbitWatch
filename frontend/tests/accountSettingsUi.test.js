@@ -18,7 +18,7 @@ test('profile foundation presents saved actions, four toggles, explicit timezone
     for(const text of ['Saved observation locations','Add location','Edit Named spot','Make Named spot default','Remove Named spot','Enable notifications','Satellite visibility alerts','Planet / Moon viewing alerts','Natural-event alerts','Advance warning','Natural-event relevance radius','Quiet hours start','Explicit quiet-hours timezone','Browser push needs separate permission','Browser push not configured'])assert.ok(html.includes(text),text);
     assert.match(render({...owner.snapshot(),phase:'loading'}),/Loading saved account settings/);
     assert.match(render({...owner.snapshot(),phase:'unavailable',error:'Settings unavailable'}),/Retry loading account settings/);
-    owner.startNew({name:'Chosen point',latitude:0,longitude:0});assert.match(render({...owner.snapshot(),phase:'ready'}),/Location timezone/);
+    owner.startNew({name:'Chosen point',latitude:0,longitude:0});assert.match(render({...owner.snapshot(),phase:'ready'}),/Opening street map/);
     const card=renderToStaticMarkup(createElement(Card,{weather:{selection:{latitude:0,longitude:0},state:'loading'},onSaveLocation(){}}));assert.match(card,/Save this location/);
     owner.destroy();
   }finally{await server.close();}

@@ -15,7 +15,7 @@ from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.engine import make_url
 from core.config import required
 
-TABLES=("account_observation_locations","account_notification_preferences","account_alert_subscriptions","account_notification_inbox","account_push_devices","notification_runner_state","account_notification_delivery","account_viewing_opportunities","visibility_plan_cache")
+TABLES=("account_observation_locations","account_notification_preferences","account_alert_subscriptions","account_notification_inbox","account_push_devices","notification_runner_state","account_notification_delivery","account_viewing_opportunities","visibility_plan_cache","account_revoked_sessions","account_auth_attempts")
 LEGACY=("users","satellite_orbit_data","satellite_orbit_history","satellite_historical_elements")
 NORMAL_CEILING=300_000_000
 ABSOLUTE_CEILING=400_000_000
@@ -51,7 +51,8 @@ def run(apply=False, expected=None):
         from models.alerts import AlertSubscription, InboxNotification
         from models.notification_delivery import PushDevice,NotificationRun,NotificationDelivery
         from models.viewing_opportunity import ViewingOpportunity,VisibilityPlan
-        models=(ObservationLocation,NotificationPreferences,AlertSubscription,InboxNotification,PushDevice,NotificationRun,NotificationDelivery,ViewingOpportunity,VisibilityPlan)
+        from models.auth_state import AuthAttempt,RevokedSession
+        models=(ObservationLocation,NotificationPreferences,AlertSubscription,InboxNotification,PushDevice,NotificationRun,NotificationDelivery,ViewingOpportunity,VisibilityPlan,RevokedSession,AuthAttempt)
         additive={'account_notification_delivery':{'alert_stage','opportunity_id','details'},'notification_runner_state':{'last_planned_at'}}
         def compatible(before_apply=False):
             for model in models:
@@ -77,7 +78,7 @@ def run(apply=False, expected=None):
                 if not {index.name for index in model.__table__.indexes}.issubset(indexes):raise RuntimeError('Delivery indexes are incomplete')
         delivery_constraints()
         if apply:
-            for filename in ("002_account_notification_foundation.sql","003_account_alert_subscriptions.sql","004_account_notification_inbox.sql","005_notification_delivery.sql","008_viewing_opportunities.sql"):
+            for filename in ("002_account_notification_foundation.sql","003_account_alert_subscriptions.sql","004_account_notification_inbox.sql","005_notification_delivery.sql","008_viewing_opportunities.sql","009_auth_hardening.sql"):
                 sql=(Path(__file__).parent/"migrations"/filename).read_text(encoding="utf-8")
                 if re.search(r"(?im)^\s*(DROP|TRUNCATE|DELETE|INSERT|UPDATE)\b",sql):
                     raise RuntimeError("Only reviewed additive schema statements are allowed")

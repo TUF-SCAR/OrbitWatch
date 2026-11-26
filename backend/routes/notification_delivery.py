@@ -1,5 +1,6 @@
 from datetime import datetime,timedelta,timezone
-from uuid import UUID
+from uuid import UUID, uuid4
+from types import SimpleNamespace
 from fastapi import APIRouter,Depends,HTTPException,Response
 from pydantic import BaseModel,ConfigDict,Field
 from sqlalchemy import delete,func,select
@@ -11,7 +12,8 @@ from models.user import User
 from models.notification_delivery import PushDevice,NotificationRun,NotificationDelivery
 from routes.account import account_storage,lock_owner
 from services.account_inbox import utc
-from services.browser_push import configuration,validate_subscription,endpoint_hash,encrypt_subscription,device_limit
+from services.browser_push import configuration,validate_subscription,endpoint_hash,encrypt_subscription,device_limit,send_push
+from services.auth_state import consume_attempt
 
 router=APIRouter(prefix='/api/account',tags=['Notification delivery'])
 
@@ -22,6 +24,7 @@ class PushInput(BaseModel):
     endpoint:str=Field(min_length=1,max_length=2048)
     keys:dict[str,str]
     expirationTime:int|None=None
+    replace_id:UUID|None=None
 
 
 @router.get('/notification-delivery')
@@ -46,7 +49,7 @@ def subscribe(body:PushInput,response:Response,user:User=Depends(get_current_use
     if not body.consent:raise HTTPException(422,'Explicit browser notification consent is required')
     if body.expirationTime is not None and body.expirationTime<=datetime.now(timezone.utc).timestamp()*1000:raise HTTPException(422,'Push subscription has expired')
     if not configuration():raise HTTPException(503,'Browser push not configured')
-    try:value=validate_subscription(body.model_dump(exclude={'consent','expirationTime'}))
+    try:value=validate_subscription(body.model_dump(exclude={'consent','expirationTime','replace_id'}))
     except (ValueError,TypeError):raise HTTPException(422,'Invalid or unsupported push subscription') from None
     with account_storage(database):
         lock_owner(database,user.id)
@@ -57,6 +60,11 @@ def subscribe(body:PushInput,response:Response,user:User=Depends(get_current_use
             existing.encrypted_subscription=encrypt_subscription(value);database.commit();response.status_code=200
             return {'id':existing.id,'state':'subscribed'}
         devices=list(database.scalars(select(PushDevice).where(PushDevice.owner_id==user.id)))
+        replaced = next((device for device in devices if device.id == str(body.replace_id)), None)
+        if replaced:
+            database.delete(replaced)
+            database.flush()
+            devices.remove(replaced)
         if len(devices)>=device_limit():raise HTTPException(409,'Browser device limit reached; remove an existing device first')
         row=PushDevice(owner_id=user.id,slot=next(i for i in range(1,6) if all(device.slot!=i for device in devices)),endpoint_hash=digest,encrypted_subscription=encrypt_subscription(value))
         database.add(row)
@@ -73,3 +81,34 @@ def revoke(identity:UUID,response:Response,user:User=Depends(get_current_user),d
         lock_owner(database,user.id)
         database.execute(delete(PushDevice).where(PushDevice.id==str(identity),PushDevice.owner_id==user.id));database.commit()
     return Response(status_code=204,headers={'Cache-Control':'no-store'})
+
+
+@router.post('/push-subscriptions/{identity}/test')
+def test_push(identity:UUID,response:Response,user:User=Depends(get_current_user),database:Session=Depends(get_database_session)):
+    """Deliver a private, explicitly requested device check without creating an alert."""
+    response.headers['Cache-Control']='no-store'
+    if not configuration():
+        raise HTTPException(503,'Browser push not configured')
+    with account_storage(database):
+        owner_id=user.id
+        device=database.scalar(select(PushDevice).where(PushDevice.id==str(identity),PushDevice.owner_id==owner_id))
+        if device is None:
+            raise HTTPException(404,'Browser device unavailable')
+        target=SimpleNamespace(id=device.id,encrypted_subscription=device.encrypted_subscription)
+        consume_attempt(database,'push-test',owner_id,3,300)
+    payload={'id':str(uuid4()),'title':'OrbitWatch delivery test',
+             'body':'This browser received a test notification.',
+             'device_id':target.id,'expires_at':(datetime.now(timezone.utc)+timedelta(minutes=2)).isoformat()}
+    try:
+        send_push(target,payload,120)
+    except Exception as error:
+        status_code=getattr(getattr(error,'response',None),'status_code',None)
+        if status_code in (404,410):
+            with account_storage(database):
+                database.execute(delete(PushDevice).where(
+                    PushDevice.id==target.id, PushDevice.owner_id==owner_id,
+                    PushDevice.encrypted_subscription==target.encrypted_subscription))
+                database.commit()
+            raise HTTPException(410,'Browser subscription expired. Enable it again.') from None
+        raise HTTPException(503,'The push provider did not accept this test. Try again shortly.') from None
+    return {'state':'accepted'}

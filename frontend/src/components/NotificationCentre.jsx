@@ -12,9 +12,8 @@ export default function NotificationCentre({account,onOpen,onSchedule}) {
   const selected=state.activeNotice||state.inbox.find(item=>item.id===detailId);
   if(selected?.viewing_details)return <div className="notification-centre"><button type="button" onClick={()=>{setDetailId(null);owner.closeNotice?.();}}>← Back to notifications</button><ViewingDetails details={selected.viewing_details} expired={selected.is_expired}/><button type="button" onClick={()=>onOpen?.(selected.destination)}>Open target on globe</button></div>;
   return <div className="notification-centre">
-    <div className="account-feature-intro"><Bell size={22}/><div><strong>Notification centre</strong><p>Your personal observation updates, grounded in real sources.</p></div></div>
-    <NotificationDelivery account={account}/>
     <section className="notification-quiet"><label><input type="checkbox" checked={Boolean(state.preferenceDraft?.quiet_hours_enabled)} disabled={state.busy||!state.preferenceDraft} onChange={async e=>{owner.changePreference({quiet_hours_enabled:e.target.checked});await owner.savePreferences();}}/> Quiet Mode</label><button type="button" onClick={onSchedule}>Quiet schedule</button><p>Dangerous nearby alerts still come through.</p></section>
+    <details className="notification-delivery-details"><summary>Browser notification settings</summary><NotificationDelivery account={account}/></details>
     <div className="inbox-toolbar"><span>{state.unreadCount===null?'Inbox':`${state.unreadCount} unread`}</span><div><button type="button" aria-label="Refresh notifications" disabled={loading||busy} onClick={()=>owner.loadInbox(true)}><RefreshCcw size={14}/></button><button type="button" disabled={loading||busy||!state.unreadCount} onClick={()=>owner.markAllRead()}><CheckCheck size={14}/> Mark all read</button></div></div>
     {state.inboxError&&<p role="alert" className="account-inline-error">{state.inboxError}<button type="button" disabled={loading||busy} onClick={()=>owner.loadInbox(true)}>Retry inbox</button></p>}
     {state.navigationNotice&&<p role="status" className="account-inline-error">{state.navigationNotice}</p>}

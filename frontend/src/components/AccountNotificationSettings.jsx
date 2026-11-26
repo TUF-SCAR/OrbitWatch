@@ -1,22 +1,20 @@
 import NotificationDelivery from './NotificationDelivery.jsx';
 import {lazy,Suspense,useState} from 'react';
-import {usePhoneUI} from '../utils/usePhoneUI.js';
 const MobileLocationPicker=lazy(()=>import('./MobileLocationPicker.jsx'));
 import './AccountNotificationSettings.css';
 
 function ZoneInput({id,value,onChange,required=false}) {
-  return <><input id={id} type="text" maxLength={64} list="account-iana-zones" placeholder="e.g. Asia/Kolkata" value={value||''} onChange={event=>onChange(event.target.value)} required={required}/><small>Enter the IANA timezone for this location. It is never inferred from coordinates.</small></>;
+  return <><input id={id} type="text" maxLength={64} list="account-iana-zones" placeholder="e.g. Asia/Kolkata" value={value||''} onChange={event=>onChange(event.target.value)} required={required}/><small>Choose the IANA timezone for quiet hours.</small></>;
 }
 const zones=typeof Intl.supportedValuesOf==='function'?Intl.supportedValuesOf('timeZone'):[];
 
 export default function AccountNotificationSettings({account,section='all'}) {
   const {state,owner}=account,[removing,setRemoving]=useState(null);
-  const phone=usePhoneUI();
   const {locations,preferences,preferenceDraft:form,locationDraft:draft,busy,phase}=state;
   const ready=phase==='ready',disabled=busy||!ready;
   return <div className="account-foundation" aria-busy={busy||phase==='loading'}>
     <datalist id="account-iana-zones">{zones.map(zone=><option value={zone} key={zone}/>)}<option value="UTC"/></datalist>
-    <p className="account-foundation__intro">Notifications require enabled categories, followed targets and saved locations. Quiet hours suppress all categories. Browser push needs separate permission.</p>
+    <p className="account-foundation__intro">Quiet hours pause ordinary alerts. Qualifying dangerous-event alerts still appear in your inbox. Browser push needs separate permission.</p>
     {phase==='loading'&&<p role="status">Loading saved account settings…</p>}
     {state.error&&<p className="account-foundation__error" role="alert">{state.error}</p>}
     {state.notice&&<p role="status">{state.notice}</p>}
@@ -34,19 +32,7 @@ export default function AccountNotificationSettings({account,section='all'}) {
         {removing===row.id&&<div className="account-remove"><p>Remove {row.name}? If it is the default, the oldest remaining saved location becomes the default. Removing the last location disables quiet hours that use its timezone.</p><button type="button" disabled={disabled} onClick={async()=>{await owner.removeLocation(row);setRemoving(null);}}>Confirm remove</button><button type="button" disabled={busy} onClick={()=>setRemoving(null)}>Keep location</button></div>}
       </li>)}</ul>
       {!draft&&<button type="button" disabled={disabled||locations.length>=5} onClick={()=>owner.startNew()}>Add location</button>}
-      {draft&&phone&&<Suspense fallback={<p role="status">Opening street map…</p>}><MobileLocationPicker account={account}/></Suspense>}
-      {draft&&!phone&&<form className="account-form" aria-label={draft.id?'Edit observation location':'Add observation location'} onSubmit={event=>{event.preventDefault();owner.saveLocation();}}>
-        <fieldset disabled={disabled}><legend>{draft.id?'Edit location':'Add location'}</legend>
-          <label htmlFor="account-location-name">Location name</label><input id="account-location-name" maxLength={80} required value={draft.name} onChange={event=>owner.changeLocation({name:event.target.value})}/>
-          <div className="account-coordinate-row"><div><label htmlFor="account-latitude">Latitude</label><input id="account-latitude" type="number" step="0.000001" min="-90" max="90" required value={draft.latitude} onChange={event=>owner.changeLocation({latitude:event.target.value})}/></div>
-            <div><label htmlFor="account-longitude">Longitude</label><input id="account-longitude" type="number" step="0.000001" min="-180" max="180" required value={draft.longitude} onChange={event=>owner.changeLocation({longitude:event.target.value})}/></div></div>
-          <label htmlFor="account-location-zone">Location timezone</label><ZoneInput id="account-location-zone" value={draft.timezone} onChange={timezone=>owner.changeLocation({timezone})} required/>
-          <label className="account-toggle"><input type="checkbox" checked={draft.is_default} disabled={Boolean(draft.id&&locations.find(row=>row.id===draft.id)?.is_default)} onChange={event=>owner.changeLocation({is_default:event.target.checked})}/> Use as default</label>
-          <p>The first saved location becomes your default. Coordinates are saved to six decimal places.</p>
-          {!draft.id&&locations.length>=5&&<p>Five locations are already saved. Remove one before saving this point.</p>}
-          <div className="account-actions"><button type="submit" disabled={!draft.id&&locations.length>=5}>{busy?'Saving…':'Save location'}</button><button type="button" onClick={()=>owner.cancelLocation()}>Cancel edit</button></div>
-        </fieldset>
-      </form>}
+      {draft&&<Suspense fallback={<p role="status">Opening street map…</p>}><MobileLocationPicker account={account}/></Suspense>}
     </section>}
     {section!=='locations'&&<NotificationDelivery account={account}/>}
     {section!=='locations'&&<section className="profile-panel__section" aria-labelledby="account-preferences-title"><h3 id="account-preferences-title">Notification preferences</h3>

@@ -1,10 +1,12 @@
 import {useEffect,useState} from 'react';
 import {BellRing,ShieldCheck} from 'lucide-react';
 import {enableBrowserPush,disableBrowserPush,pushCapability,pushReceipt} from '../services/browserPush.js';
+import {testPushSubscription} from '../services/orbitwatchApi.js';
 
 export default function NotificationDelivery({account}) {
   const {state,owner}=account,status=state.delivery;
   const [busy,setBusy]=useState(false),[error,setError]=useState(''),[deviceId,setDeviceId]=useState(()=>pushReceipt()?.id||null),[permission,setPermission]=useState(()=>globalThis.Notification?.permission||'unsupported');
+  const [testResult,setTestResult]=useState('');
   useEffect(()=>{
     let alive=true;
     async function sync(){
@@ -18,12 +20,22 @@ export default function NotificationDelivery({account}) {
   const registered=Boolean(deviceId&&status?.devices.some(device=>device.id===deviceId));
   const capability=typeof window==='undefined'?'Browser capability will be checked on your device.':pushCapability();
   async function toggle() {
-    setBusy(true);setError('');
+    setBusy(true);setError('');setTestResult('');
     try {
       if(registered){await disableBrowserPush();setDeviceId(null);}
       else {const result=await enableBrowserPush(status?.vapid_public_key,account.userId);setDeviceId(result.id);}
       setPermission(globalThis.Notification?.permission||'unsupported');await owner.loadDelivery();
     }catch(reason){setError(reason.message);}finally{setBusy(false);}
+  }
+  async function sendTest() {
+    setBusy(true);setError('');setTestResult('');
+    try {
+      await testPushSubscription(deviceId);
+      setTestResult('The push provider accepted the test. Check this device for “OrbitWatch delivery test”.');
+    } catch(reason) {
+      setError(reason.message);
+      if(reason.status===410)await owner.loadDelivery();
+    } finally {setBusy(false);}
   }
   return <section className="notification-delivery" aria-label="Notification delivery status">
     <div className="account-section-title"><h3><BellRing size={16}/> Delivery & this browser</h3><ShieldCheck size={16}/></div>
@@ -33,7 +45,12 @@ export default function NotificationDelivery({account}) {
     {capability&&<p className="account-muted">{capability}</p>}
     <p className="account-muted">Opt in to receive eligible updates when OrbitWatch is closed. Your master/category settings and quiet hours still apply. Push messages keep location details in your private inbox.</p>
     <small>Closed-tab delivery depends on browser/OS background support. A fully quit browser may defer notifications.</small>
-    <button type="button" disabled={busy||(!registered&&(!status?.push_configured||Boolean(capability)))} onClick={toggle}>{busy?'Updating this browser…':registered?'Disable browser notifications':'Enable browser notifications'}</button>
+    {permission==='denied'&&<p className="account-muted">Notifications are blocked. You can allow them in this site's browser settings.</p>}
+    <div className="account-actions">
+      <button type="button" disabled={busy||(!registered&&(!status?.push_configured||Boolean(capability)||permission==='denied'))} onClick={toggle}>{registered?'Disable browser notifications':'Enable browser notifications'}</button>
+      {registered&&permission==='granted'&&<button type="button" disabled={busy} onClick={sendTest}>Send test notification</button>}
+    </div>
+    {testResult&&<p role="status">{testResult}</p>}
     {status&&<small>Browser permission: {permission} · {status.devices.length}/{status.device_limit} saved devices</small>}
     {error&&<p className="account-inline-error" role="alert">{error}</p>}
     {state.deliveryError&&<p className="account-inline-error" role="alert">{state.deliveryError}<button type="button" onClick={()=>owner.loadDelivery()}>Retry delivery status</button></p>}

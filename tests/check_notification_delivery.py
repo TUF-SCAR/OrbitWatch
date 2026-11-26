@@ -40,6 +40,7 @@ def run(postgres=False,serve=False):
             from core.database import DatabaseBase,database_engine as engine
             cleanup.callback(engine.dispose)
             from models.user import User
+            from models.auth_state import AuthAttempt, RevokedSession
             from models.account import ObservationLocation,NotificationPreferences
             from models.alerts import AlertSubscription,InboxNotification
             from models.satellite_orbital_data import SatelliteOrbitalData,SatelliteOrbitalDataHistory
@@ -56,11 +57,11 @@ def run(postgres=False,serve=False):
                 def foreign_keys(connection,record):connection.execute('PRAGMA foreign_keys=ON')
             DatabaseBase.metadata.create_all(engine,tables=[User.__table__,SatelliteOrbitalData.__table__,SatelliteOrbitalDataHistory.__table__])
             if postgres:
-                migrations=sorted((ROOT/'backend/migrations').glob('00[23458]_*.sql'))
+                migrations=sorted((ROOT/'backend/migrations').glob('00[234589]_*.sql'))
                 with psycopg.connect(host='127.0.0.1',port=55444,user='orbitwatch_test',dbname='orbitwatch_delivery_test',autocommit=True) as db:
                     for file in migrations:db.execute(file.read_text(),prepare=False);db.execute(file.read_text(),prepare=False)
             else:
-                for model in (ObservationLocation,NotificationPreferences,AlertSubscription,InboxNotification,PushDevice,NotificationRun,NotificationDelivery,ViewingOpportunity,VisibilityPlan,SmallBodyOrbit,SmallBodyRefresh):model.__table__.create(engine)
+                for model in (AuthAttempt,RevokedSession,ObservationLocation,NotificationPreferences,AlertSubscription,InboxNotification,PushDevice,NotificationRun,NotificationDelivery,ViewingOpportunity,VisibilityPlan,SmallBodyOrbit,SmallBodyRefresh):model.__table__.create(engine)
             client=TestClient(app,raise_server_exceptions=False);cleanup.callback(client.close);auth={};users={};locations={};subscriptions={};checks=0
             def request(method,path,expected=200,who=1,**kwargs):
                 nonlocal checks
@@ -80,6 +81,11 @@ def run(postgres=False,serve=False):
             device=request('POST','/api/account/push-subscriptions',201,json={**subscription,'consent':True}).json()['id']
             assert request('POST','/api/account/push-subscriptions',json={**subscription,'consent':True}).json()['id']==device
             request('POST','/api/account/push-subscriptions',409,who=2,json={**subscription,'consent':True})
+            with patch('routes.notification_delivery.send_push',return_value=201) as send:
+                request('POST','/api/account/push-subscriptions/'+device+'/test',404,who=2)
+                assert request('POST','/api/account/push-subscriptions/'+device+'/test').json()['state']=='accepted'
+                assert send.call_count==1 and send.call_args.args[1]['device_id']==device
+                assert send.call_args.args[1]['title']=='OrbitWatch delivery test'
             request('DELETE','/api/account/push-subscriptions/'+device,204,who=2)
             assert len(request('GET','/api/account/notification-delivery').json()['devices'])==1
             assert request('GET','/api/account/notification-delivery',who=2).json()['devices']==[]

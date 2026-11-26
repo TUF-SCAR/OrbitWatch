@@ -30,6 +30,14 @@ export function clearAccessToken() {
   try { window.localStorage.removeItem(AUTH_TOKEN_KEY); } catch { /* In-memory session is already cleared. */ }
 }
 
+export function revokeCurrentSession(token, deviceId) {
+  return fetch(`${API_BASE}/api/auth/logout`, {
+    method: 'POST', keepalive: true, signal: AbortSignal.timeout(6000),
+    headers: {'Content-Type': 'application/json', Authorization: `Bearer ${token}`},
+    body: JSON.stringify({device_id: deviceId || null}),
+  }).then(response => response.ok);
+}
+
 export function resolveLocationTimezone(point,signal){
   return requestJson(`/api/weather/timezone?${new URLSearchParams({latitude:point.lat,longitude:point.lng})}`,{signal});
 }
@@ -228,6 +236,7 @@ export async function fetchVisibilityPreview(kind,locationId,signal) {
 export function fetchDeliveryStatus(signal) {return requestJson('/api/account/notification-delivery',{signal});}
 export function savePushSubscription(body,signal) {return accountWrite('/api/account/push-subscriptions','POST',body,signal);}
 export function revokePushSubscription(id,signal) {return requestJson(`/api/account/push-subscriptions/${encodeURIComponent(id)}`,{method:'DELETE',signal,timeoutMs:4000,keepalive:true});}
+export function testPushSubscription(id) {return requestJson(`/api/account/push-subscriptions/${encodeURIComponent(id)}/test`,{method:'POST'});}
 
 export function fetchSmallBodyElements(signal){return requestJson("/api/solar-system/small-bodies",{signal});}
 export function fetchViewingTargets(kind,offset,signal){return requestJson(`/api/account/visibility/targets/${kind==='satellite'?'satellites':'celestial'}?offset=${offset}`,{signal,timeoutMs:30000});}

@@ -8,6 +8,7 @@ from services.account_inbox import utc
 from services.natural_event_data import date
 from services.visibility_forecast import match_forecast
 from services.event_geometry import proximity
+from services.natural_event_status import live_status
 from services.event_policy import severity as event_severity
 from services.viewing_score import assessment,compass,equipment
 
@@ -33,7 +34,9 @@ def weather_allowed(dataset,moment,now):
     weather=match_forecast(dataset,moment,now)
     # Explicit forecast filter, not certainty: suppress >=80% cloud, >=70%
     # precipitation probability or >=0.2 mm hourly precipitation. Missing is labeled.
-    allowed=weather['state']!='available' or (weather['cloud_cover_percent']<80 and weather['precipitation_probability_percent']<70 and weather['precipitation_mm']<.2)
+    allowed=weather['state']!='available' or (weather['cloud_cover_percent']<80
+        and weather['precipitation_probability_percent']<70 and weather['precipitation_mm']<.2
+        and weather.get('surface_visibility_m',math.inf)>=1000)
     return allowed,weather
 
 
@@ -101,6 +104,9 @@ def opportunity_candidate(opportunity,location,preferences,now,stage,dataset,geo
 def event_candidate(event,location,radius,now,previous_severity=None):
     provider=event.get('provider');geometry=event.get('geometry') or {}
     if event.get('data_state')!='available':return None
+    if (event.get('classification')=='forecast' or date(event.get('closed_at'))
+            or (event.get('live_status') or live_status(event, now))['state']=='ended_confirmed'):
+        return None
     reported=date(event.get('reported_at'));updated=date(event.get('updated_at'));retrieved=date(event.get('retrieved_at'))
     validated=date(event.get('provider_validated_at')) or retrieved
     if not reported or not retrieved or not validated or reported>now or not timedelta(0)<=now-validated<=timedelta(hours=1):return None

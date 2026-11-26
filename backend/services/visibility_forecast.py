@@ -30,7 +30,7 @@ def forecast(latitude, longitude, max_age_seconds=3600):
                 deadline=time.monotonic()+5
                 with httpx.Client(timeout=httpx.Timeout(3, connect=2), follow_redirects=False) as client:
                     with client.stream('GET', 'https://api.open-meteo.com/v1/forecast', params={
-                        'latitude':lat, 'longitude':lon, 'hourly':'cloud_cover,precipitation_probability,precipitation',
+                        'latitude':lat, 'longitude':lon, 'hourly':'cloud_cover,precipitation_probability,precipitation,visibility,relative_humidity_2m',
                         'forecast_days':3, 'timeformat':'unixtime', 'timezone':'GMT'}) as response:
                         response.raise_for_status()
                         chunks=[]; size=0
@@ -43,12 +43,25 @@ def forecast(latitude, longitude, max_age_seconds=3600):
                 if units.get('cloud_cover')!='%' or units.get('precipitation')!='mm' or units.get('precipitation_probability')!='%':
                     raise ValueError('Unexpected forecast units')
                 rows=[]
-                for stamp, cloud, probability, precipitation in zip(hourly['time'],hourly['cloud_cover'],hourly['precipitation_probability'],hourly['precipitation'], strict=True):
+                optional = (
+                    ('visibility', 'm', 'surface_visibility_m', math.inf),
+                    ('relative_humidity_2m', '%', 'relative_humidity_percent', 100),
+                )
+                for index, (stamp, cloud, probability, precipitation) in enumerate(zip(
+                        hourly['time'], hourly['cloud_cover'], hourly['precipitation_probability'], hourly['precipitation'], strict=True)):
                     if len(rows)>=96: raise ValueError('Forecast too long')
                     if not all(isinstance(v,(float,int)) and math.isfinite(v) for v in (stamp,cloud,probability,precipitation)):
                         continue
                     if not 0<=cloud<=100 or not 0<=probability<=100 or precipitation<0: continue
-                    rows.append({'valid_epoch':stamp,'cloud_cover_percent':cloud,'precipitation_probability_percent':probability,'precipitation_mm':precipitation})
+                    row={'valid_epoch':stamp,'cloud_cover_percent':cloud,'precipitation_probability_percent':probability,'precipitation_mm':precipitation}
+                    for source, unit, target, upper in optional:
+                        values = hourly.get(source)
+                        if units.get(source) != unit or not isinstance(values, list) or index >= len(values):
+                            continue
+                        reading = values[index]
+                        if type(reading) in (int, float) and math.isfinite(reading) and 0 <= reading <= upper:
+                            row[target] = reading
+                    rows.append(row)
                 if not rows: raise ValueError('No usable forecast hours')
                 value={'rows':rows,'retrieved_epoch':now.timestamp(),'retrieved_at':now.isoformat(),
                        'provider':'Open-Meteo','attribution':'Open-Meteo · CC BY 4.0','grid_latitude':data['latitude'],'grid_longitude':data['longitude']}
@@ -68,7 +81,8 @@ def match_forecast(dataset, moment, now=None):
     row=min(dataset['rows'],key=lambda r:abs(r['valid_epoch']-moment.timestamp()),default=None)
     if not row or abs(row['valid_epoch']-moment.timestamp())>1800:
         return {'state':'unavailable','reason':'No forecast interval within 30 minutes'}
+    difficult=row['cloud_cover_percent']>70 or row['precipitation_mm']>0 or row.get('surface_visibility_m',math.inf)<1000
     return {'state':'available',**row,'valid_at':datetime.fromtimestamp(row['valid_epoch'],timezone.utc).isoformat(),
             'retrieved_at':dataset['retrieved_at'],'provider':dataset['provider'],'attribution':dataset['attribution'],
             'matching':'Nearest hourly timestamp, at most 30 minutes away',
-            'conditions':'Cloudy / difficult' if row['cloud_cover_percent']>70 or row['precipitation_mm']>0 else 'Forecast may support viewing'}
+            'conditions':'Forecast suggests difficult conditions' if difficult else 'Forecast may support viewing'}

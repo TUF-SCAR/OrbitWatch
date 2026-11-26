@@ -4,7 +4,9 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 from core.database import get_database_session
 from models.user import User
+from models.auth_state import RevokedSession
 from services.auth import decode_access_token
+from services.auth_state import token_digest
 
 bearer_scheme = HTTPBearer(auto_error=False)
 
@@ -47,6 +49,7 @@ def check_email(email: str) -> bool:
 
 def get_token_user_id(
     credentials: HTTPAuthorizationCredentials = Depends(bearer_scheme),
+    database: Session = Depends(get_database_session),
 ) -> int:
     if credentials is None:
         raise HTTPException(status_code=401, detail="Authentication required")
@@ -56,6 +59,8 @@ def get_token_user_id(
     except RuntimeError:
         raise HTTPException(status_code=401, detail="Invalid or expired token")
 
+    if database.get(RevokedSession, token_digest(credentials.credentials)) is not None:
+        raise HTTPException(status_code=401, detail="Invalid or expired token")
     return user_id
 
 

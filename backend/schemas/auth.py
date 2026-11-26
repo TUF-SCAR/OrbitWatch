@@ -1,16 +1,16 @@
 from datetime import datetime
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class RegisterRequest(BaseModel):
-    username: str
-    email: str
-    password: str
+    username: str = Field(max_length=100)
+    email: str = Field(max_length=320)
+    password: str = Field(max_length=256)
 
 
 class LoginRequest(BaseModel):
-    username_or_email: str
-    password: str
+    username_or_email: str = Field(max_length=320)
+    password: str = Field(max_length=256)
 
 
 class AuthResponse(BaseModel):

@@ -187,3 +187,59 @@ The backend deployment for `a6dd4088b162a3cd356852274864a3aa6f9094a0` passed. Th
 On November 25 at 16:15 UTC, the production database still held four unique 2024 timestamps and four matching private objects. There were zero additional publications. PostgreSQL remained at 14,773,395 bytes and total project Storage at 2,766,025 bytes. Copernicus still listed all four 2000 dates as accepted, with 223 approved snapshots remaining. SSH timed out on both checks, so the worker’s process state after that interruption could not be confirmed. The public API readiness endpoint and frontend returned HTTP 200, and a read-only database check found a five-second notification heartbeat, no worker error and 1,183 archived satellite rows. An authenticated production browser session was unavailable for the follow-up.
 
 The five targeted Time Explorer frontend checks passed with `node --test tests/historicalWeather.test.js tests/historicalSatellites.test.js` from `frontend`. They covered exact date matching, the weather field contract and the independent satellite path.
+
+### Production status after SSH access was restored
+
+At 23:29 IST on November 25, host-verified SSH confirmed the original `orbitwatch-era5-campaign` service was active. It had been running for about 2 hours 31 minutes, with 33 hours 29 minutes left in its 36-hour processing window and 34 hours 29 minutes left before systemd’s hard limit. The latest checkpoint was saved at 23:27:57 IST. Copernicus still reported the saved 2000 request as `accepted`, about 2 hours 36 minutes after submission. The source remained queued and no failed years or journal warnings were recorded. The worker and its persisted state were left in place. The systemd unit runs independently of the SSH session.
+
+Supabase and the checkpoint agreed on the four complete 2024 dates at 12:00 UTC on January 15, April 15, July 15 and October 15. Each index row matched a private Storage object of the expected size. The project had four objects, with no duplicates, incomplete rows, unapproved dates or unindexed ERA5 objects. Coverage is 4 of 227, or 1.76%, with 223 remaining. Every other approved year has zero published dates. Staging held the preserved 3,651,984-byte 2024 GRIB and two manifests, with no partial download.
+
+| Capacity measurement | Used | Free within quota | Projected at 227 |
+| --- | ---: | ---: | ---: |
+| PostgreSQL | 14,527,635 bytes | 485,472,365 bytes | 29,142,163 bytes |
+| Supabase Storage across all project buckets | 2,766,025 bytes | 997,233,975 bytes | 195,523,393 bytes |
+
+ERA5 accounts for all current object storage. Both quotas have more than the required 200 MB free now and at the guarded projection. The direct database measurement was 245,760 bytes below the checkpoint’s last size reading, with identical timestamp and object counts. The mean compressed size was 691,506 bytes, ranging from 688,273 to 693,806 bytes.
+
+EC2 reported 100% CPU idle during the sampled interval, 817 MiB RAM available out of 1,905 MiB, and 23,869,739,008 bytes of free disk. The campaign used about 67 MiB RAM. Caddy was active and owned ports 80 and 443. Nginx was disabled and inactive. FastAPI loopback liveness and readiness both returned HTTP 200. Readiness took 1.02 seconds on the first sample and under 2 ms on the next two. The public API probes took 2.80–2.98 seconds end to end, and Cloudflare Pages returned HTTP 200. The notification worker reported a fresh heartbeat, valid push configuration and no error. No resource pressure was observed during this polling interval. There were too few newly completed years to estimate campaign completion.
+
+### November 26 production check and CDS queue timing
+
+At 15:04 IST, the worker was active with PID 121330 and a healthy provider polling loop. It started at 11:45 IST and had run for 3 h 20 min. About 32 h 40 min remained in the 36-hour processing window and 33 h 40 min before systemd's 37-hour limit. The checkpoint at 15:01:53 IST reported 12 verified dates and no stop reason. The journal shows the preceding worker published 2000 and 1970, and then a clean stop and start at 11:45 IST. The journal did not identify the initiator. There were no campaign warnings since November 25 or automatic restarts in the current unit. The CDS budget was unblocked with zero failures. The only staged GRIB was the retained 3,651,984-byte 2024 pilot source, with four manifests and zero partial downloads.
+
+Supabase had **12 of 227 complete snapshots (5.29%)**, leaving 215. For each of **1970, 2000 and 2024**, the exact dates were **January 15, April 15, July 15 and October 15 at 12:00 UTC**. All 12 private objects were retrieved and matched the indexed size and SHA-256. The database, object inventory and checkpoint agreed. Zero unindexed ERA5 objects were found.
+
+| Year | CDS state | Queue time | CDS execution | Published |
+| --- | --- | ---: | ---: | ---: |
+| 2024 | Successful | 5 min 39 sec | 7 sec | 4 |
+| 2000 | Successful | 5 h 22 min 41 sec | 11 sec | 4 |
+| 1970 | Successful | 5 h 25 min 47 sec | 13 sec | 4 |
+| 1980 | Accepted, awaiting execution | About 7 h 14 min at audit | — | 0 |
+
+The four entries above accounted for the complete visible CDS account job history. There were zero running, failed or additional queued jobs. The 1980 request was accepted at 07:49:37 IST on November 26 and retained the same saved job ID. The 53 unsubmitted years were 1971–1979, 1981–1999, 2001–2023 and 2025–2026. Once the 2000 and 1970 results became available, the elapsed time to local download completion was about 10 and 65 seconds respectively, including time until the next successful poll. Publishing and verification took about one further minute per year. The measured bottleneck was the provider queue.
+
+The campaign's inner loop holds each year until it publishes, fails or hits the run deadline. The shared CDS budget reserves an attempt every 60 seconds plus 30–180 seconds of jitter and applies backoff on failures. Each attempt may issue multiple metadata calls. ECMWF's October 22 service-protection guidance asks users to send requests sequentially. The CDS documentation lists a 120,000-field ceiling for this dataset and says service limits vary with workload. No current official per-account allowance for parallel ERA5 jobs was verified. The existing request uses 28 fields. [ECMWF service-protection announcement](https://forum.ecmwf.int/t/data-stores-service-protection-measures-affecting-data-downloads-and-account-access-cds-ads-ewds-ecds/15481) · [CDS limits and efficiency guidance](https://confluence.ecmwf.int/spaces/CKB/pages/174856258/Climate+Data+Store+CDS+documentation)
+
+Keep one outstanding CDS request and let 1980 finish on its saved ID. After authorization, benchmark one sequential request for three unsubmitted years with identical approved months. That is 84 fields and approximately 11 MB at the observed GRIB size, below the 64 MiB result cap. Keep 2026 separate to preserve its three-date selection. Extend the currently single-year parser and manifests to validate every exact timestamp and field, reconcile against remote jobs and published objects, and publish with the existing per-snapshot checks. Keep one decoder and publisher on EC2. Measure queue, execution, download and publication separately before expanding the group size. Download-first ordering is useful when reconciling multiple existing jobs, and provides no benefit with one outstanding job. Reuse each fetched status within a poll and retain the shared cooldown and retry safeguards.
+
+| Capacity measurement | Used | Free within quota | Projected used at 227 | Projected free |
+| --- | ---: | ---: | ---: | ---: |
+| PostgreSQL | 14,625,939 bytes | 485,374,061 bytes | 28,716,179 bytes | 471,283,821 bytes |
+| Supabase Storage across all buckets | 8,299,674 bytes | 991,700,326 bytes | 194,177,790 bytes | 805,822,210 bytes |
+
+All project objects were ERA5. The current and guarded projected totals preserve the 200 MB reserve for each quota. The projections include a 25% margin on the mean remaining compressed snapshot size, and 65,536 bytes per remaining PostgreSQL row. EC2 had two vCPUs, 99–100% sampled CPU idle, 1,215 MiB of RAM available out of 1,905 MiB, and 23,851,704,320 bytes of free disk. The worker used about 78 MiB. Caddy was active and proxied public readiness with HTTP 200 in about 245 ms. FastAPI liveness and readiness each returned HTTP 200 in about 2 ms on loopback. The notification worker's heartbeat was 7 seconds old, push was configured, and the last error field was empty.
+
+The deployed Natural Events handler returned HTTP 200 from real production caches at 15:04:36 IST in a local-only route check with provider scheduling disabled. The existing authentication dependency was overridden only in the inspection process. No public signed-in session was exercised.
+
+| Category | Total | Confirmed active | Recent occurrence | Recent source report | Recently closed | Confirmed ended | Older/unverified |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| Cyclone | 6 | 0 | 0 | 0 | 0 | 1 | 5 |
+| Drought | 5 | 0 | 0 | 4 | 0 | 0 | 1 |
+| Earthquake | 400 | 0 | 12 | 0 | 0 | 0 | 388 |
+| Flood | 15 | 0 | 0 | 0 | 3 | 0 | 12 |
+| Snow/ice | 3 | 0 | 0 | 1 | 0 | 0 | 2 |
+| Volcano | 4 | 0 | 0 | 0 | 0 | 0 | 4 |
+| Wildfire | 400 | 0 | 0 | 0 | 1 | 0 | 399 |
+| **Total** | **833** | **0** | **12** | **5** | **4** | **1** | **811** |
+
+Landslide, severe storm, dust/haze, temperature extreme, water colour and other categories each had zero reports. All five providers served stale caches at inspection. EONET reported an upstream HTTP 500 and its retained data remained available. The other providers showed no failure and the NHC feed had zero storms. Production code, service configuration and the running campaign were untouched by this inspection.

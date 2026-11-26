@@ -1,9 +1,9 @@
-import {revokePushOnLogout} from '../services/browserPush.js';
+import {pushReceipt,refreshBrowserPush,revokePushOnLogout} from '../services/browserPush.js';
 import { useCallback, useEffect, useRef, useState } from "react";
 import App from "../App.jsx";
 import AuthPage from "../pages/AuthPage.jsx";
 import BootSequence from "../components/BootSequence.jsx";
-import { clearAccessToken, fetchCurrentUser, getStoredAccessToken, storeAccessToken } from "../services/orbitwatchApi.js";
+import { clearAccessToken, fetchCurrentUser, getStoredAccessToken, revokeCurrentSession, storeAccessToken } from "../services/orbitwatchApi.js";
 import { getCachedStartupCountry, resolveStartupCountry } from "../services/startupCountry.js";
 import { usePhoneUI } from "../utils/usePhoneUI.js";
 import "./AuthRoot.css";
@@ -33,7 +33,23 @@ export default function AuthRoot() {
   const mountLiveScene = user && (!phone || phase !== "extract");
   const startTravel = useCallback(() => { setTravelDone(false); setCycle((value) => value + 1); setPhase("travel"); window.history.replaceState({}, "", pendingNotification.current||"/");if(pendingNotification.current)window.dispatchEvent(new Event('orbitwatch:notification-open'));pendingNotification.current=null; }, []);
   const logoutBusy=useRef(false);
-  const logout = useCallback(async (reason) => { if(logoutBusy.current)return;logoutBusy.current=true;const cleanup=revokePushOnLogout();clearAccessToken();void Promise.race([cleanup,new Promise(resolve=>setTimeout(resolve,1500))]); setPendingToken(null); setVerificationBusy(false); setSessionError(""); setUser(null); setSceneReady(false); setTravelDone(false); setPhase(reason?.type==="orbitwatch:unauthorized" || window.matchMedia("(prefers-reduced-motion: reduce)").matches?"guest":"return"); setAuthPage("login"); window.history.replaceState({}, "", "/login");}, []);
+  const sessionOwner=useRef(null);
+  const ownerId=user?.id;
+  const logout = useCallback((reason) => {
+    if(logoutBusy.current)return;
+    logoutBusy.current=true;
+    const token=getStoredAccessToken(), receipt=pushReceipt();
+    const revoked=token&&reason?.type!=='storage'
+      ?revokeCurrentSession(token,receipt?.ownerId===sessionOwner.current?receipt.id:null).catch(()=>false)
+      :null;
+    sessionOwner.current=null;
+    clearAccessToken();
+    void revokePushOnLogout(revoked).catch(()=>{});
+    setPendingToken(null); setVerificationBusy(false); setSessionError(""); setUser(null);
+    setSceneReady(false); setTravelDone(false);
+    setPhase(['orbitwatch:unauthorized','storage'].includes(reason?.type)||window.matchMedia('(prefers-reduced-motion: reduce)').matches?'guest':'return');
+    setAuthPage("login"); window.history.replaceState({}, "", "/login");
+  }, []);
   useEffect(()=>{
     if(!['return','deliver','guest'].includes(phase))return;
     if(phase==='guest'){logoutBusy.current=false;return;}
@@ -53,7 +69,7 @@ export default function AuthRoot() {
     const controller = new AbortController();
     fetchCurrentUser(controller.signal).then((result) => {
       if (controller.signal.aborted) return;
-      countryLocked.current = true; setUser(result); setSessionError("");
+      countryLocked.current = true; sessionOwner.current=result.id; setUser(result); setSessionError("");
       if (verificationMode === "login") { setSceneReady(false); setPhase("extract"); }
       else startTravel();
     }).catch((error) => {
@@ -70,6 +86,23 @@ export default function AuthRoot() {
     return () => { window.clearTimeout(timer); window.removeEventListener("online", retryVerification); };
   }, [phase, verificationAttempt, verificationBusy, retryVerification]);
   useEffect(() => { window.addEventListener("orbitwatch:unauthorized", logout); return () => window.removeEventListener("orbitwatch:unauthorized", logout); }, [logout]);
+  useEffect(() => {
+    const signedOut=event=>{if(event.key==='orbitwatch_access_token'&&event.oldValue&&!event.newValue)logout(event);};
+    window.addEventListener('storage',signedOut);
+    return()=>window.removeEventListener('storage',signedOut);
+  },[logout]);
+  useEffect(() => {
+    if(!authenticated||!ownerId)return;
+    const controller=new AbortController();
+    let checkedAt=0;
+    const sync=()=>{
+      if(Date.now()-checkedAt<60000)return;
+      checkedAt=Date.now();
+      refreshBrowserPush(ownerId,controller.signal).catch(()=>{});
+    };
+    sync();window.addEventListener('focus',sync);
+    return()=>{controller.abort();window.removeEventListener('focus',sync);};
+  },[authenticated,ownerId]);
   useEffect(() => {
     if (phase !== "travel") return;
     const timer = window.setTimeout(() => setTravelDone(true), window.matchMedia("(prefers-reduced-motion: reduce)").matches ? 150 : 2200);

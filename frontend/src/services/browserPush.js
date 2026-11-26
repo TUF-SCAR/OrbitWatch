@@ -1,4 +1,4 @@
-import {savePushSubscription,revokePushSubscription} from './orbitwatchApi.js';
+import {getStoredAccessToken,savePushSubscription,revokePushSubscription} from './orbitwatchApi.js';
 
 const RECEIPT='orbitwatch_push_device';
 export function pushCapability(scope=globalThis) {
@@ -22,18 +22,32 @@ export async function enableBrowserPush(publicKey,ownerId) {
   const unavailable=pushCapability();if(unavailable)throw Error(unavailable);
   if(!publicKey)throw Error('Browser push not configured');
   // Called directly from the click handler, never login, effect, or timer.
-  const permission=await Notification.requestPermission();
+  const permission=Notification.permission==='default'?await Notification.requestPermission():Notification.permission;
   if(permission!=='granted')throw Error('Browser notification permission was not granted. Change it in your browser settings if desired.');
   const registration=await navigator.serviceWorker.register('/orbitwatch-push-sw.js',{scope:'/'});
   await navigator.serviceWorker.ready;
   let subscription=await registration.pushManager.getSubscription();
   if(!subscription)subscription=await registration.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:keyBytes(publicKey)});
   try {
-    const device=await savePushSubscription({...subscription.toJSON(),consent:true});
-    localStorage.setItem(RECEIPT,JSON.stringify({id:device.id,ownerId}));
+    const receipt=pushReceipt();
+    const device=await savePushSubscription({...subscription.toJSON(),consent:true,
+      ...(receipt?.ownerId===ownerId?{replace_id:receipt.id}:{})});
     await marker(registration,device.id);
+    localStorage.setItem(RECEIPT,JSON.stringify({id:device.id,ownerId}));
     return device;
   }catch(error){await marker(registration,null).catch(()=>{});await subscription.unsubscribe().catch(()=>{});throw error;}
+}
+
+export async function refreshBrowserPush(ownerId, signal) {
+  const receipt=pushReceipt(), token=getStoredAccessToken();
+  if(pushCapability()||Notification.permission!=='granted'||receipt?.ownerId!==ownerId||!token)return;
+  const registration=await navigator.serviceWorker.getRegistration('/');
+  const subscription=await registration?.pushManager.getSubscription();
+  if(!subscription||signal?.aborted||getStoredAccessToken()!==token)return;
+  const device=await savePushSubscription({...subscription.toJSON(),consent:true,replace_id:receipt.id},signal);
+  if(signal?.aborted||getStoredAccessToken()!==token)return;
+  await marker(registration,device.id);
+  if(!signal?.aborted&&getStoredAccessToken()===token)localStorage.setItem(RECEIPT,JSON.stringify({id:device.id,ownerId}));
 }
 
 export async function disableBrowserPush() {
@@ -49,7 +63,8 @@ export async function disableBrowserPush() {
   localStorage.removeItem(RECEIPT);
 }
 
-export async function revokePushOnLogout() {
+export async function revokePushOnLogout(sessionRevoked) {
+  const receipt=pushReceipt();
   // The privacy marker uses the same local database as the push worker and does
   // not depend on registration lookup, network access or a live access token.
   if(typeof indexedDB!=='undefined'){
@@ -59,8 +74,13 @@ export async function revokePushOnLogout() {
       request.onsuccess=()=>{const db=request.result;const transaction=db.transaction('settings','readwrite');transaction.objectStore('settings').put(null,'device');transaction.oncomplete=()=>db.close();transaction.onerror=()=>db.close();};
     }catch{ /* Service worker message below remains a second local path. */ }
   }
-  try {await disableBrowserPush();}catch {
-    // The worker marker is cleared before unsubscribe/server attempts. Keep the
-    // receipt to retry server revocation on the next authenticated session.
+  const registration=await navigator.serviceWorker?.getRegistration('/').catch(()=>null);
+  if(registration)await Promise.allSettled([
+    marker(registration,null),
+    registration.pushManager.getSubscription().then(subscription=>subscription?.unsubscribe()),
+  ]);
+  if(await sessionRevoked?.catch(()=>false)){
+    const current=pushReceipt();
+    if(current?.id===receipt?.id&&current?.ownerId===receipt?.ownerId)localStorage.removeItem(RECEIPT);
   }
 }

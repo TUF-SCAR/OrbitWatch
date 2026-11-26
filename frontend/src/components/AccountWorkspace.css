@@ -92,6 +92,25 @@
 .notification-delivery small { display:block; font-size:11px; line-height:1.7; color:#a4c0cf; margin:8px 0; }
 .notification-delivery button { padding:9px 12px; color:#d9eff8; background:#1c3e4d99; border:1px solid #74bfd466; cursor:pointer; font-size:12px; max-width:100%; }
 .notification-delivery button:disabled { opacity:.6; cursor:default; }
+.notification-delivery-details > summary { min-height:44px; align-content:center; cursor:pointer; }
+.notification-workspace .hud-panel__body { min-height:0; }
+@media (min-width:1001px) and (min-height:601px) {
+  .mobile-location-picker[open] {
+    box-sizing:border-box; width:min(1040px,calc(100vw - 48px)); height:min(720px,calc(100dvh - 48px));
+    padding:18px; border:1px solid #63899e; border-radius:12px; color:#e8f8ff; background:#071019;
+    display:grid; gap:12px; grid-template-columns:minmax(0,1fr) minmax(280px,340px);
+    grid-template-rows:auto minmax(0,1fr) auto; overflow:hidden;
+  }
+  .mobile-location-picker > header { grid-column:1/-1; display:flex; align-items:center; justify-content:space-between; }
+  .mobile-location-picker h2 { margin:4px 0 0; }
+  .mobile-location-picker .location-map { grid-column:1; grid-row:2; min-height:0; border-radius:6px; }
+  .mobile-location-picker .location-map-controls { grid-column:1; grid-row:3; display:flex; flex-wrap:wrap; align-items:center; gap:8px; }
+  .mobile-location-picker .location-picker-form { grid-column:2; grid-row:2; min-height:0; overflow-y:auto; }
+  .mobile-location-picker .location-picker-form fieldset { min-width:0; margin:0; border:0; padding:4px; display:grid; gap:10px; }
+  .mobile-location-picker .location-picker-footer { grid-column:2; grid-row:3; display:flex; justify-content:flex-end; gap:8px; }
+  .mobile-location-picker :is(button,input:not([type=checkbox])) { min-height:44px; padding:6px 10px; background:#10222e; border:1px solid #4a6a7e; border-radius:6px; color:#ddf5fc; }
+  .mobile-location-picker input:not([type=checkbox]) { box-sizing:border-box; width:100%; }
+}
 .inbox-card a { color:#a5d8ed; font-size:11px; }
 .viewing-details,.viewing-target-picker { min-width:0; color:#bad0df; overflow-wrap:anywhere; font-size:12px; line-height:1.7; }
 .viewing-details h3,.viewing-target-picker h3 { color:#e3f1f8; }

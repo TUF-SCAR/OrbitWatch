@@ -31,6 +31,8 @@ export default function ViewingDetails({details,expired=false}) {
       {details.element_epoch&&<p>Orbital data age at calculation: {Math.max(0,(Date.parse(details.calculated_at||details.computed_at)-Date.parse(details.element_epoch))/86400000).toFixed(2)} days</p>}
       {details.rise_set?.map(event=><p key={`${event.event}:${event.utc}`}>{event.event}: {time(event.utc,zone)}</p>)}
       <p>Weather: {weather.attribution||'unavailable'}<br/>Forecast valid: {time(weather.valid_at,zone)}<br/>Retrieved: {time(weather.retrieved_at,zone)}<br/>{weather.matching}</p>
+      {Number.isFinite(weather.surface_visibility_m)&&<p>Modelled surface visibility {(weather.surface_visibility_m/1000).toFixed(1)} km. Local sky clarity can vary.</p>}
+      {Number.isFinite(weather.relative_humidity_percent)&&<p>Modelled relative humidity {weather.relative_humidity_percent}%.</p>}
       <p>{details.uncertainty||'No terrain, refraction, light pollution or verified satellite magnitude model. Forecasts and orbital predictions have uncertainty. Never aim optical equipment at the Sun.'}</p>
     </details>
   </section>;

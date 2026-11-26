@@ -63,9 +63,12 @@
 }
 
 @media (min-width: 601px) and (orientation: landscape) and (max-height: 600px) and (pointer: coarse) {
+  .orbitwatch-shell { --observation-right-top: calc(58px + env(safe-area-inset-top)); }
   .orbitwatch-shell .hud-panel.observation-panel--right {
+    inset-block-start: var(--observation-right-top);
     inset-inline-end: max(var(--observation-edge), calc(58px + env(safe-area-inset-right)));
     inline-size: min(390px, calc(var(--observation-rail-width) - 50px));
+    max-block-size: calc(var(--observation-height) - var(--observation-right-top) - var(--ui-bottom-safe));
   }
   .orbitwatch-shell :is(.system-scale, .phone-inspector, .phone-celestial-card) {
     max-inline-size: var(--observation-rail-width);

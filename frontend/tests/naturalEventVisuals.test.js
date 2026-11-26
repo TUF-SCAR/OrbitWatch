@@ -110,6 +110,11 @@ test('clustering uses projected proximity, leaves a selected member out and boun
   assert.equal(clusterProjectedEvents(points, 8).length, 3);
   const dense = Array.from({ length: 250 }, (_, i) => ({ id: String(i), report: { id: String(i) }, x: 25 * i, y: 0 }));
   assert.equal(clusterProjectedEvents(dense, 20, '249').length, 161);
+  const quake = { ...points[0], report: { id: '0', category: 'earthquake' } };
+  const flood = { ...points[1], report: { id: '1', category: 'flood' } };
+  const [cluster] = clusterProjectedEvents([quake, flood], 20);
+  assert.equal(cluster.report.category, 'flood');
+  assert.deepEqual(cluster.ids, ['1', '0']);
 });
 
 test('overlay paint and hit tests use CSS/device pixels, honor reduced motion and clean up on mode changes', context => {

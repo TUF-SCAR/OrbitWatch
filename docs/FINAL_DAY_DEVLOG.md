@@ -1331,3 +1331,46 @@ Before editing, a read-only check used the production-backed Time Explorer weath
 Local Chrome exercised the rendered app at 1280×900 with full motion and at 390×844 and 844×390 with emulated touch and reduced motion. All three layouts reached 240 AU, rendered named labels and orbital paths, entered the cloud, reached 16,000 AU with wheel or touch input and the range control, restored 240 AU, and switched between Live and Time Explorer. The scale controls fit within their viewports and cleared the zoom buttons. The browser test used isolated account and network responses. Captures are in `.setup-cache/batch-d-evidence`. Physical-phone GPU performance and a signed-in production browser session were outside that verification.
 
 The 27 focused Node tests covering Oort sampling and camera ownership, named ephemerides, solar LOD, orbit styling and the historical frontend contracts passed. The full suite passed 241/241 in serial after concurrent Vite SSR tests collided on their local port. The final minor-body visibility guard was checked with a four-test rerun, including preservation of the existing moon visibility rules. ESLint and the final production build passed. Vite reported its existing large-bundle warning. Runtime changes are confined to frontend scene rendering, HUD controls and their styles. No backend, ingestion, authentication or notification code changed.
+
+## V6 — Observation layout and Natural Events coverage
+
+The phone Weather panel filled the viewport and intercepted the globe. The 390×844 baseline capture hit a report filter at the viewport center. The desktop Weather panel already passed that center hit test at 1600×900. Ordinary Weather, Map, Camera, System and mobile catalogue panels now use non-modal observation surfaces with edge bounds, contained scrolling and Escape dismissal. The modal account and date workflows retain their explicit triggers. The Time Explorer date strip uses the full viewport as its positioning reference so the phone rules apply its bottom offset once. Report source and context filters expand on demand. The existing arm artwork and authentication flows were outside this patch.
+
+### Natural Events pipeline
+
+On November 25 at 18:09:21 UTC the deployed FastAPI event handler returned HTTP 200 from the actual EC2 caches. This was an in-process authenticated route test with refresh scheduling disabled. The original default globe admitted confirmed activity and earthquake occurrences under 24 hours old. The inspected NHC/CPHC summary had zero active storms. That left 44 USGS earthquakes eligible and excluded every other family even though the handler included those reports. The production cache refresh owner and shared request budgets remain in use. Each provider retains its own usable response through another provider’s timeout, with an isolated recovery path and explicit cache state. The event endpoint returns the bounded normalized cache directly.
+
+Live view now includes recent dated official-source reports and recent reports with recorded source closure. Each state has its own label and expiry. Earthquakes still use a 24-hour occurrence window, NHC confirmation a 12-hour advisory window, floods seven days, volcanic reports 14 days, and slowly updated drought and ice reports 30 days. A provider’s open flag or cache retrieval timestamp alone cannot establish activity. Confirmed ends remain in the archive. Forecast-only rows stay separate from observed markers. The first page interleaves report families, and a less common hazard represents a cluster where it overlaps a quake. Existing explicit storm identity links, published boundaries, icon artwork and horizon occlusion still apply.
+
+### Coverage at the inspected production timestamp
+
+API counts below are from the deployed handler before the change. Exclusions and eligibility replay the same timestamp and reports through the new status and grouping code. Eligibility counts distinct groups with a point or published area before view-specific horizon and clustering limits. The API’s bounded allocation omitted 1,414 earthquakes and 246 wildfires from its displayed subset. That difference is separate from status filtering and identity deduplication.
+
+| Family | Upstream records | Normalized cache | Live exclusions | Group dedup | Production API | Render eligible | Latest report UTC and provider |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| Cyclones | ≥6 storm records | 6 | 3 | 2 | 6 | 1 | Nov 23 00:00 · EONET/GDACS/IBTrACS |
+| Earthquakes | 1,816 feed features | 1,814 | 356 | 0 | 400 | 44 | Nov 25 16:23:53.838 · USGS |
+| Floods | ≥15 | 15 | 12 | 0 | 15 | 3 | Nov 21 20:00 · EONET/GDACS |
+| Wildfires | ≥646 | 646 | 396 | 0 | 400 | 4 | Nov 23 19:00 · EONET/GDACS |
+| Volcanoes | 4 GDACS | 4 | 4 | 0 | 4 | 0 | Oct 10 05:58 · GDACS, archive only |
+| Drought | 5 GDACS | 5 | 1 | 0 | 5 | 4 | Nov 23 00:00 · GDACS |
+| Landslides | Unresolved | 0 | 0 | 0 | 0 | 0 | No normalized EONET reports |
+| Severe storms | Unresolved | 0 | 0 | 0 | 0 | 0 | EONET storm records classified as cyclones where supported |
+| Snow and ice | ≥3 | 3 | 2 | 0 | 3 | 1 | Oct 30 00:00 · EONET |
+| Dust and haze | Unresolved | 0 | 0 | 0 | 0 | 0 | No normalized EONET reports |
+| Temperature extremes | Unresolved | 0 | 0 | 0 | 0 | 0 | No normalized EONET reports |
+| Water colour | Unresolved | 0 | 0 | 0 | 0 | 0 | No normalized EONET reports |
+| Other reports | Unresolved | 0 | 0 | 0 | 0 | 0 | No normalized reports in this family |
+| Tsunamis | No dedicated feed | — | — | — | — | — | Outside the existing 13-family taxonomy |
+
+EONET returned 650 records across two capped queries, of which 646 normalized. GDACS returned 31 and all normalized. USGS accepted 1,814 of 1,816. IBTrACS normalized two storms, excluding 44 position rows at the parser. Storm totals and position rows use different units. The capture omitted a category breakdown for rejected records, so the affected EONET rows show verified lower bounds or unresolved raw totals. At the audit EONET, GDACS and NHC had stale-but-usable caches and USGS and IBTrACS were available. None reported a provider failure. Source definitions are documented by [NASA EONET](https://eonet.gsfc.nasa.gov/docs/v3), [GDACS](https://gdacs.org/Documents/2025/GDACS_API_quickstart_v1.pdf) and [USGS](https://earthquake.usgs.gov/earthquakes/feed/v1.0/geojson.php).
+
+The EONET Ireland and Thailand floods and the November 23 Australian wildfire are recent closed reports. Tropical Cyclone Xavier qualifies as a recent dated report, with its last position on November 23. The October 30 report for iceberg B22K qualifies under the ice window and shows its last reported location. B52 and D33D are older archive reports. Kanlaon’s latest stored volcanic report was outside the 14-day display window. The replay increased eligible groups from 44 to 57, across six families.
+
+### Browser and regression checks
+
+Local Chrome rendered the fixture-backed app at 360×800, 390×844, 412×915, 844×390, 1366×768, 1600×900 and 1920×1080. On each viewport, nine points across the scene center reached the Cesium canvas with Weather, report details, Camera, Map and System open, and after Time Explorer finished preparing. The run exercised the flood category and its rendered details, the report archive and source filter, the celestial catalogue, the date picker, both mode buttons and the notification workspace. It checked horizontal overflow and uncaught JavaScript errors. The baseline and after screenshots are kept locally in `.setup-cache/v6-layout-evidence`. They show the UI and event overlay with external imagery requests isolated. These checks used emulated touch and a local test account response. Physical-device safe-area and keyboard behavior, real provider imagery and the signed-in production workflows require separate verification.
+
+From the frontend directory, `node --test --test-concurrency=1 tests/naturalEventLive.test.js tests/naturalEventVisuals.test.js tests/hudAssembly.test.js tests/historicalWeather.test.js` passed all 17 tests. `npm run lint` and `npm run build` passed, with existing Vite bundle-size warnings. From the project root, the backend virtual environment ran `python -u tests/check_event_expansion.py` with 14 passing tests and `python -u tests/check_natural_events.py` with the real route, disposable SQLite database and mocked providers. The initial sandboxed HTTP fixture run stalled after normalization and the approved local rerun completed. The HTTP fixtures verified cache isolation, authenticated detail handling, 36 concurrent consumers, 48 atomic reservation attempts and timeout/429 recovery.
+
+Before release, the public API readiness endpoint returned `ready` with database available. The initial EC2 inspection captured the provider caches. Subsequent SSH requests to port 22 timed out. The repository deployment script scopes service operations to the API and notification worker, and this batch issues no ERA5 commands that change state.

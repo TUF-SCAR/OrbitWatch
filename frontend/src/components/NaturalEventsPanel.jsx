@@ -3,7 +3,7 @@ import { ArrowLeft, Crosshair, ExternalLink } from 'lucide-react';
 import { EVENT_CATEGORIES } from '../data/eventCategories.js';
 import { eventFilter, forecastCone, trackPoints } from '../services/cycloneTracks.js';
 import { eventIcon } from '../services/naturalEventArt.js';
-import { EVENT_STATUS_LABELS, eventLabel, eventStatus, isLiveEvent } from '../services/naturalEventPresentation.js';
+import { EVENT_STATUS_LABELS, eventLabel, eventStatus, interleaveEventCategories, isLiveEvent } from '../services/naturalEventPresentation.js';
 import './NaturalEvents.css';
 
 function time(value) {
@@ -132,7 +132,8 @@ export default function NaturalEventsPanel({ data, enabled, onEnabled, category,
     const group = display?.get(event.id);
     return (archive || isLiveEvent(group || {})) && (!clusterKeys || clusterKeys.has(group?.id || event.id));
   });
-  const events = eventFilter(candidates, { category, provider: filter.provider, status: filter.status, now: clock });
+  const matching = eventFilter(candidates, { category, provider: filter.provider, status: filter.status, now: clock });
+  const events = !archive && category === 'all' ? interleaveEventCategories(matching) : matching;
   const categories = new Set(candidates.map(event => event.category));
   function change(key, value) { setFilter(previous => ({ ...previous, [key]: value, limit: key === 'limit' ? value : 40 })); }
 
@@ -147,14 +148,17 @@ export default function NaturalEventsPanel({ data, enabled, onEnabled, category,
     {selected ? <ReportDetails report={selected} group={display?.get(selected.id)} clock={clock} data={data} onFocus={onFocus} onReturn={onReturn} onSelect={onSelect}
       forecast={forecast} onForecast={onForecast} cone={cone} onCone={onCone} /> : <>
       {cluster && <div className="event-cluster-banner"><strong>{cluster.length} nearby events</strong><button type="button" className="secondary-action" onClick={onClearCluster}>Show all reports</button></div>}
-      <div className="event-filters" aria-label="Report list filters">
-        <label>Source<select aria-label="Event source" value={filter.provider} onChange={e => change('provider', e.target.value)}><option value="all">All sources</option>{Object.keys(data.providers).map(provider => <option key={provider} value={provider}>{provider.toUpperCase()}</option>)}</select></label>
-        <label>Report context<select aria-label="Event report context" value={filter.status} onChange={e => change('status', e.target.value)}><option value="all">All loaded reports</option><option value="recent">Reported in 7 days</option><option value="older">Older source reports</option><option value="tracks">Cyclone tracks</option><option value="fresh">Fresh cache</option><option value="stale">Stale cache</option></select></label>
-      </div>
-      <div className="weather-section-heading"><h3>{archive ? 'Archived reports' : 'Verified live events'}</h3><span>{events.length} / {candidates.length} reports</span></div>
+      <details className="event-filter-details">
+        <summary>Report filters{filter.provider !== 'all' || filter.status !== 'all' ? ' · applied' : ''}</summary>
+        <div className="event-filters">
+          <label>Source<select aria-label="Event source" value={filter.provider} onChange={e => change('provider', e.target.value)}><option value="all">All sources</option>{Object.keys(data.providers).map(provider => <option key={provider} value={provider}>{provider.toUpperCase()}</option>)}</select></label>
+          <label>Report context<select aria-label="Event report context" value={filter.status} onChange={e => change('status', e.target.value)}><option value="all">All loaded reports</option><option value="recent">Reported in 7 days</option><option value="older">Older source reports</option><option value="tracks">Cyclone tracks</option><option value="fresh">Fresh cache</option><option value="stale">Stale cache</option></select></label>
+        </div>
+      </details>
+      <div className="weather-section-heading"><h3>{archive ? 'Archived reports' : 'Recent and active reports'}</h3><span>{events.length} / {candidates.length} reports</span></div>
       {data.state === 'preparing' && <p role="status">Loading official event feeds…</p>}
       {['offline', 'unavailable'].includes(data.state) && <p className="inline-warning" role="status">Event feeds unavailable. Retained reports keep their original timestamps.</p>}
-      {events.length === 0 && data.state !== 'preparing' && <p role="status">{archive ? 'No loaded reports match these filters.' : 'No verified live events match these filters. The archive retains other reports.'}</p>}
+      {events.length === 0 && data.state !== 'preparing' && <p role="status">{archive ? 'No loaded reports match these filters.' : 'No recent or active reports match these filters.'}</p>}
       {data.coverage?.truncated && <p className="weather-source">Showing a bounded subset of {data.coverage.normalized_reports} reports. Feed coverage is incomplete.</p>}
       <ul className="event-list">{events.slice(0, filter.limit).map(event =>
         <li key={event.id}><button type="button" onClick={() => { onEnabled(true); onSelect(event.id); }}>

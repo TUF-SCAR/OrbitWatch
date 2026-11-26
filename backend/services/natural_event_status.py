@@ -14,15 +14,18 @@ AKVAN = {
 }
 AKVAN_REPORTS = {'gdacs:TC:1001351', 'ibtracs:2026321N11087'}
 
-VERIFICATION_WINDOWS = {
-    'cyclone': timedelta(hours=12), 'wildfire': timedelta(days=2),
-    'flood': timedelta(days=2), 'volcano': timedelta(days=7), 'drought': timedelta(days=30),
-}
+CYCLONE_ADVISORY_WINDOW = timedelta(hours=12)
+# Display windows for dated reports. They do not estimate hazard duration.
+REPORT_DAYS = {'cyclone': 3, 'wildfire': 3, 'flood': 7, 'volcano': 14,
+               'drought': 30, 'landslide': 7, 'storm': 3, 'snow_ice': 30,
+               'dust': 3, 'temperature_extreme': 3, 'water_color': 7, 'other': 3}
 
 
 def live_status(event, now, evidence=None):
     provider, category = event['provider'], event['category']
     stamp = date(event.get('reported_at'))
+    if event.get('classification') == 'forecast' or (stamp and stamp > now):
+        return {'state': 'verification_pending', 'at': iso(stamp)}
     track = event.get('track') or {}
     if category == 'cyclone' and (event['id'] in AKVAN_REPORTS or
             provider == 'ibtracs' and 'IO052026' in track.get('atcf_ids', [])) and date(AKVAN['at']) <= now:
@@ -32,15 +35,24 @@ def live_status(event, now, evidence=None):
         if observed and observed <= now:
             if evidence['state'] == 'ended_confirmed':
                 return evidence.copy()
-            expiry = observed + VERIFICATION_WINDOWS['cyclone']
+            expiry = observed + CYCLONE_ADVISORY_WINDOW
             if evidence['state'] == 'active_confirmed' and now < expiry:
                 return {**evidence, 'expires_at': iso(expiry)}
     if provider == 'usgs' and category == 'earthquake' and stamp and stamp <= now < stamp + timedelta(days=1):
         return {'state': 'recent_occurrence', 'at': iso(stamp), 'expires_at': iso(stamp + timedelta(days=1)),
                 'agency': 'USGS', 'source_url': event.get('source_url')}
-    window = VERIFICATION_WINDOWS.get(category, timedelta(days=1))
-    return {'state': 'stale_unverified' if stamp and now - stamp >= window else 'verification_pending',
-            'at': iso(stamp)}
+    if not stamp:
+        return {'state': 'verification_pending', 'at': iso(stamp)}
+    if provider == 'nhc':
+        return {'state': 'stale_unverified', 'at': iso(stamp)}
+    window = timedelta(days=REPORT_DAYS.get(category, 1))
+    expiry = stamp + window
+    if category in REPORT_DAYS and now < expiry:
+        closed = date(event.get('closed_at'))
+        state = 'recently_closed' if closed and closed <= now else 'recent_report'
+        return {'state': state, 'at': iso(stamp), 'expires_at': iso(expiry),
+                'agency': provider.upper(), 'source_url': event.get('source_url')}
+    return {'state': 'stale_unverified' if now >= expiry else 'verification_pending', 'at': iso(stamp)}
 
 
 def presentation_events(value):

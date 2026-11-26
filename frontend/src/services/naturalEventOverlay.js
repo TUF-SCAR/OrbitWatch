@@ -12,7 +12,10 @@ export const FORECAST_COLOR = '#ffd28e';
 export function clusterProjectedEvents(points, radius, selectedId) {
   const buckets = new Map(), markers = [];
   const key = (x, y) => `${x}:${y}`;
-  for (const point of points) {
+  // Keep less common hazards visible where they overlap a dense earthquake feed.
+  const ordered = [...points.filter(point => point.report.category !== 'earthquake'),
+    ...points.filter(point => point.report.category === 'earthquake')];
+  for (const point of ordered) {
     if (point.id === selectedId) continue;
     const col = Math.floor(point.x / radius), row = Math.floor(point.y / radius);
     let match, nearest = radius ** 2;

@@ -3,7 +3,7 @@ import test from 'node:test';
 import { Cartesian3, Cartesian4, Ellipsoid, Matrix4, PerspectiveFrustum } from 'cesium';
 import { globeSilhouette, pointInsideSilhouette } from '../src/services/naturalEventHorizon.js';
 import { groupNaturalEvents } from '../src/services/naturalEventIdentity.js';
-import { eventLabel, isLiveEvent } from '../src/services/naturalEventPresentation.js';
+import { eventLabel, eventStatus, interleaveEventCategories, isLiveEvent } from '../src/services/naturalEventPresentation.js';
 import { forecastCone, trackPoints } from '../src/services/cycloneTracks.js';
 
 const ellipsoid = Ellipsoid.WGS84;
@@ -64,6 +64,17 @@ test('live projection uses the evidence center, excludes ended groups and expire
   assert.equal(groups[0].label, 'Rina · Tropical Storm');
   assert.equal(eventLabel(quake), 'M5.3 · Near Mangan, India');
   assert.equal(groupNaturalEvents(events, now + 3 * 3600000).groups.filter(isLiveEvent).length, 1);
+});
+
+test('dated source reports stay visible until expiry and share the first page across categories', () => {
+  const quake = { id: 'q', category: 'earthquake' };
+  const flood = { id: 'f', category: 'flood', live_status: { state: 'recently_closed', expires_at: at(1) } };
+  const ice = { id: 'i', category: 'snow_ice', live_status: { state: 'recent_report', expires_at: at(2) } };
+  assert.deepEqual(interleaveEventCategories([quake, { ...quake, id: 'q2' }, flood, ice]).map(event => event.id), ['q', 'f', 'i', 'q2']);
+  for (const report of [flood, ice]) {
+    assert.equal(isLiveEvent({ status: eventStatus(report, now) }), true);
+    assert.equal(isLiveEvent({ status: eventStatus(report, now + 3 * 3600000) }), false);
+  }
 });
 
 test('cone requires matching official advisory, valid geometry and a remaining forecast', () => {

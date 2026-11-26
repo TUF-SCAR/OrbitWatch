@@ -1,0 +1,74 @@
+.orbitwatch-shell {
+  --observation-half-width: clamp(56px, 14vw, 220px);
+  --observation-half-height: clamp(60px, 10dvh, 120px);
+  --observation-edge: max(8px, var(--ui-edge));
+  --observation-rail-width: calc(50vw - var(--observation-half-width) - var(--observation-edge) * 2);
+  --observation-height: var(--phone-height, 100dvh);
+  --observation-lower-space: calc(var(--observation-height) / 2 - var(--observation-half-height));
+}
+
+.orbitwatch-shell :is(.hud-panel.observation-panel, .object-explorer) {
+  box-sizing: border-box;
+  max-inline-size: var(--observation-rail-width);
+  overscroll-behavior: contain;
+  pointer-events: auto;
+}
+
+.orbitwatch-shell .observation-panel--left { right: auto; left: var(--ui-content-left); }
+.orbitwatch-shell .observation-panel--right { left: auto; right: var(--observation-edge); }
+.orbitwatch-shell .observation-panel .hud-panel__header h2 { margin-block-start: 3px; }
+.orbitwatch-shell :is(.observation-panel, .phone-inspector) :is(.hud-panel__body, .phone-inspector__details, .mobile-catalog__results) { overscroll-behavior: contain; touch-action: pan-y; }
+.orbitwatch-shell .time-dock-owner { inset: 0; }
+.orbitwatch-shell .event-filter-details > summary { min-block-size: 44px; align-content: center; }
+
+/* A landscape scene has room beside the protected area. Short layouts use
+   the same width bound for ordinary panels and reserve the bottom navigation. */
+@media (max-height: 600px), (max-width: 1000px) {
+  .orbitwatch-shell .hud-panel.observation-panel {
+    position: absolute;
+    inset: var(--ui-panel-top) var(--observation-edge) auto auto;
+    margin: 0;
+    inline-size: min(390px, var(--observation-rail-width));
+    block-size: auto;
+    max-block-size: calc(var(--observation-height) - var(--ui-panel-top) - var(--ui-bottom-safe));
+    min-block-size: 0;
+    padding: 8px;
+    gap: 6px;
+    overflow-y: auto;
+    touch-action: pan-y;
+  }
+  .orbitwatch-shell .hud-panel.observation-panel--left { inset-inline: var(--observation-edge) auto; }
+  .orbitwatch-shell .observation-panel :is(.hud-panel__body, .system-menu__viewport, .mobile-catalog__results) { min-block-size: 64px; }
+  .orbitwatch-shell .observation-panel .camera-popover__grid { flex: 0 0 auto; grid-template-columns: repeat(2,minmax(0,1fr)); }
+  .orbitwatch-shell .observation-panel .camera-popover__grid button { min-height: 44px; height: auto; padding: 5px 8px; font-size: 13px; }
+  .orbitwatch-shell .observation-panel .system-menu__foot { display: none; }
+  .orbitwatch-shell .observation-panel :is(input:not([type=range]), select) { font-size: 16px; }
+  .orbitwatch-shell .live-interface:has(.observation-panel, .phone-inspector, .phone-celestial-card) .system-scale { display: none; }
+  .orbitwatch-shell .live-interface:has(.observation-panel, .phone-inspector, .phone-celestial-card, .system-scale) .weather-legend { display: none; }
+}
+
+@media (max-width: 650px) and (orientation: portrait) {
+  .orbitwatch-shell { --observation-bottom: max(var(--phone-navigation-bottom, 118px), env(safe-area-inset-bottom)); }
+  .orbitwatch-shell :is(.hud-panel.observation-panel, .phone-inspector, .phone-celestial-card, .event-summary) {
+    inset: auto max(60px, calc(56px + env(safe-area-inset-right))) var(--observation-bottom) max(8px, env(safe-area-inset-left));
+    margin: 0;
+    inline-size: auto;
+    max-inline-size: none;
+    max-block-size: max(84px, calc(var(--observation-lower-space) - var(--observation-bottom) - 8px));
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    touch-action: pan-y;
+  }
+  .orbitwatch-shell .phone-inspector__details { max-block-size: none; }
+}
+
+@media (min-width: 601px) and (orientation: landscape) and (max-height: 600px) and (pointer: coarse) {
+  .orbitwatch-shell .hud-panel.observation-panel--right {
+    inset-inline-end: max(var(--observation-edge), calc(58px + env(safe-area-inset-right)));
+    inline-size: min(390px, calc(var(--observation-rail-width) - 50px));
+  }
+  .orbitwatch-shell :is(.system-scale, .phone-inspector, .phone-celestial-card) {
+    max-inline-size: var(--observation-rail-width);
+  }
+  .orbitwatch-shell .system-scale { left: var(--observation-edge); translate: none; }
+}

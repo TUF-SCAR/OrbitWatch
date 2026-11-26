@@ -18,6 +18,14 @@
 .orbitwatch-shell .observation-panel--right { left: auto; right: var(--observation-edge); }
 .orbitwatch-shell .observation-panel .hud-panel__header h2 { margin-block-start: 3px; }
 .orbitwatch-shell :is(.observation-panel, .phone-inspector) :is(.hud-panel__body, .phone-inspector__details, .mobile-catalog__results) { overscroll-behavior: contain; touch-action: pan-y; }
+.orbitwatch-shell .mobile-catalog.observation-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  inline-size: min(380px, calc(50vw - var(--observation-half-width) - var(--ui-content-left) - var(--observation-edge)));
+  block-size: min(620px, calc(var(--observation-height) - var(--ui-panel-top) - var(--ui-bottom-safe)));
+  overflow-y: auto;
+}
 .orbitwatch-shell .time-dock-owner { inset: 0; }
 .orbitwatch-shell .event-filter-details > summary { min-block-size: 44px; align-content: center; }
 

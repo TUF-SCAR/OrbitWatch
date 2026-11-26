@@ -1,9 +1,8 @@
-"""Explicit account-only production activation; never imported by startup.
+"""Explicit production account and backend table safeguards.
 
 Default is read-only inspection. --apply --expected-target FINGERPRINT applies
-002–004 as one transaction to the configured Supabase project only. No row data
-is seeded. Failed validation rolls back the additive DDL; recovery leaves code
-disabled/reverted while new empty tables may safely remain.
+the reviewed migrations as one transaction to the configured Supabase project.
+No row data is seeded. Failed validation rolls back the transaction.
 """
 import argparse
 from hashlib import sha256
@@ -17,6 +16,7 @@ from core.config import required
 
 TABLES=("account_observation_locations","account_notification_preferences","account_alert_subscriptions","account_notification_inbox","account_push_devices","notification_runner_state","account_notification_delivery","account_viewing_opportunities","visibility_plan_cache","account_revoked_sessions","account_auth_attempts")
 LEGACY=("users","satellite_orbit_data","satellite_orbit_history","satellite_historical_elements")
+BACKEND_ONLY=("users","satellite_orbit_data","satellite_orbit_history")
 NORMAL_CEILING=300_000_000
 ABSOLUTE_CEILING=400_000_000
 
@@ -78,16 +78,22 @@ def run(apply=False, expected=None):
                 if not {index.name for index in model.__table__.indexes}.issubset(indexes):raise RuntimeError('Delivery indexes are incomplete')
         delivery_constraints()
         if apply:
-            for filename in ("002_account_notification_foundation.sql","003_account_alert_subscriptions.sql","004_account_notification_inbox.sql","005_notification_delivery.sql","008_viewing_opportunities.sql","009_auth_hardening.sql"):
+            for filename in ("002_account_notification_foundation.sql","003_account_alert_subscriptions.sql","004_account_notification_inbox.sql","005_notification_delivery.sql","008_viewing_opportunities.sql","009_auth_hardening.sql","010_private_backend_tables.sql"):
                 sql=(Path(__file__).parent/"migrations"/filename).read_text(encoding="utf-8")
                 if re.search(r"(?im)^\s*(DROP|TRUNCATE|DELETE|INSERT|UPDATE)\b",sql):
                     raise RuntimeError("Only reviewed additive schema statements are allowed")
                 sql=re.sub(r"(?m)^BEGIN;\s*$|^COMMIT;\s*$","",sql)
                 connection.exec_driver_sql(sql)
             inspector.clear_cache();compatible();delivery_constraints()
-            for name in TABLES:
+            for name in (*TABLES, *BACKEND_ONLY):
                 if not connection.scalar(text("SELECT relrowsecurity FROM pg_class WHERE oid=to_regclass(:table)"),{"table":"public."+name}):
-                    raise RuntimeError("Private account table is missing RLS")
+                    raise RuntimeError("Private table is missing RLS")
+            for name in BACKEND_ONLY:
+                for role in ("anon", "authenticated"):
+                    if connection.scalar(text("""SELECT has_table_privilege(:role, :table,
+                        'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER')"""),
+                        {"role": role, "table": "public."+name}):
+                        raise RuntimeError("Browser database role retains direct backend table privileges")
             after=snapshot(connection)
             if after["database_bytes"]>=NORMAL_CEILING or after["database_bytes"]>=ABSOLUTE_CEILING:
                 raise RuntimeError("Storage ceiling reached; additive transaction rolled back")

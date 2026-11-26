@@ -9,6 +9,8 @@ from pathlib import Path
 import secrets
 import subprocess
 import sys
+from contextlib import ExitStack
+from datetime import datetime, timedelta, timezone
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
 from concurrent.futures import ThreadPoolExecutor
@@ -21,10 +23,12 @@ def run():
     with TemporaryDirectory(dir=ROOT / ".orbitwatch-backups", prefix="reliability-") as tmp, \
          patch("dotenv.load_dotenv", return_value=False), \
          patch.dict(os.environ, {"DATABASE_URL": f"sqlite:///{Path(tmp).as_posix()}/test.db",
-                                 "JWT_SECRET_KEY": secrets.token_hex(32), "ORBITWATCH_INGESTION_ENABLED": "false"}):
+                                 "JWT_SECRET_KEY": secrets.token_hex(32), "ORBITWATCH_INGESTION_ENABLED": "false"}), \
+         ExitStack() as cleanup:
         from sqlalchemy import event
         from sqlalchemy.exc import OperationalError
         from core.database import database_engine as engine, DatabaseBase, database_availability as gate, database_session_maker
+        cleanup.callback(engine.dispose)
         from core.availability import DatabaseUnavailable
         from main import app
         from models.user import User
@@ -45,6 +49,7 @@ def run():
             session.add(user); session.commit(); user_id = user.id
         token = create_access_token(user_id)
         auth = {"Authorization": f"Bearer {token}"}
+        registration = {"username": "new_test", "email": "new@example.invalid", "password": "local-test-password"}
         checks = 0
         def request(client, method, path, status=200, **kwargs):
             nonlocal checks
@@ -59,12 +64,23 @@ def run():
              patch.object(ingestion.spacetrack, "get_latest_gp") as st, patch.object(ingestion.celestrak, "get_latest_gp") as ct, \
              TestClient(app, raise_server_exceptions=False) as client:
             request(client, "GET", "/health/live")
+            now = datetime.now(timezone.utc)
+            claims = {"sub": str(user_id), "exp": now + timedelta(minutes=1)}
+            expired = jwt.encode(claims | {"exp": now - timedelta(minutes=1)}, os.environ["JWT_SECRET_KEY"], algorithm="HS256")
+            wrong_signature = jwt.encode(claims, secrets.token_hex(32), algorithm="HS256")
+            before = state["queries"]
+            with patch.object(gate, "ensure", wraps=gate.ensure) as ensure:
+                for path in ("/api/auth/me", "/api/satellites/catalog", "/api/account/locations"):
+                    request(client, "GET", path, 401)
+                    for invalid in ("invalid", expired, wrong_signature):
+                        request(client, "GET", path, 401, headers={"Authorization": f"Bearer {invalid}"})
+                ensure.assert_not_called()
+            assert state["queries"] == before
             request(client, "GET", "/health/ready", 503)
-            request(client, "GET", "/api/auth/me", 503, headers=auth)
-            request(client, "GET", "/api/auth/me", 401, headers={"Authorization": "Bearer invalid"})
-            request(client, "GET", "/api/satellites/catalog", 401)
+            for path in ("/api/auth/me", "/api/satellites/catalog", "/api/account/locations"):
+                request(client, "GET", path, 503, headers=auth)
             request(client, "POST", "/api/auth/login", 503, json={"username_or_email": "reliability", "password": "isolated-test-password"})
-            request(client, "POST", "/api/auth/register", 503, json={"username": "new_test", "email": "new@example.invalid", "password": "test-password"})
+            request(client, "POST", "/api/auth/register", 503, json=registration)
             for suffix in ["position", "orbit", "trajectory"]:
                 request(client, "GET", f"/api/satellites/25544/{suffix}", 503, headers=auth)
             request(client, "POST", "/api/satellites/trajectories", 503, headers=auth, json={"norad_ids": [25544], "duration_seconds": 180, "step_seconds": 5})
@@ -81,7 +97,7 @@ def run():
             request(client, "GET", "/health/ready")
             request(client, "GET", "/api/auth/me", headers=auth)
             request(client, "POST", "/api/auth/login", json={"username_or_email": "reliability", "password": "isolated-test-password"})
-            request(client, "POST", "/api/auth/register", 201, json={"username": "new_test", "email": "new@example.invalid", "password": "test-password"})
+            request(client, "POST", "/api/auth/register", 201, json=registration)
             request(client, "GET", "/api/satellites/catalog", headers=auth)
             # In-memory SGP4 cache never bypasses user validation during outage.
             cache_sentinel = {"propagator": object(), "cached_at": __import__('time').monotonic()}
@@ -116,7 +132,6 @@ def run():
             bad = request(client, "POST", "/api/auth/login", 422, json={"username_or_email": {}, "password": {"value": "DO_NOT_ECHO"}})
             assert "DO_NOT_ECHO" not in bad.text
             assert not st.called and not ct.called
-        engine.dispose()
         print(f"PASS: {checks} isolated real API checks +40 simultaneous outage requests; recovery, auth, cache and sanitized errors; external provider requests0")
 
     # Real PostgreSQL driver against a closed local port, never the configured DB.

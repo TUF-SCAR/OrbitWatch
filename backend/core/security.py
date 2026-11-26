@@ -47,19 +47,26 @@ def check_email(email: str) -> bool:
     return True
 
 
-def get_token_user_id(
-    credentials: HTTPAuthorizationCredentials = Depends(bearer_scheme),
-    database: Session = Depends(get_database_session),
-) -> int:
+def verify_bearer_token(
+    credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
+) -> tuple[int, str]:
+    """Check the signed claims before any protected route opens a DB session."""
     if credentials is None:
         raise HTTPException(status_code=401, detail="Authentication required")
 
     try:
         user_id = decode_access_token(credentials.credentials)
     except RuntimeError:
-        raise HTTPException(status_code=401, detail="Invalid or expired token")
+        raise HTTPException(status_code=401, detail="Invalid or expired token") from None
+    return user_id, token_digest(credentials.credentials)
 
-    if database.get(RevokedSession, token_digest(credentials.credentials)) is not None:
+
+def get_token_user_id(
+    token: tuple[int, str] = Depends(verify_bearer_token),
+    database: Session = Depends(get_database_session),
+) -> int:
+    user_id, digest = token
+    if database.get(RevokedSession, digest) is not None:
         raise HTTPException(status_code=401, detail="Invalid or expired token")
     return user_id
 

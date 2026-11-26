@@ -54,6 +54,9 @@ class ScientificAccuracy(unittest.TestCase):
         record = vallado_records()[5]
         fresh = tracker.create_satellite_propagator(record)
         epoch = fresh.epoch.utc_datetime()
+        self.assertEqual(tracker.create_satellite_propagator({**record, 'epoch': epoch.replace(tzinfo=None)}).epoch.utc_datetime(), epoch)
+        with self.assertRaises(tracker.LiveElementsUnavailable):
+            tracker.create_satellite_propagator({**record, 'epoch': (epoch + timedelta(seconds=3)).replace(tzinfo=None)})
         tracker.require_live_epoch(fresh, epoch + timedelta(days=7))
         with self.assertRaises(tracker.LiveElementsUnavailable):
             tracker.require_live_epoch(fresh, epoch + timedelta(days=7, microseconds=1))

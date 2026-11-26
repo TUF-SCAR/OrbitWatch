@@ -54,6 +54,7 @@ def check_contract(engine):
         from services.auth import hash_password
         from main import app
         from fastapi.testclient import TestClient
+        from sgp4.io import fix_checksum
         import jwt
 
         DatabaseBase.metadata.create_all(engine)
@@ -64,8 +65,8 @@ def check_contract(engine):
             session.add(User(username="integration_test", email="integration@example.invalid", password_hash=hash_password("OrbitWatch-test-2026")))
             for index, norad_id in enumerate(ids):
                 session.add(SatelliteOrbitalData(norad_id=norad_id, object_name=f"TEST FIXTURE {norad_id}", epoch=now,
-                    tle_line1=f"1 {norad_id:05d}U 98067A   {epoch}  .00000000  00000-0  00000-0 0  9990",
-                    tle_line2=f"2 {norad_id:05d}  51.6400 {index * 50:8.4f} 0005000  40.0000  80.0000 15.50000000123450",
+                    tle_line1=fix_checksum(f"1 {norad_id:05d}U 98067A   {epoch}  .00000000  00000-0  00000-0 0  9990"),
+                    tle_line2=fix_checksum(f"2 {norad_id:05d}  51.6400 {index * 50:8.4f} 0005000  40.0000  80.0000 15.50000000123450"),
                     source="SYNTHETIC INTEGRATION FIXTURE", fetched_at=now))
             session.commit()
 
@@ -160,16 +161,23 @@ def check_contract(engine):
             import asyncio, tempfile
             import main as application
             from services.providers import budget as budget_module
-            calls={"startup":0,"worker":0}
-            def startup():calls["startup"]+=1;return {"reason":"isolated scheduler test"}
-            async def worker():calls["worker"]+=1;await asyncio.Event().wait()
+            calls = {"satellite": 0, "infrared": 0}
+            async def satellite_worker():
+                calls["satellite"] += 1
+                await asyncio.Event().wait()
+            async def infrared_worker():
+                calls["infrared"] += 1
+                await asyncio.Event().wait()
             async def lifecycle():
                 with tempfile.TemporaryDirectory(dir=ROOT/".orbitwatch-backups") as tmp, \
-                     mock.object(budget_module,"ROOT",Path(tmp)),mock.object(application,"refresh_orbital_data",startup),mock.object(application,"run_satellite_refresh_worker",worker):
+                     mock.dict(os.environ, {"ORBITWATCH_INGESTION_ENABLED": "true", "ORBITWATCH_EVENT_PROVIDER_REQUESTS": "false"}), \
+                     mock.object(budget_module, "ROOT", Path(tmp)), \
+                     mock.object(application, "run_satellite_refresh_worker", satellite_worker), \
+                     mock.object(application, "run_infrared_refresh_worker", infrared_worker):
                     async with application.lifespan(app):
                         async with application.lifespan(app):
                             await asyncio.sleep(.01)
-                            assert calls=={"startup":1,"worker":1},calls
+                            assert calls == {"satellite": 1, "infrared": 1}, calls
             asyncio.run(lifecycle())
             print("PASS: same-host lifespan scheduler election and cleanup",calls)
         client.close()

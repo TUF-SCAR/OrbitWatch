@@ -49,8 +49,12 @@ def create_satellite_propagator(record: dict) -> EarthSatellite:
         if satellite.model.satnum != record["norad_id"] or line1[2:7] != line2[2:7]:
             raise ValueError("TLE identity mismatch")
         stored_epoch = record.get("epoch")
-        if stored_epoch is not None and abs((stored_epoch - satellite.epoch.utc_datetime()).total_seconds()) > 2:
-            raise ValueError("TLE epoch mismatch")
+        if stored_epoch is not None:
+            # SQLite drops the offset from UTC epochs written by ingestion.
+            if stored_epoch.tzinfo is None:
+                stored_epoch = stored_epoch.replace(tzinfo=timezone.utc)
+            if abs((stored_epoch - satellite.epoch.utc_datetime()).total_seconds()) > 2:
+                raise ValueError("TLE epoch mismatch")
     except (ValueError, TypeError, OverflowError, AttributeError) as error:
         raise LiveElementsUnavailable("Current orbital elements failed validation") from error
 

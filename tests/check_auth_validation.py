@@ -13,6 +13,7 @@ with patch('dotenv.load_dotenv', return_value=False), patch.dict(os.environ, {
     from core.security import check_email, check_username_char
     from routes.auth import router
     from schemas.auth import RegisterRequest, LoginRequest
+    from models.auth_state import AuthAttempt, RevokedSession
     from models.user import User
     from core.database import get_database_session
 
@@ -42,7 +43,7 @@ class ValidationTests(unittest.TestCase):
 
     def test_register_login_errors_and_exact_password_roundtrip(self):
         engine = create_engine('sqlite://', connect_args={'check_same_thread': False}, poolclass=StaticPool)
-        User.__table__.create(engine)
+        User.__table__.metadata.create_all(engine, tables=[User.__table__, AuthAttempt.__table__, RevokedSession.__table__])
         app = FastAPI()
         app.include_router(router)
         def session():
@@ -50,7 +51,7 @@ class ValidationTests(unittest.TestCase):
         app.dependency_overrides[get_database_session] = session
         try:
             with TestClient(app) as client:
-                base = {'username': 'valid_user', 'email': 'valid@example.com', 'password': ' pass word '}
+                base = {'username': 'valid_user', 'email': 'valid@example.com', 'password': ' local test pass phrase '}
                 for change in [{'username': 'bad name'}, {'username': 'a..b'}, {'email': 'bad@@example.com'}, {'password': '        '}]:
                     self.assertEqual(client.post('/api/auth/register', json={**base, **change}).status_code, 400)
                 self.assertEqual(client.post('/api/auth/register', json=base).status_code, 201)

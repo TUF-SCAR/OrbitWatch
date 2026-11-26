@@ -15,7 +15,7 @@ function dateText(value) {
 
 export default function ProfilePanel({ open, user, onClose, onLogout, settings, onSettingsChange, account,tab='profile',onTab,skywatchTab='satellite',onSkywatchTab,liveCatalog,onOpenNotification }) {
   if (!user || !open) return null;
-  if(tab==='notifications')return <ResponsivePanel onDismiss={onClose} className="notification-workspace account-workspace hud-panel" aria-label="Notifications">
+  if(tab==='notifications')return <ResponsivePanel mobileWorkspace onDismiss={onClose} className="notification-workspace account-workspace hud-panel" aria-label="Notifications">
     <header className="hud-panel__header"><h2>Notifications</h2><button className="icon-button" type="button" aria-label="Close notifications" onClick={onClose}><X size={18}/></button></header>
     <div className="hud-panel__body">
       {account&&<NotificationCentre account={account} onOpen={onOpenNotification} onSchedule={()=>onTab('preferences')}/>}

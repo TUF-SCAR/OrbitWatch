@@ -4,15 +4,18 @@ import { ChevronLeft, ChevronRight, X } from 'lucide-react';
 import { MONTHS, dateFields, daysInMonth, fieldsDate, shiftMonth, validSceneTime } from '../utils/sceneCalendar.js';
 import { dayHistory, historyAt, historyChoices, historyDemo, historyIndex, historyLabel } from '../services/timeHistory.js';
 import { nearestWeatherMetadata } from '../services/historicalWeather.js';
+import { usePhoneUI } from '../utils/usePhoneUI.js';
 
 export default function SceneTimePicker({time,onApply,onClose,coverage,weatherCoverage,weatherError,children}) {
   const dialog=useRef(null),yearInput=useRef(null);
+  const phone=usePhoneUI();
+  const phoneOnOpen=useRef(phone);
   const [zone,setZone]=useState('local'),[fields,setFields]=useState(()=>dateFields(time,'local'));
   const [representedInstant,setRepresentedInstant]=useState(time);
   const [showHistory,setShowHistory]=useState(false);
   const [archiveYear,setArchiveYear]=useState(null);
   const [archiveTime,setArchiveTime]=useState(null);
-  useEffect(()=>{const element=dialog.current;element.showModal();yearInput.current.focus();return ()=>element.close();},[]);
+  useEffect(()=>{const element=dialog.current;element.showModal();if(!phoneOnOpen.current)yearInput.current.focus();return ()=>element.close();},[]);
   // Retain the exact instant through display-only zone switches, including the
   // repeated local hour at the end of daylight saving time.
   const date=(representedInstant&&validSceneTime(representedInstant)?representedInstant:fieldsDate(fields,zone));
@@ -56,7 +59,7 @@ export default function SceneTimePicker({time,onApply,onClose,coverage,weatherCo
     setFields(previous=>({...previous,year:String(next.getUTCFullYear()),month:String(next.getUTCMonth()),day:String(next.getUTCDate())}));
     requestAnimationFrame(()=>dialog.current?.querySelector(`[data-day="${next.getUTCDate()}"]`)?.focus());
   }
-  return createPortal(<dialog className="scene-picker" ref={dialog} aria-labelledby="scene-picker-title" onCancel={event=>{event.preventDefault();onClose();}} onClick={event=>{if(event.target===dialog.current){const r=dialog.current.getBoundingClientRect();if(event.clientX<r.left||event.clientX>r.right||event.clientY<r.top||event.clientY>r.bottom)onClose();}}}>
+  return createPortal(<dialog className="scene-picker" ref={dialog} aria-labelledby="scene-picker-title" onKeyDown={phone?event=>event.stopPropagation():undefined} onCancel={event=>{event.preventDefault();onClose();}} onClick={event=>{if(event.target===dialog.current){const r=dialog.current.getBoundingClientRect();if(event.clientX<r.left||event.clientX>r.right||event.clientY<r.top||event.clientY>r.bottom)onClose();}}}>
     <form onSubmit={event=>{event.preventDefault();if(date)onApply(date,{archive:archiveTime===date.getTime()});}}>
       <header><div><span className="scene-picker__eyebrow">TIME EXPLORER</span><h2 id="scene-picker-title">Choose your moment</h2></div><button type="button" aria-label="Close date picker" onClick={onClose}><X size={19}/></button></header>
       <button type="button" className="scene-picker__history-toggle" aria-expanded={showHistory} onClick={()=>setShowHistory(value=>!value)}>Available history <span>{showHistory?'−':'+'}</span></button>

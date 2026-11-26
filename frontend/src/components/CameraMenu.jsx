@@ -15,7 +15,7 @@ const cameraPresets = [
 export default function CameraMenu({ open, hasSelected, onPreset, onClose }) {
   const phone=usePhoneUI(),[selected,setSelected]=useState(null);
   return (
-    <AnimatePresence>{open && <ResponsivePanel onDismiss={onClose} as="aside" side="right" strength={2.5} className="camera-popover hud-panel hud-panel--right" aria-label="Camera angles">
+    <AnimatePresence>{open && <ResponsivePanel mobileWorkspace onDismiss={onClose} as="aside" side="right" strength={2.5} className="camera-popover hud-panel hud-panel--right" aria-label="Camera angles">
       <div className="camera-popover__head hud-panel__header">
         <div className="camera-popover__title"><CircleDot size={16} /> CAMERA ANGLES</div>
         <button className="icon-button" onClick={onClose} aria-label="Close camera menu"><X size={18} /></button>

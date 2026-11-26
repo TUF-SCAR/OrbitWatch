@@ -51,7 +51,7 @@ export default function HistoricalWeatherPanel({open,onClose,weather,time,onView
   if(!open)return null;
   const w=weather;
   const isolated=w.coverage?.snapshots?.some(item=>item.provenance?.isolated_fixture);
-  return <ResponsivePanel onDismiss={onClose} as="aside" side="right" className="weather-panel historical-weather-panel hud-panel hud-panel--right" aria-label="Historical weather">
+  return <ResponsivePanel mobileWorkspace onDismiss={onClose} as="aside" side="right" className="weather-panel historical-weather-panel hud-panel hud-panel--right" aria-label="Historical weather">
     <div className="hud-panel__header"><div><span className="eyebrow"><Thermometer size={15}/> TIME EXPLORER</span><h2>Historical weather</h2></div><button className="icon-button" aria-label="Close historical weather" onClick={onClose}><X size={20}/></button></div>
     <div className="hud-panel__body weather-panel__body">
       {isolated&&<p className="inline-warning" role="note">ISOLATED SCIENTIFIC TEST FIXTURES · these values were not downloaded from ERA5. Production has no fixtures.</p>}

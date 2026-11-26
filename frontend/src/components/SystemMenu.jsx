@@ -66,7 +66,7 @@ export default function SystemMenu({ open, activeBodyId, onSelectBody, onClose, 
 
 
   return (
-    <AnimatePresence>{open && <ResponsivePanel onDismiss={onClose} as="aside" side="right" strength={3.8} className="system-menu hud-panel hud-panel--right" aria-label="Solar system navigation">
+    <AnimatePresence>{open && <ResponsivePanel mobileWorkspace onDismiss={onClose} as="aside" side="right" strength={3.8} className="system-menu hud-panel hud-panel--right" aria-label="Solar system navigation">
       <div className="system-menu__head hud-panel__header">
         <div>
           <span className="eyebrow">SYSTEM NAVIGATION</span>

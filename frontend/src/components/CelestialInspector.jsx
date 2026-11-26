@@ -41,7 +41,7 @@ export default function CelestialInspector({ bodyId, sceneTime, onClose, detailS
     ...(body.parent ? [["Parent body", CELESTIAL_BODIES[body.parent].name]] : []),
     ...(orbit ? [["Orbital period", `${number(orbit.periodDays, 3)} Earth days`], ["Semimajor axis", axis], ["Eccentricity", number(orbit.eccentricity, 4)], ["Inclination", `${number(Math.abs(orbit.inclination))}°`]] : []),
   ];
-  return <ResponsivePanel onDismiss={onClose} as="aside" side="right" className="inspector-panel celestial-inspector hud-panel hud-panel--right" aria-label="Celestial inspector">
+  return <ResponsivePanel mobileWorkspace onDismiss={onClose} as="aside" side="right" className="inspector-panel celestial-inspector hud-panel hud-panel--right" aria-label="Celestial inspector">
     <div className="inspector-panel__head hud-panel__header"><div><span className="eyebrow">CELESTIAL OVERVIEW</span><h1>{body.name}</h1></div><button className="icon-button" onClick={onClose} aria-label="Close celestial inspector"><X size={20} /></button></div>
     <div className="hud-panel__body inspector-body">
     <div className="object-ident"><span>{body.type}</span><span>REFERENCE DATA</span></div>

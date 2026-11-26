@@ -13,3 +13,4 @@ import "./styles/responsive.css";
 import "./styles/phone.css";
 import "./styles/catalog.css";
 import "./styles/observation.css";
+import "./styles/mobile-workspace.css";

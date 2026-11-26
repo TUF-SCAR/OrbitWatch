@@ -195,8 +195,9 @@ export default function App({ currentUser, onLogout, hudActive = true, onSceneRe
       if (trigger?.isConnected) trigger.focus();
       else if (name === "explorer") document.querySelector(".explorer-trigger")?.focus();
       else if (name === "place") document.querySelector(".place-search > button")?.focus();
+      else if (phone && ["map", "camera", "system", "weather"].includes(name)) document.querySelector(".phone-tools > button")?.focus();
     });
-  }, []);
+  }, [phone]);
   const openLayer = useCallback((name) => {
     if(phone&&mode==='time'&&['map','camera'].includes(name))return;
     if(name==='weather'&&!atEarth)return;
@@ -452,6 +453,7 @@ export default function App({ currentUser, onLogout, hudActive = true, onSceneRe
   useEffect(() => {
     const resolvePanels = () => {
       if (window.innerWidth < 1280) setLayers((current) => {
+        if (phone && current.length === 2 && current[0] === "celestial" && current[1] === "body") return current;
         if (window.innerWidth < 1100 && current.length > 1) return [current[current.length - 1]];
         if (current.includes("place") && current.includes("explorer")) return current.filter((item) => item !== (current.indexOf("place") < current.indexOf("explorer") ? "place" : "explorer"));
         return current;
@@ -459,7 +461,7 @@ export default function App({ currentUser, onLogout, hudActive = true, onSceneRe
     };
     window.addEventListener("resize", resolvePanels);
     return () => window.removeEventListener("resize", resolvePanels);
-  }, []);
+  }, [phone]);
 
   // Reserve the actual bottom dock, including wrapped facts and disclosures.
   // One shared clearance keeps every floating panel above its changing height.

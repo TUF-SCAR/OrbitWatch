@@ -160,7 +160,8 @@ class ScientificWeather(unittest.TestCase):
         engine=Mock()
         engine.begin.return_value=nullcontext(Mock())
         with tempfile.TemporaryDirectory() as temp,patch.object(importer,'ARCHIVE',Path(temp)),patch.object(importer,'cds_settings',return_value=('https://cds.climate.copernicus.eu/api','ISOLATED')),patch.object(importer,'refresh_owner',return_value=nullcontext(True)),patch.object(importer.budget,'attempt',side_effect=lambda *args:nullcontext()),patch.object(importer,'target',return_value=(engine,'ISOLATED')),patch.object(importer,'measurement',return_value={'database_bytes':14_000_000,'storage':{'bytes':0}}),patch.object(importer,'stored_timestamps',return_value=[STAMP]),patch.object(importer,'SnapshotStorage'),patch('ecmwf.datastores.Client') as client:
-            remote=Mock(request_id='ISOLATED-JOB',status='accepted',results_ready=False)
+            remote=Mock(request_id='ISOLATED-JOB',json={'status':'accepted'})
+            client.return_value.get_jobs.return_value=None
             client.return_value.submit.return_value=remote;client.return_value.get_remote.return_value=remote
             a=importer.download(1945);b=importer.download(1945)
             self.assertEqual(a['job_id'],b['job_id']);self.assertEqual(client.return_value.submit.call_count,1)

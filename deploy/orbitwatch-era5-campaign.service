@@ -1,0 +1,27 @@
+[Unit]
+Description=OrbitWatch seasonal ERA5 archive ingestion
+Wants=network-online.target
+After=network-online.target
+StartLimitIntervalSec=1h
+StartLimitBurst=5
+
+[Service]
+Type=exec
+User=ubuntu
+Group=ubuntu
+WorkingDirectory=/home/ubuntu/OrbitWatch/backend
+Environment=OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1
+ExecStart=/home/ubuntu/OrbitWatch/.venv/bin/python -u historical_weather_campaign.py --expected-target 91629c91746ef7a1 --hours 36
+RuntimeMaxSec=37h
+TimeoutStopSec=30s
+Restart=no
+RestartForceExitStatus=75
+RestartSec=5min
+Nice=10
+CPUQuota=70%
+MemoryHigh=384M
+MemoryMax=512M
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

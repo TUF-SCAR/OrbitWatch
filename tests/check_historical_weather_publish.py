@@ -12,6 +12,7 @@ from sqlalchemy import create_engine,text
 ROOT=Path(__file__).resolve().parents[1];sys.path[:0]=[str(ROOT/'backend'),str(ROOT/'tests')]
 os.environ['DATABASE_URL']='sqlite://'
 from check_historical_weather import grib_fixture
+from check_era5_campaign import grib_batch
 from historical_weather_import import publish
 from services.historical_weather_storage import SnapshotStorage,WeatherStorageUnavailable
 
@@ -62,12 +63,41 @@ def main():
                     try:publish(path,'ISOLATED',store,complete_only=True);raise AssertionError('Partial campaign source accepted')
                     except ValueError as error:assert 'requires complete' in str(error)
                     upload.assert_not_called()
+                batch = Path(temp)/'batch.grib'
+                grib_batch(batch, (1990, 2010, 2020))
+                recorded = []
+
+                def interrupted(date, measured):
+                    recorded.append(date)
+                    if len(recorded) == 3:
+                        raise RuntimeError('isolated interruption after metadata commit')
+
+                uploads = []
+
+                def track_upload(method, path, **kwargs):
+                    uploads.append(path)
+                    return request(method, path, **kwargs)
+
+                with patch.object(store,'get',side_effect=get), patch.object(store,'request',side_effect=track_upload):
+                    try:
+                        publish(batch,'ISOLATED',store,complete_only=True,on_snapshot=interrupted)
+                        raise AssertionError('Fixture failed to interrupt publication')
+                    except RuntimeError:
+                        assert len(recorded) == 3
+                    with engine.connect() as db:
+                        assert db.scalar(text('SELECT count(*) FROM historical_weather_snapshots')) == 4
+                    assert publish(batch,'ISOLATED',store,complete_only=True)['inserted'] == 9
+                    assert publish(batch,'ISOLATED',store,complete_only=True)['inserted'] == 0
+                    assert len(set(uploads)) == len(uploads) == 12
+                with engine.connect() as db:
+                    rows = db.execute(text('SELECT DISTINCT timestamp FROM historical_weather_snapshots')).all()
+                    assert len(rows) == len(objects) == 13
             manifest['source_sha256']='b'*64;path.with_suffix('.json').write_text(json.dumps(manifest),encoding='utf8')
             with patch('historical_weather_import.target') as target:
                 try:publish(path,'ISOLATED',store);raise AssertionError('Corrupt source published')
                 except ValueError:pass
                 target.assert_not_called()
-        print('PASS: migration twice/RLS; corrupt source and object rejected before metadata; upload-before-publish; complete variables; duplicate import no-op; unrelated rows unchanged')
+        print('PASS: migration twice/RLS; corrupt source and object rejected; upload-before-publish; complete variables; three-year partial publication resumes without duplicate rows or uploads; unrelated rows unchanged')
     finally:
         engine.dispose()
         with psycopg.connect(host='127.0.0.1',port=55444,user='orbitwatch_test',dbname='postgres',autocommit=True,connect_timeout=3) as db:

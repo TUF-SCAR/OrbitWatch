@@ -11,6 +11,8 @@ PARAMS = {167:('temperature','K', 'heightAboveGround',2), 168:('dewpoint','K','h
 VARIABLES = ['2m_temperature','2m_dewpoint_temperature','total_cloud_cover','total_precipitation',
              'mean_sea_level_pressure','10m_u_component_of_wind','10m_v_component_of_wind']
 MAX_SOURCE = 64*1024*1024
+MAX_BATCH_YEARS = 3
+QUARTERS = ('01', '04', '07', '10')
 SEASONAL_TARGET_COUNT = 227
 SEASONAL_PHASES = (
     (2024, 2000, 1970),
@@ -24,11 +26,36 @@ def request_for_year(year, now=None):
     now = now or datetime.now(timezone.utc)
     if year not in range(1945,2027): raise ValueError('Year outside planned archive')
     dates = [check_seasonal(f'{year}-{month:02}-15T12:00:00Z') for month in (1,4,7,10)
-             if datetime(year,month,15,12,tzinfo=timezone.utc) < now-timedelta(days=95)]
+             if (year != 2026 or month != 10) and datetime(year,month,15,12,tzinfo=timezone.utc) < now-timedelta(days=95)]
     if not dates: raise ValueError('No final seasonal dates available in that year')
     return dict(product_type=['reanalysis'], variable=VARIABLES, year=[str(year)],
                 month=[f'{d.month:02}' for d in dates], day=['15'], time=['12:00'],
                 grid=[1,1], data_format='grib', download_format='unarchived')
+
+
+def request_for_years(years, now=None):
+    years = tuple(years)
+    if not 1 <= len(years) <= MAX_BATCH_YEARS or len(set(years)) != len(years):
+        raise ValueError('ERA5 request requires one to three distinct years')
+    first = request_for_year(years[0], now)
+    if len(years) > 1 and (2026 in years or any(
+            year < 1970 or request_for_year(year, now)['month'] != list(QUARTERS) for year in years)):
+        raise ValueError('Multi-year requests require identical approved full years')
+    return first | {'year': [str(year) for year in sorted(years)]}
+
+
+def request_timestamps(request):
+    years, months = request.get('year'), request.get('month')
+    if (not isinstance(years, list) or not 1 <= len(years) <= MAX_BATCH_YEARS
+            or not all(isinstance(year, str) and len(year) == 4 and year.isascii()
+                       and year.isdigit() and 1945 <= int(year) <= 2026 for year in years)
+            or len(set(years)) != len(years)
+            or not isinstance(months, list) or not months or not all(month in QUARTERS for month in months)
+            or len(set(months)) != len(months)
+            or ('2026' in years and (len(years) > 1 or '10' in months))
+            or (len(years) > 1 and (set(months) != set(QUARTERS) or min(years) < '1970'))):
+        raise ValueError('Unexpected CDS year or month selection')
+    return {check_seasonal(f'{year}-{month}-15T12:00:00Z') for year in years for month in months}
 
 
 def seasonal_progress(stored, manifests, now=None):
@@ -41,8 +68,7 @@ def seasonal_progress(stored, manifests, now=None):
         if manifest.get('dataset') != DATASET:
             continue
         request = manifest.get('request', {})
-        for month in request.get('month', []):
-            stamp = check_seasonal(f"{request['year'][0]}-{month}-15T12:00:00Z")
+        for stamp in request_timestamps(request):
             jobs[stamp] = manifest.get('state', 'unknown')
     output = []
     for phase, years in enumerate(phases, 1):
@@ -88,8 +114,12 @@ def read_grib(path, manifest):
     if manifest.get('dataset') != DATASET or manifest.get('state') != 'downloaded' or manifest.get('source_sha256') != checksum or not manifest.get('job_id'):
         raise ValueError('CDS download manifest/integrity required')
     request=manifest.get('request', {})
-    year=int(request['year'][0]); expected={check_seasonal(f'{year}-{m}-15T12:00:00Z') for m in request['month']}
-    if request.get('product_type') != ['reanalysis'] or request.get('time') != ['12:00'] or request.get('day') != ['15'] or set(request.get('variable',[]))!=set(VARIABLES): raise ValueError('Unexpected CDS product')
+    expected = request_timestamps(request)
+    if (request.get('product_type') != ['reanalysis'] or request.get('time') != ['12:00']
+            or request.get('day') != ['15'] or sorted(request.get('variable', [])) != sorted(VARIABLES)
+            or request.get('grid', [.25,.25]) not in ([1,1], [.25,.25])
+            or request.get('data_format', 'grib') != 'grib'):
+        raise ValueError('Unexpected CDS product')
     results={date:dict(fields={}, failures={}) for date in expected}
     seen=set()
     with path.open('rb') as stream:
@@ -97,7 +127,7 @@ def read_grib(path, manifest):
         while (handle:=ec.codes_grib_new_from_file(stream)) is not None:
             try:
                 count+=1
-                if count > 28: raise ValueError('Unexpected message count')
+                if count > len(expected)*len(PARAMS): raise ValueError('Unexpected message count')
                 param=int(ec.codes_get(handle,'paramId'))
                 if param not in PARAMS: raise ValueError('Unexpected variable')
                 name,unit,level_type,level=PARAMS[param]

@@ -12,17 +12,22 @@ from pathlib import Path
 import re
 import shutil
 import tempfile
+import time
 from sqlalchemy import create_engine, text, inspect
 from sqlalchemy.engine import make_url
 from core.config import required
 from services.historical_weather_codec import DATASET, PROVIDER, GRID, SPECS, encode, decode, MAX_BLOB
-from services.era5_source import request_for_year, read_grib, seasonal_progress, MAX_SOURCE, SEASONAL_TARGET_COUNT
+from services.era5_source import (MAX_SOURCE, SEASONAL_TARGET_COUNT,
+    read_grib, request_for_years, request_timestamps, seasonal_progress)
 from services.historical_weather_storage import SnapshotStorage, BUCKET
 from services.historical_capacity import require_capacity
 from services.providers.budget import ROOT, refresh_owner, budget
 
 ARCHIVE=ROOT/'era5'
 EXPECTED='91629c91746ef7a1'
+CDS_IN_FLIGHT = {'accepted', 'running', 'queued', 'pending'}
+CDS_TERMINAL_FAILURE = {'failed', 'dismissed', 'rejected', 'cancelled', 'canceled'}
+OPEN_MANIFEST = {'queued', 'submission_uncertain', 'staged'}
 
 
 def target(expected=None):
@@ -97,6 +102,12 @@ def write_manifest(path, manifest):
         os.fsync(file.fileno())
     try:
         temporary.replace(path)
+        if os.name != 'nt':
+            directory = os.open(path.parent, os.O_RDONLY | os.O_DIRECTORY)
+            try:
+                os.fsync(directory)
+            finally:
+                os.close(directory)
     finally:
         temporary.unlink(missing_ok=True)
 
@@ -125,85 +136,174 @@ def inventory(include_plan=False):
     finally:engine.dispose()
 
 
-def download(year, *, months=None):
-    """One grouped year/request; persistent job identity; never wait on CDS queue."""
-    from ecmwf.datastores import Client
+def check_provider_history(client, request, known_ids):
+    """Fence submissions against current account jobs, including manual ones."""
+    page = client.get_jobs(limit=100, sortby='-created')
+    seen = set()
+    for _ in range(10):
+        if page is None or not page.request_ids:
+            return
+        for entry in page.response.json()['jobs']:
+            job_id = entry['jobID']
+            if job_id in seen:
+                continue
+            seen.add(job_id)
+            detail = entry if 'status' in entry else client.get_remote(job_id).json
+            state = detail.get('status')
+            if state in CDS_IN_FLIGHT:
+                raise ValueError('An outstanding CDS account job needs reconciliation')
+            if state not in CDS_TERMINAL_FAILURE | {'successful'}:
+                raise ValueError('Unrecognized CDS account job state')
+            if job_id in known_ids:
+                continue
+            if 'processID' not in detail or (detail['processID'] == DATASET and 'metadata' not in detail):
+                detail = client.get_remote(job_id).json
+            if detail['processID'] == DATASET:
+                years = detail['metadata']['request']['ids']['year']
+                if set(request['year']) & {str(year) for year in years}:
+                    raise ValueError('CDS history already contains an unsaved request for this year')
+        page = page.next
+    if page is not None and page.request_ids:
+        raise ValueError('Provider history could not be reconciled within its page bound')
+
+
+def finalize_source(path, manifest):
+    file = path.with_suffix('.grib')
+    partial = path.with_suffix('.grib.part')
+    source = file if file.exists() else partial
+    if (not source.is_file() or not 0 < source.stat().st_size <= MAX_SOURCE
+            or sha256(source.read_bytes()).hexdigest() != manifest.get('source_sha256')):
+        raise ValueError('Saved download failed integrity; inspect it without resubmitting')
+    if manifest['state'] == 'staged':
+        if source == partial:
+            partial.replace(file)
+        manifest['state'] = 'downloaded'
+        write_manifest(path, manifest)
+    elif source != file:
+        raise ValueError('Saved download is missing; inspect it without resubmitting')
+    return manifest
+
+
+def receive_source(path, manifest, result):
     import httpx
-    request=request_for_year(year)
+    from urllib.parse import urlsplit
+
+    if not 0 < result.content_length <= MAX_SOURCE:
+        raise ValueError('Source size exceeds bound')
+    parsed = urlsplit(result.location)
+    if (parsed.scheme != 'https' or not parsed.hostname or parsed.username or parsed.password
+            or not parsed.hostname.endswith(('.ecmwf.int', '.climate.copernicus.eu', '.cloudfss.com'))):
+        raise ValueError('Unreviewed CDS result host')
+    start = time.monotonic()
+    size, digest = 0, sha256()
+    with httpx.stream('GET', result.location, timeout=60, follow_redirects=False) as response:
+        response.raise_for_status()
+        with path.with_suffix('.grib.part').open('wb') as stream:
+            for chunk in response.iter_bytes():
+                size += len(chunk)
+                if size > MAX_SOURCE or time.monotonic() - start > 600:
+                    raise ValueError('Source transfer exceeds bound')
+                digest.update(chunk)
+                stream.write(chunk)
+            stream.flush()
+            os.fsync(stream.fileno())
+    if size != result.content_length:
+        raise ValueError('Truncated source download')
+    manifest.update(state='staged', source_sha256=digest.hexdigest(), source_bytes=size,
+                    transfer_seconds=round(time.monotonic()-start, 3),
+                    downloaded_at=datetime.now(timezone.utc).isoformat())
+    write_manifest(path, manifest)
+    return finalize_source(path, manifest)
+
+
+def download(year, *, months=None):
+    return download_batch((year,), months=months)
+
+
+def download_batch(years, *, months=None):
+    """Advance an immutable request or reserve an exact group under the import lock."""
+    from ecmwf.datastores import Client
+
+    request = request_for_years(years)
     if months is not None:
         if not months or not set(months) <= set(request['month']):
             raise ValueError('Requested campaign months are not eligible final ERA5')
         request['month'] = [month for month in request['month'] if month in months]
-    engine,_=target()
-    try:
-        with engine.begin() as db:
-            db.execute(text('SET TRANSACTION READ ONLY'))
-            capacity(measurement(db), len(request['month'])*MAX_BLOB)
-            stored={f'{date.month:02}' for date in stored_timestamps(db) if date.year==year}
-    finally:engine.dispose()
-    request['month']=[month for month in request['month'] if month not in stored]
-    if not request['month']:return dict(state='already_stored',year=year)
+    requested = request_timestamps(request)
     ARCHIVE.mkdir(parents=True,exist_ok=True)
-    if sum(f.stat().st_size for f in ARCHIVE.glob('*.grib*'))+MAX_SOURCE>256*1024*1024 or shutil.disk_usage(ARCHIVE).free<MAX_SOURCE*3: raise ValueError('Local pilot quota/disk limit')
     with refresh_owner('era5-import.lock') as owned:
         if not owned: raise ValueError('Another ERA5 operation is running')
-        saved=manifests()
-        saved=[(path,m) for path,m in saved if m.get('dataset')==DATASET and m.get('request',{}).get('year')==[str(year)]]
-        if months is not None and any(not set(m['request']['month']) <= set(months) for _,m in saved):
-            raise ValueError('Saved request exceeds approved campaign months')
-        for path,m in saved:
-            if m.get('state')=='downloaded':
-                source=path.with_suffix('.grib')
-                if not source.is_file() or source.stat().st_size>MAX_SOURCE or sha256(source.read_bytes()).hexdigest()!=m.get('source_sha256'):
-                    raise ValueError('Saved download failed integrity; inspect it without resubmitting')
-        pending=[(path,m) for path,m in saved if m.get('state') not in ('downloaded','published')]
-        if pending:
-            manifest_path,manifest=pending[0];request=manifest['request']
-            file=manifest_path.with_suffix('.grib')
+        engine, _ = target()
+        try:
+            with engine.begin() as db:
+                db.execute(text('SET TRANSACTION READ ONLY'))
+                capacity(measurement(db), len(requested)*MAX_BLOB)
+                stored = set(stored_timestamps(db))
+        finally:
+            engine.dispose()
+        saved = [(path, item, request_timestamps(item['request'])) for path,item in manifests()
+                 if item.get('dataset') == DATASET]
+        outstanding = [row for row in saved if row[1].get('state') in OPEN_MANIFEST]
+        if len(outstanding) > 1:
+            raise ValueError('Multiple saved CDS jobs need reconciliation')
+        matching = [row for row in saved if row[2] & (requested - stored)
+                    or row[1].get('state') in OPEN_MANIFEST | {'downloaded'} and row[2] <= requested]
+        if len(matching) > 1:
+            raise ValueError('Overlapping saved CDS jobs need reconciliation')
+        if not requested - stored and not matching:
+            return {'state': 'already_stored'}
+        if outstanding and outstanding[0] not in matching:
+            raise ValueError('Resume the existing saved CDS job before submitting another')
+        if matching:
+            path, manifest, dates = matching[0]
+            if not dates <= requested:
+                raise ValueError('Saved request exceeds approved campaign dates')
+            if manifest['state'] in ('staged', 'downloaded'):
+                return finalize_source(path, manifest)
+            if manifest['state'] != 'queued' or not manifest.get('job_id'):
+                raise ValueError('Inspect saved job before any retry; automatic resubmission prohibited')
         else:
-            completed={month for _,m in saved if m.get('state')=='downloaded' for month in m['request']['month']}
-            request['month']=[month for month in request['month'] if month not in completed]
-            if not request['month']:return dict(state='already_downloaded',year=year,manifest_count=len(saved))
-            identity=sha256(json.dumps(request,sort_keys=True).encode()).hexdigest()[:24]
-            file=ARCHIVE/(identity+'.grib');manifest_path=ARCHIVE/(identity+'.json')
-        manifest=json.loads(manifest_path.read_text(encoding='utf8')) if manifest_path.exists() else dict(dataset=DATASET,request=request,state='reserved')
-        if manifest.get('state')=='downloaded':
-            if not file.is_file() or sha256(file.read_bytes()).hexdigest()!=manifest.get('source_sha256'): raise ValueError('Saved download failed checksum')
-            return manifest
-        if manifest.get('state') in ('submission_uncertain','failed'): raise ValueError('Inspect saved job before any retry; automatic resubmission prohibited')
+            if len(request['year']) > 1 and (requested & stored or any(
+                    set(item['request']['year']) & set(request['year']) for _,item,_ in saved)):
+                raise ValueError('Multi-year requests require previously unsubmitted full years')
+            request['month'] = [month for month in request['month'] if any(
+                date.month == int(month) and date not in stored for date in requested)]
+            request_timestamps(request)
+            identity = sha256(json.dumps(request,sort_keys=True).encode()).hexdigest()[:24]
+            path = ARCHIVE / (identity+'.json')
+            if path.exists():
+                raise ValueError('CDS manifest identity requires reconciliation')
+            manifest = {'dataset': DATASET, 'request': request, 'state': 'reserved'}
+        staged = sum(file.stat().st_size for file in ARCHIVE.glob('*.grib*')
+                     if file != path.with_suffix('.grib.part'))
+        if staged + MAX_SOURCE > 256*1024*1024 or shutil.disk_usage(ARCHIVE).free < MAX_SOURCE*3:
+            raise ValueError('Local pilot quota/disk limit')
         url,key=cds_settings()
-        SnapshotStorage()  # Validate configured Storage ownership before asking CDS for data.
-        client=Client(url=url,key=key,timeout=30,maximum_tries=1)
+        SnapshotStorage()
+        client=Client(url=url,key=key,timeout=30,maximum_tries=1,cleanup=False)
         with budget.attempt('cds-era5',60,1):
             if not manifest.get('job_id'):
-                # A lost HTTP response must not cause an automatic duplicate request.
-                manifest['state']='submission_uncertain';write_manifest(manifest_path,manifest)
-                remote=client.submit(DATASET,request)
+                check_provider_history(client, request, {item.get('job_id') for _,item,_ in saved})
+                manifest['state']='submission_uncertain'
+                write_manifest(path,manifest)
+                remote=client.submit(DATASET,manifest['request'])
                 manifest.update(job_id=remote.request_id,state='queued')
-                write_manifest(manifest_path,manifest)
+                write_manifest(path,manifest)
             else: remote=client.get_remote(manifest['job_id'])
-            state=remote.status
+            detail=remote.json
+            state=detail['status']
             manifest['provider_state']=state
-            if state in ('failed','dismissed','rejected'): manifest['state']='failed'
-            elif remote.results_ready:
-                result=remote.get_results()
-                if not 0<result.content_length<=MAX_SOURCE: raise ValueError('Source size exceeds bound')
-                # Download only once ready; bounded streaming, no queue wait.
-                from urllib.parse import urlsplit
-                parsed=urlsplit(result.location)
-                if parsed.scheme!='https' or not parsed.hostname or not parsed.hostname.endswith(('.ecmwf.int','.climate.copernicus.eu','.cloudfss.com')): raise ValueError('Unreviewed CDS result host')
-                partial=file.with_suffix('.grib.part')
-                with httpx.stream('GET',result.location,timeout=60,follow_redirects=False) as response:
-                    response.raise_for_status();size=0
-                    with partial.open('wb') as stream:
-                        for chunk in response.iter_bytes():
-                            size+=len(chunk)
-                            if size>MAX_SOURCE: raise ValueError('Source size exceeds bound')
-                            stream.write(chunk)
-                if size!=result.content_length: raise ValueError('Truncated source download')
-                partial.replace(file)
-                manifest.update(state='downloaded',source_sha256=sha256(file.read_bytes()).hexdigest(),source_bytes=size,downloaded_at=datetime.now(timezone.utc).isoformat())
-            write_manifest(manifest_path,manifest)
+            manifest['provider_times'] = {name: detail[name] for name in ('created','started','finished') if detail.get(name)}
+            if state in CDS_TERMINAL_FAILURE:
+                manifest['state']='failed'
+            elif state == 'successful':
+                if 'success_observed_at' not in manifest:
+                    manifest['success_observed_at'] = datetime.now(timezone.utc).isoformat()
+                    write_manifest(path, manifest)
+                return receive_source(path, manifest, remote.get_results())
+            elif state not in CDS_IN_FLIGHT:
+                raise ValueError('Unrecognized saved CDS job state')
+            write_manifest(path,manifest)
             return manifest
 
 
@@ -222,36 +322,47 @@ def prepare(path):
 
 
 def publish(path,expected,storage=None,*,complete_only=False,on_snapshot=None):
-    prepared=prepare(path)  # Entire source validates BEFORE creating/uploading anything.
-    if len(prepared)>4: raise ValueError('Import batch cap is four snapshots')
-    request=json.loads(Path(path).with_suffix('.json').read_text(encoding='utf8'))['request']
-    imported={f'{item[0].month:02}' for item in prepared}
-    missing=[f"{request['year'][0]}-{month}-15T12:00:00Z" for month in request['month'] if month not in imported]
-    if complete_only and (missing or not prepared or any(item[-1] != 'complete' for item in prepared)):
-        raise ValueError('Campaign requires complete ERA5 source fields and timestamps')
-    engine,fp=target(expected)
-    try:
-        with refresh_owner('era5-import.lock') as owned:
-            if not owned: raise ValueError('Another ERA5 operation is running')
+    with refresh_owner('era5-import.lock') as owned:
+        if not owned: raise ValueError('Another ERA5 operation is running')
+        start = time.monotonic()
+        prepared=prepare(path)
+        request=json.loads(Path(path).with_suffix('.json').read_text(encoding='utf8'))['request']
+        dates = request_timestamps(request)
+        imported = {item[0] for item in prepared}
+        if len(prepared) != len(imported) or not imported <= dates:
+            raise ValueError('Unexpected or duplicate prepared dates')
+        missing = sorted(date.isoformat().replace('+00:00','Z') for date in dates - imported)
+        if complete_only and (missing or not prepared or any(item[-1] != 'complete' for item in prepared)):
+            raise ValueError('Campaign requires complete ERA5 source fields and timestamps')
+        validation_seconds = round(time.monotonic()-start, 3)
+        engine,fp=target(expected)
+        latest = text('SELECT version,sha256 FROM historical_weather_snapshots WHERE timestamp=:date ORDER BY version DESC LIMIT 1')
+        try:
             with engine.begin() as db:
                 db.execute(text('SELECT pg_advisory_xact_lock(68270906)'))
-                before=measurement(db);capacity(before,sum(len(x[1]) for x in prepared))
+                before=measurement(db)
+                pending = []
+                for item in prepared:
+                    date, _, _, _, checksum, _ = item
+                    existing = db.execute(latest, {'date':date}).mappings().first()
+                    if existing and existing['sha256'] == checksum:
+                        continue
+                    if complete_only and existing:
+                        raise ValueError('Stored campaign snapshot conflicts with source')
+                    pending.append(item)
+                capacity(before, sum(len(item[1]) for item in pending))
             storage=storage or SnapshotStorage();storage.ensure_bucket()
             inserted=0
-            for date,blob,header,key,checksum,status in prepared:
-                if complete_only:
-                    with engine.begin() as db:
-                        db.execute(text('SELECT pg_advisory_xact_lock(68270906)'))
-                        existing=db.execute(text('SELECT version,sha256 FROM historical_weather_snapshots WHERE timestamp=:date ORDER BY version DESC LIMIT 1'),{'date':date}).mappings().first()
-                        if existing and existing['sha256']!=checksum:
-                            raise ValueError('Stored campaign snapshot conflicts with source')
-                        capacity(measurement(db),0 if existing else len(blob))
+            for date,blob,header,key,checksum,status in pending:
+                with engine.begin() as db:
+                    db.execute(text('SELECT pg_advisory_xact_lock(68270906)'))
+                    capacity(measurement(db),len(blob))
                 # Upload first; checksum GET verification precedes metadata visibility.
                 storage.put_verified(key,blob)
                 with engine.begin() as db:
                     db.execute(text('SELECT pg_advisory_xact_lock(68270906)'))
                     capacity(measurement(db),0)
-                    existing=db.execute(text('SELECT version,sha256 FROM historical_weather_snapshots WHERE timestamp=:date ORDER BY version DESC LIMIT 1'),{'date':date}).mappings().first()
+                    existing=db.execute(latest,{'date':date}).mappings().first()
                     if existing and existing['sha256']==checksum: continue
                     if complete_only and existing:
                         raise ValueError('Stored campaign snapshot conflicts with source')
@@ -267,8 +378,9 @@ def publish(path,expected,storage=None,*,complete_only=False,on_snapshot=None):
                         measured=measurement(db)
                     on_snapshot(date, measured)
             with engine.connect() as db: after=measurement(db)
-            return dict(target_fingerprint=fp,inserted=inserted,before=before,after=after,unvalidated_timestamps=missing)
-    finally:engine.dispose()
+            return dict(target_fingerprint=fp,inserted=inserted,before=before,after=after,
+                        unvalidated_timestamps=missing,validation_seconds=validation_seconds)
+        finally:engine.dispose()
 
 
 def main():
@@ -282,7 +394,10 @@ def main():
         elif args.command=='import':
             if args.expected_target!=EXPECTED: raise ValueError('Explicit verified target required')
             result=publish(args.file,args.expected_target)
-        elif args.command=='inspect': result=[dict(timestamp=x[0].isoformat(),bytes=len(x[1]),variables=x[2]['fields'],status=x[5]) for x in prepare(args.file)]
+        elif args.command=='inspect':
+            with refresh_owner('era5-import.lock') as owned:
+                if not owned: raise ValueError('Another ERA5 operation is running')
+                result=[dict(timestamp=x[0].isoformat(),bytes=len(x[1]),variables=x[2]['fields'],status=x[5]) for x in prepare(args.file)]
         else: result=inventory(include_plan=args.command=='plan')
         print(json.dumps(result,default=str,indent=2))
     except Exception as error:
